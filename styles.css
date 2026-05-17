@@ -118,15 +118,19 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
 .main-content { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
 .topbar {
   height: calc(var(--topbar-h) + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
 
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 
   display: flex;
-  align-items: center;
-  padding-left: 20px;
-  padding-right: 20px;
+  align-items: flex-end;
+
+  padding:
+    env(safe-area-inset-top)
+    20px
+    10px
+    20px;
+
   gap: 12px;
 
   position: sticky;
@@ -135,7 +139,23 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
 
   box-shadow: 0 1px 0 var(--border);
 }
-.hamburger { display: none; background: none; border: none; font-size: 20px; color: var(--text); cursor: pointer; padding: 4px 8px; }
+.hamburger { 
+  background: none; 
+  border: none; 
+  font-size: 20px; 
+  color: var(--text); 
+  cursor: pointer; 
+  padding: 4px 8px;
+ min-height: 40px;
+  min-width: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  position: relative;
+  z-index: 60;
+}
 .topbar-title { font-family: var(--font-display); font-size: 18px; font-weight: 800; flex: 1; color: var(--text); }
 .topbar-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
@@ -417,31 +437,109 @@ textarea { resize: vertical; min-height: 70px; }
   .grid-4 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 700px) {
-  :root { --topbar-h: 56px; }
-  .sidebar { transform: translateX(-100%); }
-  .sidebar.open { transform: none; box-shadow: 4px 0 32px rgba(0,0,0,0.4); }
-  .hamburger { display: flex; }
-  .main-content { margin-left: 0; }
-  .page { padding: 12px; }
-  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .grid-2.keep-2 { grid-template-columns: 1fr 1fr; }
-  .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
-  .form-group.full { grid-column: 1; }
-  .topbar { padding: 0 14px; gap: 10px; }
-  .topbar-title { font-size: 16px; }
-  .stat-value { font-size: 21px; }
+
+  :root {
+    --topbar-h: 52px;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    padding-top: max(env(safe-area-inset-top), 8px);
+  }
+
+  .sidebar.open {
+    transform: none;
+    box-shadow: 4px 0 32px rgba(0,0,0,0.4);
+  }
+
+  .hamburger {
+    display: flex;
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+
+  .page {
+    padding: 12px;
+  }
+
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-2.keep-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .form-grid,
+  .form-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .form-group.full {
+    grid-column: 1;
+  }
+
+  .topbar {
+    height: calc(var(--topbar-h) + env(safe-area-inset-top));
+
+    padding-top: max(env(safe-area-inset-top), 10px);
+    padding-right: 14px;
+    padding-bottom: 8px;
+    padding-left: 14px;
+
+    align-items: flex-end;
+    gap: 10px;
+  }
+
+  .topbar-title {
+    font-size: 16px;
+  }
+
+  .stat-value {
+    font-size: 21px;
+  }
 
   /* Ocultar tablas, mostrar mobile cards */
-  .hide-mobile { display: none !important; }
-  .show-mobile { display: flex !important; }
-  .mobile-card-list { display: flex; }
+  .hide-mobile {
+    display: none !important;
+  }
 
-  .modal { border-radius: 16px 16px 0 0; margin-top: auto; max-height: 95vh; }
-  .modal-overlay { align-items: flex-end; padding: 0; }
+  .show-mobile {
+    display: flex !important;
+  }
 
-  .search-bar { max-width: 100%; }
-  .product-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .product-card-img { height: 70px; font-size: 30px; }
+  .mobile-card-list {
+    display: flex;
+  }
+
+  .modal {
+    border-radius: 16px 16px 0 0;
+    margin-top: auto;
+    max-height: 95vh;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .search-bar {
+    max-width: 100%;
+  }
+
+  .product-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .product-card-img {
+    height: 70px;
+    font-size: 30px;
+  }
 }
 @media (max-width: 400px) {
   .product-grid { grid-template-columns: 1fr; }
@@ -490,15 +588,5 @@ body {
   body {
     padding-top: max(0px, env(safe-area-inset-top));
     padding-bottom: max(0px, env(safe-area-inset-bottom));
-  }
-}
-
-@media (max-width: 700px) {
-  .sidebar {
-    padding-top: calc(env(safe-area-inset-top) + 8px);
-  }
-
-  .topbar {
-    padding-top: env(safe-area-inset-top);
   }
 }
