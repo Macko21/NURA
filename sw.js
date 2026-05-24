@@ -1,6 +1,6 @@
 // NURA Service Worker — Realtime Database
-const CACHE = 'nura-v3';
-const SHELL = ['./', './index.html', './styles.css', './app.js', './logo.png', './manifest.json'];
+const CACHE = 'nura-v10';
+const SHELL = ['./', './index.html', './styles.css', './logo.png', './manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
