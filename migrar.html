@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NURA — Migrar a Firebase</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Outfit', sans-serif; background: #0d1117; color: #e2eaf2; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 24px; }
+    .card { background: #161d27; border: 1px solid rgba(82,218,210,0.2); border-radius: 18px; padding: 28px; width: 100%; max-width: 600px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); margin-top: 20px; }
+    .logo { text-align: center; margin-bottom: 22px; }
+    .logo-brand { font-family: 'Nunito', sans-serif; font-size: 26px; font-weight: 900; letter-spacing: 8px; color: #fff; }
+    .logo-brand .a { color: #a78bfa; }
+    .logo-sub { font-size: 9px; color: rgba(255,255,255,0.3); letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+    .step { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+    .step-num { font-size: 10.5px; font-weight: 700; color: #52dad2; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+    p.hint { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.6; margin-bottom: 12px; }
+    label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 4px; margin-top: 10px; }
+    label:first-of-type { margin-top: 0; }
+    input { width: 100%; padding: 10px 12px; background: rgba(255,255,255,0.05); border: 1.5px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; font-family: 'Outfit', sans-serif; font-size: 13px; outline: none; transition: border-color .2s; }
+    input:focus { border-color: #52dad2; }
+    input::placeholder { color: rgba(255,255,255,0.2); }
+    .note { font-size: 11.5px; color: rgba(255,255,255,0.35); margin-top: 6px; line-height: 1.5; }
+    .note code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 11px; color: #52dad2; }
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 10px; border: none; cursor: pointer; font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 600; transition: all .2s; width: 100%; margin-top: 12px; }
+    .btn-cyan { background: linear-gradient(135deg, #1ab8af, #52dad2); color: #fff; }
+    .btn-cyan:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn-cyan:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-gray { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); }
+    .btn-gray:hover { background: rgba(255,255,255,0.1); }
+    .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .data-box { background: rgba(82,218,210,0.08); border: 1px solid rgba(82,218,210,0.15); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+    .data-box.zero { border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); }
+    .data-num { font-family: 'Nunito', sans-serif; font-size: 26px; font-weight: 900; color: #52dad2; }
+    .data-box.zero .data-num { color: rgba(255,255,255,0.3); }
+    .data-lbl { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.7px; }
+    .progress-wrap { margin: 14px 0; display: none; }
+    .progress-track { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #1ab8af, #a78bfa); transition: width .25s ease; }
+    .progress-label { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 6px; text-align: center; }
+    #log { background: #0a0d12; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 12px 14px; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8; max-height: 280px; overflow-y: auto; margin-top: 12px; display: none; }
+    .ok   { color: #52dad2; }
+    .warn { color: #f59e0b; }
+    .err  { color: #f43f5e; }
+    .dim  { color: rgba(255,255,255,0.35); }
+    .success-box { background: rgba(82,218,210,0.1); border: 1px solid rgba(82,218,210,0.3); border-radius: 12px; padding: 22px; text-align: center; margin-top: 14px; display: none; }
+    .success-box h3 { font-family: 'Nunito', sans-serif; font-size: 20px; font-weight: 900; color: #52dad2; margin: 8px 0 6px; }
+    .success-box p { font-size: 13px; color: rgba(255,255,255,0.5); }
+    .alert-warn { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 9px; padding: 11px 14px; font-size: 12.5px; color: rgba(255,255,255,0.55); line-height: 1.6; margin-bottom: 12px; }
+    .alert-warn strong { color: #f59e0b; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-brand">NUR<span class="a">A</span></div>
+    <div class="logo-sub">migración localStorage → Realtime Database</div>
+  </div>
+
+  <!-- PASO 1 -->
+  <div class="step">
+    <div class="step-num">Paso 1 — Datos de Firebase</div>
+    <p class="hint">Pegá los datos de tu proyecto. Los encontrás en Firebase Console → ⚙️ Configuración → General → Tu app web.</p>
+
+    <div class="alert-warn">
+      <strong>⚠️ Abrí esta página en el mismo navegador</strong> donde usabas NURA antes (Chrome, Edge, Firefox, etc.) — los datos del localStorage solo están en ese navegador.
+    </div>
+
+    <label>API Key</label>
+    <input id="fApiKey" placeholder="AIzaSy..." autocomplete="off" spellcheck="false" />
+
+    <label>Database URL</label>
+    <input id="fDbUrl" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" autocomplete="off" spellcheck="false" />
+    <div class="note">La encontrás en Firebase Console → Realtime Database → panel principal. Es la URL que termina en <code>.firebaseio.com</code></div>
+
+    <label>App ID</label>
+    <input id="fAppId" placeholder="1:123456789:web:abcdef..." autocomplete="off" spellcheck="false" />
+
+    <button class="btn btn-gray" onclick="leerDatos()">🔍 Leer datos de este navegador</button>
+  </div>
+
+  <!-- PASO 2 -->
+  <div class="step" id="step2" style="display:none;">
+    <div class="step-num">Paso 2 — Datos encontrados</div>
+    <div class="data-grid" id="dataGrid"></div>
+    <div id="alertNoDatos" class="alert-warn" style="display:none;">
+      No se encontraron datos en este navegador. Asegurate de abrir esta página en el navegador correcto.
+    </div>
+    <button class="btn btn-cyan" id="btnMigrar" onclick="migrar()">🚀 Migrar todo a Firebase</button>
+  </div>
+
+  <!-- Progreso -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-label" id="progressLabel">0%</div>
+  </div>
+
+  <div id="log"></div>
+
+  <!-- Éxito -->
+  <div class="success-box" id="successBox">
+    <div style="font-size:42px;">✅</div>
+    <h3>¡Migración completada!</h3>
+    <p id="successDetail"></p>
+    <button class="btn btn-cyan" style="margin-top:16px;" onclick="window.location.href='index.html'">Ir a la app →</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp, getApps, deleteApp }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getDatabase, ref, set }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function log(msg, cls='dim') {
+  const el = document.getElementById('log');
+  el.style.display = 'block';
+  const d = document.createElement('div');
+  d.className = cls; d.textContent = msg;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = label || pct + '%';
+}
+
+// ── PASO 1: leer localStorage ─────────────────────────────────────────────────
+window.leerDatos = function() {
+  const KEYS   = ['productos','clientes','ventas','compras'];
+  const ICONS  = { productos:'📦', clientes:'👥', ventas:'🛒', compras:'🚚' };
+  const LABELS = { productos:'Productos', clientes:'Clientes', ventas:'Ventas', compras:'Compras' };
+
+  const datos = {};
+  let total = 0;
+
+  KEYS.forEach(k => {
+    try { datos[k] = JSON.parse(localStorage.getItem('nura_' + k) || '[]'); }
+    catch(e) { datos[k] = []; }
+    if (!Array.isArray(datos[k])) datos[k] = [];
+    total += datos[k].length;
+  });
+
+  window._datos = datos;
+
+  document.getElementById('dataGrid').innerHTML = KEYS.map(k => `
+    <div class="data-box ${datos[k].length===0?'zero':''}">
+      <div style="font-size:20px;">${ICONS[k]}</div>
+      <div>
+        <div class="data-num">${datos[k].length}</div>
+        <div class="data-lbl">${LABELS[k]}</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('step2').style.display = 'block';
+  document.getElementById('alertNoDatos').style.display = total === 0 ? 'block' : 'none';
+  document.getElementById('btnMigrar').disabled = total === 0;
+};
+
+// ── PASO 2: migrar ────────────────────────────────────────────────────────────
+window.migrar = async function() {
+  const apiKey = document.getElementById('fApiKey').value.trim();
+  const dbUrl  = document.getElementById('fDbUrl').value.trim();
+  const appId  = document.getElementById('fAppId').value.trim();
+
+  if (!apiKey || !dbUrl || !appId) {
+    alert('Completá los 3 campos de Firebase.'); return;
+  }
+  if (!dbUrl.includes('firebaseio.com')) {
+    alert('La Database URL debe terminar en .firebaseio.com'); return;
+  }
+
+  const datos = window._datos;
+  if (!datos) { alert('Primero hacé el Paso 1.'); return; }
+
+  document.getElementById('btnMigrar').disabled = true;
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('log').style.display = 'block';
+  document.getElementById('log').innerHTML = '';
+
+  const KEYS  = ['productos','clientes','ventas','compras'];
+  const total = KEYS.reduce((s,k) => s + datos[k].length, 0);
+
+  if (total === 0) { log('No hay datos para migrar.', 'warn'); return; }
+
+  // ── Conectar Firebase ────────────────────────────────────────────────────
+  log('▶ Conectando con Firebase Realtime Database...', 'dim');
+
+  const existente = getApps().find(a => a.name === 'migrador');
+  if (existente) await deleteApp(existente);
+
+  let db;
+  try {
+    const app = initializeApp({
+      apiKey,
+      appId,
+      databaseURL:   dbUrl,
+      projectId:     dbUrl.replace('https://','').replace(/-default-rtdb\.firebaseio\.com.*/, '').replace(/\.firebaseio\.com.*/, ''),
+      authDomain:    '',
+    }, 'migrador');
+    db = getDatabase(app);
+    log('✓ Conectado correctamente', 'ok');
+  } catch(e) {
+    log('✗ Error al conectar: ' + e.message, 'err');
+    document.getElementById('btnMigrar').disabled = false;
+    return;
+  }
+
+  // ── Subir de a uno ───────────────────────────────────────────────────────
+  let done = 0, errores = 0;
+
+  for (const key of KEYS) {
+    const items = datos[key];
+    if (!items.length) { log(`— ${key}: sin datos`, 'dim'); continue; }
+    log(`⬆ Subiendo ${items.length} ${key}...`, 'dim');
+
+    for (let i = 0; i < items.length; i++) {
+      const item = { ...items[i] };
+
+      // Asegurar ID
+      if (!item.id) item.id = Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+      // Limpiar undefined (Realtime DB no los acepta)
+      const limpio = JSON.parse(JSON.stringify(item));
+
+      try {
+        await set(ref(db, `nura/${key}/${item.id}`), limpio);
+        done++;
+        const pct = Math.round((done / total) * 100);
+        setProgress(pct, `${done} / ${total} (${pct}%)`);
+        if ((i+1) % 5 === 0 || i === items.length - 1) {
+          log(`  ✓ ${key}: ${i+1}/${items.length}`, 'ok');
+        }
+      } catch(e) {
+        errores++;
+        log(`  ✗ Error en ${key}[${item.id}]: ${e.message}`, 'err');
+        if (e.message?.toLowerCase().includes('permission')) {
+          log('', 'dim');
+          log('🔴 ACCESO DENEGADO — Las reglas no permiten escritura.', 'err');
+          log('   Firebase Console → Realtime Database → Reglas:', 'warn');
+          log('   { "rules": { ".read": true, ".write": true } }', 'ok');
+          document.getElementById('btnMigrar').disabled = false;
+          return;
+        }
+      }
+    }
+  }
+
+  // ── Resultado ────────────────────────────────────────────────────────────
+  setProgress(100);
+  log('', 'dim');
+
+  if (errores === 0) {
+    log('══════════════════════════════', 'dim');
+    log(`✅ Migración exitosa — ${done} registros subidos`, 'ok');
+    KEYS.forEach(k => { if(datos[k].length) log(`   ${k}: ${datos[k].length}`, 'ok'); });
+
+    document.getElementById('successBox').style.display = 'block';
+    document.getElementById('successDetail').textContent =
+      `${done} registros migrados correctamente a Firebase Realtime Database.`;
+  } else {
+    log(`⚠ Completado con ${errores} error(es).`, 'warn');
+    document.getElementById('btnMigrar').disabled = false;
+  }
+};
+</script>
+</body>
+</html>
