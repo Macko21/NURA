@@ -638,3 +638,159 @@ img {
     padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
 }
+
+/* ===== MOBILE FIX CATALOGO + COMBOS ===== */
+
+@media (max-width: 700px) {
+
+  /* contenedores */
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .section-header > div,
+  .section-header > .flex,
+  .section-header > .top-actions {
+    width: 100%;
+  }
+
+  /* buscadores */
+  .search-bar {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* acciones */
+  .topbar-actions,
+  .catalogo-actions,
+  .combo-actions,
+  .acciones-combos,
+  .acciones-catalogo {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* botones */
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-violet,
+  .btn-outline,
+  .btn-danger,
+  .btn-wsp-sm {
+    flex: 1 1 calc(50% - 4px);
+
+    min-width: 0;
+
+    justify-content: center;
+
+    padding: 11px 10px;
+
+    font-size: 12px;
+  }
+
+  /* botones largos */
+  .btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* cards productos */
+  .product-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .product-card {
+    min-width: 0;
+  }
+
+  .product-card-body {
+    padding: 10px;
+  }
+
+  .product-card-name {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .product-card-price {
+    font-size: 15px;
+  }
+
+  .product-card-footer {
+    flex-wrap: wrap;
+  }
+
+  .product-card-footer .btn {
+    flex: 1 1 100%;
+  }
+
+  /* combos */
+  .combo-card,
+  .combo-item,
+  .combo-box {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .combo-actions .btn,
+  .acciones-combos .btn {
+    flex: 1 1 100%;
+  }
+
+  /* tablas */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 650px;
+  }
+
+  /* topbar */
+  .topbar-actions {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .topbar-actions .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+}
+
+/* celulares muy chicos */
+@media (max-width: 430px) {
+
+  .product-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-violet,
+  .btn-outline,
+  .btn-danger,
+  .btn-wsp-sm {
+    flex: 1 1 100%;
+  }
+
+  .topbar-title {
+    font-size: 15px;
+  }
+
+  .section-title {
+    font-size: 14px;
+  }
+
+}
