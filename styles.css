@@ -246,7 +246,7 @@ tr:hover td { background: #f5fafc; }
 .m-card-footer .btn { flex: 1; min-width: 0; font-size: 12px; padding: 8px 10px; }
 
 /* ===== BADGES ===== */
-.badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+.badge { display: inline-flex; align-items: center; padding: 9px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; }
 .badge-green  { background: rgba(82,218,210,0.14);  color: var(--accent-dark); }
 .badge-red    { background: rgba(244,63,94,0.1);    color: var(--danger); }
 .badge-orange { background: rgba(245,158,11,0.12);  color: #b45309; }
@@ -574,16 +574,64 @@ textarea { resize: vertical; min-height: 70px; }
 
 html,
 body {
+  width: 100%;
+  min-height: 100%;
+
   padding: 0;
   margin: 0;
+
   overflow-x: hidden;
 
   background: var(--bg);
 
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+
+  /* EVITAR ZOOM */
+  touch-action: manipulation;
+
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+
+  overscroll-behavior: none;
+
+  user-select: none;
+  -webkit-user-select: none;
+
+  -webkit-touch-callout: none;
 }
 
+/* permitir seleccionar texto en inputs */
+input,
+textarea,
+select {
+  user-select: text;
+  -webkit-user-select: text;
+
+  font-size: 16px !important;
+}
+
+/* evitar zoom doble tap iPhone */
+* {
+  touch-action: manipulation;
+}
+
+/* evitar resaltado azul */
+button,
+a,
+div,
+span {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* evitar zoom imagen */
+img {
+  pointer-events: none;
+  user-drag: none;
+  -webkit-user-drag: none;
+}
+
+/* safe area */
 @supports (padding: max(0px)) {
   body {
     padding-top: max(0px, env(safe-area-inset-top));
