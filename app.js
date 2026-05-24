@@ -269,7 +269,7 @@ function catList(prods) {
     <div class="m-card-body">${esAcc
       ?`<div class="m-card-row"><span class="m-card-row-label">Actual</span><span class="m-card-row-value fw-700 text-gradient">${fmt(p.precioVenta)}</span></div>${p.precioMayorista?`<div class="m-card-row"><span class="m-card-row-label">Mayorista</span><span class="m-card-row-value fw-700" style="color:var(--accent-dark)">${fmt(p.precioMayorista)}</span></div>`:''}`
       :pres.map(pr=>`<div class="m-card-row"><span class="m-card-row-label">${pr.nombre}</span><span class="m-card-row-value fw-700 text-gradient">${fmt(pr.precioVenta)}${pr.precioMayorista?` <span style="color:var(--accent-dark);font-size:10px;">(M:${fmt(pr.precioMayorista)})</span>`:''}</span></div>`).join('')}</div>
-    <div class="m-card-footer"><button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️</button><button class="btn btn-outline btn-sm" style="flex:1;" onclick="duplicarProducto('${p.id}')">📋</button><button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button></div>
+    <div class="m-card-footer" style="display:flex; gap: 4px; margin-top: 10px;"><button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️</button><button class="btn btn-outline btn-sm" style="flex:1;" onclick="duplicarProducto('${p.id}')">📋</button><button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button></div>
   </div>`;}).join('')}</div>`;
   return tbl+cards;
 }
