@@ -2,7 +2,16 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+ <meta
+  name="viewport"
+  content="
+    width=device-width,
+    initial-scale=1.0,
+    maximum-scale=1.0,
+    user-scalable=no,
+    viewport-fit=cover
+  "
+/>
   <meta name="theme-color" content="#52dad2" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,28 +26,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- ═══════════════════════════════════════════════════════════
-       FIREBASE CONFIG — reemplazá con tus datos
-       Firebase Console → ⚙️ Configuración → General → Tu app web
-  ════════════════════════════════════════════════════════════════ -->
+  <script src="env.js"></script>
+
   <script type="module">
     import { initializeApp }
       from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
     import { getDatabase, ref, set, onValue, remove, update }
       from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
-    const firebaseConfig = {
-  apiKey: "AIzaSyCCKZAfclBMli71_50UQv3h4fAUNigvXqA",
-  authDomain: "nura-26bef.firebaseapp.com",
-  databaseURL: "https://nura-26bef-default-rtdb.firebaseio.com",
-  projectId: "nura-26bef",
-  storageBucket: "nura-26bef.firebasestorage.app",
-  messagingSenderId: "500143055377",
-  appId: "1:500143055377:web:23e79056d42007d525c7b0"
-};
-
-    const app = initializeApp(firebaseConfig);
+   
+    const app = initializeApp(FIREBASE_CONFIG);
     const db  = getDatabase(app);
 
     window._FB = { db, ref, set, onValue, remove, update };
@@ -77,14 +77,48 @@
         </div>
       </div>
       <ul class="nav-menu">
-        <li class="nav-item active" data-page="dashboard"><span class="nav-icon">◈</span><span>Dashboard</span></li>
-        <li class="nav-item" data-page="catalogo"><span class="nav-icon">◉</span><span>Catálogo</span></li>
-        <li class="nav-item" data-page="clientes"><span class="nav-icon">◎</span><span>Clientes</span></li>
-        <li class="nav-item" data-page="ventas"><span class="nav-icon">◐</span><span>Ventas</span></li>
-        <li class="nav-item" data-page="compras"><span class="nav-icon">◑</span><span>Compras</span></li>
-        <li class="nav-item" data-page="stock"><span class="nav-icon">◒</span><span>Stock</span></li>
-        <li class="nav-item" data-page="reportes"><span class="nav-icon">◓</span><span>Reportes</span></li>
-      </ul>
+
+  <li class="nav-item active" data-page="dashboard">
+    <span class="nav-icon">📊</span>
+    <span>Dashboard</span>
+  </li>
+
+  <li class="nav-item" data-page="catalogo">
+    <span class="nav-icon">🧴</span>
+    <span>Catálogo</span>
+  </li>
+
+  <li class="nav-item" data-page="clientes">
+    <span class="nav-icon">👥</span>
+    <span>Clientes</span>
+  </li>
+
+  <li class="nav-item" data-page="ventas">
+    <span class="nav-icon">💸</span>
+    <span>Ventas</span>
+  </li>
+
+  <li class="nav-item" data-page="compras">
+    <span class="nav-icon">🛒</span>
+    <span>Compras</span>
+  </li>
+
+  <li class="nav-item" data-page="stock">
+    <span class="nav-icon">📦</span>
+    <span>Stock</span>
+  </li>
+
+  <li class="nav-item" data-page="combos">
+    <span class="nav-icon">🎁</span>
+    <span>Combos</span>
+  </li>
+
+  <li class="nav-item" data-page="reportes">
+    <span class="nav-icon">📈</span>
+    <span>Reportes</span>
+  </li>
+
+</ul>
       <div class="sidebar-footer">
         <div id="syncStatus" style="display:flex;align-items:center;gap:8px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:rgba(255,255,255,0.35);">
           <span id="syncDot" style="width:6px;height:6px;border-radius:50%;background:#52dad2;flex-shrink:0;transition:background .3s;"></span>
@@ -109,6 +143,7 @@
       <div class="page" id="page-ventas"></div>
       <div class="page" id="page-compras"></div>
       <div class="page" id="page-stock"></div>
+      <div class="page" id="page-combos"></div>
       <div class="page" id="page-reportes"></div>
     </main>
   </div>
@@ -132,17 +167,15 @@
     function cargarApp() {
       if (!window._FB_READY) { document.addEventListener('fb-ready', cargarApp, { once:true }); return; }
       const s = document.createElement('script');
-      s.src = 'app.js';
+      s.src = 'app.js?v=' + Date.now();
       document.body.appendChild(s);
     }
     cargarApp();
 
-    // Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
     }
 
-    // PWA install
     let _dip = null;
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault(); _dip = e;
@@ -165,5 +198,28 @@
       const b = document.getElementById('installBanner'); if(b) b.remove();
     };
   </script>
+  <script>
+
+  // bloquear zoom multitouch
+  document.addEventListener('gesturestart', function (e) {
+    e.preventDefault();
+  });
+
+  // bloquear doble tap zoom
+  let lastTouchEnd = 0;
+
+  document.addEventListener('touchend', function (event) {
+
+    const now = Date.now();
+
+    if (now - lastTouchEnd <= 300) {
+      event.preventDefault();
+    }
+
+    lastTouchEnd = now;
+
+  }, false);
+
+</script>
 </body>
 </html>
