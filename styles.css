@@ -463,11 +463,6 @@ textarea { resize: vertical; min-height: 70px; }
 html, body {
   padding: 0; margin: 0; overflow-x: hidden;
   background: var(--bg);
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-@supports (padding: max(0px)) {
-  body { padding-top: max(0px, env(safe-area-inset-top)); padding-bottom: max(0px, env(safe-area-inset-bottom)); }
 }
 
 /* ===== SOLUCIÓN: BOTONES EN FILA EXTRA QUE EMPUJAN EL CONTENIDO ===== */
