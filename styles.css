@@ -37,6 +37,7 @@
   --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
 }
 
+/* ===== RESET / BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 15px; -webkit-tap-highlight-color: transparent; height: 100%; }
 body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100%; min-height: 100dvh; overflow-x: hidden; margin: 0; padding: 0; }
@@ -111,37 +112,19 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
 .btn-wsp:hover { filter: brightness(1.12); transform: translateY(-1px); }
 .btn-wsp svg { width: 17px; height: 17px; flex-shrink: 0; }
 
-/* ===== MAIN ===== */
+/* ===== MAIN CONTENT ===== */
 .main-content { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
 .topbar {
   height: calc(var(--topbar-h) + env(safe-area-inset-top));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: center; /* Centrado vertical */
-  padding: env(safe-area-inset-top) 16px 0 16px; /* Ajuste de padding lateral */
-  gap: 12px; /* Espacio entre el hamburguesa y el título */
+  align-items: center;
+  padding: env(safe-area-inset-top) 16px 0 16px;
+  gap: 12px;
   position: sticky;
   top: 0;
   z-index: 50;
-}
-
-#sidebarClose {
-  display: none;
-}
-
-@media (max-width: 700px) {
-  #sidebarClose {
-    display: block; /* La cruz solo se muestra en el menú móvil */
-  }
-  .logo-img{
-    width: 80px; /* Logo un poco más pequeño en móvil */
-    height: 80px;
-  }
-}
-
-@media (min-width: 701px) {
-  .hamburger { display: none !important; }
 }
 
 .hamburger { 
@@ -149,33 +132,23 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
   min-height: 40px; min-width: 40px; display: flex; align-items: center; justify-content: center;
   position: relative; z-index: 60;
 }
+
 .topbar-title {
-  position: static; /* Quitamos el absolute */
-  transform: none;  /* Quitamos el transform */
+  position: static;
+  transform: none;
   font-family: var(--font-display);
   font-size: 18px;
   font-weight: 800;
   color: var(--text);
-  flex: 1; /* Ocupa el espacio restante entre el menú y las acciones */
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ===== MÓVIL ===== */
-@media (max-width: 700px) {
-  .topbar {
-    padding-left: 10px; /* Un poco menos de espacio en móvil */    
-    gap: 8px;
-  }
-  
-  .topbar-title {
-    font-size: 16px; /* Un poco más pequeño en móvil */
-    padding-top: 20px; /* Ajuste vertical para mejor alineación con el menú */
-  }
-}
-
 .topbar-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+#sidebarClose { display: none; }
 
 /* ===== PAGES ===== */
 .page { display: none; padding: 20px; animation: fadeIn 0.28s ease; }
@@ -244,16 +217,14 @@ tr:last-child td { border-bottom: none; }
 tr:hover td { background: #f5fafc; }
 .table-actions {
   display: flex;
-  gap: 4px; /* Espacio entre botones */
-  flex-wrap: nowrap; /* Evita que se salten de línea inesperadamente */
-  white-space: nowrap; /* Mantiene los botones juntos */
-  justify-content: flex-end; /* Alinea los botones a la derecha */
+  gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  justify-content: flex-end;
 }
-
-/* Asegura que los botones no se encojan forzosamente */
 .table-actions .btn {
   flex-shrink: 0; 
-  padding: 4px 8px; /* Ajusta el padding para que el contenido no desborde */
+  padding: 4px 8px;
 }
 
 .mobile-card-list { display: none; flex-direction: column; gap: 10px; }
@@ -273,12 +244,7 @@ tr:hover td { background: #f5fafc; }
 .m-card-footer { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
 .m-card-footer .btn { flex: 1; min-width: 0; font-size: 12px; padding: 8px 10px; }
 
-/* --- CORRECCIÓN BOTONES MÓVILES (AGRUPACIÓN) --- */
 .btn-group { display: flex; gap: 4px; flex: 1; }
-@media (max-width: 700px) {
-  .m-card-footer { display: flex; flex-direction: column; gap: 8px; }
-  .btn-group { width: 100%; }
-}
 
 /* ===== BADGES ===== */
 .badge { display: inline-flex; align-items: center; padding: 9px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; }
@@ -327,7 +293,7 @@ textarea { resize: vertical; min-height: 70px; }
 .form-note { font-size: 11px; color: var(--text-light); margin-top: 1px; }
 .form-divider { grid-column: 1/-1; border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 
-/* CALC BOX */
+/* ===== CALC BOX ===== */
 .cost-calc-box {
   grid-column: 1/-1;
   background: linear-gradient(135deg, rgba(82,218,210,0.06), rgba(167,139,250,0.06));
@@ -460,84 +426,47 @@ textarea { resize: vertical; min-height: 70px; }
 .swal2-icon.swal2-success  { border-color: var(--accent)  !important; }
 .swal2-icon.swal2-success [class^=swal2-success-line] { background-color: var(--accent-dark) !important; }
 
-/* ===== RESPONSIVE ===== */
-@media (max-width: 960px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
+/* ===== MEDIA QUERIES (ordenadas de menor a mayor) ===== */
+
+@media (max-width: 400px) {
+  .product-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 700px) {
   :root { --topbar-h: 52px; }
-  .sidebar { transform: translateX(-100%); padding-top: max(env(safe-area-inset-top), 8px); overflow-y: auto; /* Permite scroll si el contenido es alto */
-  padding-bottom: 30px; /* Espacio extra al final */}
-  .sidebar.open { transform: none; box-shadow: 4px 0 32px rgba(0,0,0,0.4); }
-  .hamburger { display: flex; padding-top: 18px;}
-  .main-content { margin-left: 0; }
-  .page { padding: 12px; }
-  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
-  .form-group.full { grid-column: 1; }
-  .topbar { 
-    height: auto !important;
-    min-height: calc(var(--topbar-h) + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 14px 10px 14px;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding-bottom: 10px;
+
+  #sidebarClose { display: block; }
+
+  .logo-img { width: 80px; height: 80px; }
+
+  .sidebar {
+    transform: translateX(-100%);
+    padding-top: max(env(safe-area-inset-top), 8px);
+    overflow-y: auto;
+    padding-bottom: 30px;
   }
-  .topbar-title { font-size: 16px; }
-  .stat-value { font-size: 21px; }
-  .mobile-card-list { display: flex; }
-  .modal { border-radius: 16px 16px 0 0; margin-top: auto; max-height: 95vh; }
-  .modal-overlay { align-items: flex-end; padding: 0; }
-  .search-bar { max-width: 100%; }
-  .product-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .product-card-img { height: 70px; font-size: 30px; }
-  
-}
-@media (max-width: 400px) { .product-grid { grid-template-columns: 1fr; } }
+  .sidebar.open { transform: none; box-shadow: 4px 0 32px rgba(0,0,0,0.4); }
 
-/* ===== SCROLLBAR ===== */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(82,218,210,0.3); border-radius: 3px; }
+  .main-content { margin-left: 0; }
 
-/* ===== UTILS ===== */
-.mb-4{margin-bottom:4px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}.mb-20{margin-bottom:20px}
-.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
-.flex{display:flex}.flex-center{display:flex;align-items:center}.flex-wrap{flex-wrap:wrap}
-.gap-6{gap:6px}.gap-8{gap:8px}.gap-12{gap:12px}
-.text-right{text-align:right}.text-muted{color:var(--text-muted);font-size:12px}
-.fw-600{font-weight:600}.fw-700{font-weight:700}.fw-800{font-weight:800}
-.font-display{font-family:var(--font-display)}
-.divider{border:none;border-top:1px solid var(--border);margin:16px 0}
-.text-gradient{background:linear-gradient(90deg,var(--accent-dark),var(--violet-dark));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.w-full{width:100%}
-.btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
-.btn-outline:hover { background: rgba(168, 85, 247, 0.1); }
+  .hamburger { display: flex; padding-top: 18px; }
 
-html, body {
-  padding: 0; margin: 0; overflow-x: hidden;
-  background: var(--bg);
-}
-
-/* ===== SOLUCIÓN: BOTONES EN FILA EXTRA QUE EMPUJAN EL CONTENIDO ===== */
-@media (max-width: 700px) {
-  /* El topbar debe poder crecer en altura */
   .topbar {
     flex-wrap: wrap;
     height: auto !important;
     min-height: calc(var(--topbar-h) + env(safe-area-inset-top));
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: 10px;
-    padding-left: 14px;
-    padding-right: 14px;
+    padding: env(safe-area-inset-top) 14px 10px 14px;
+    align-items: center;
+    gap: 8px;
   }
-  
-  /* El título se mantiene en su fila */
+
   .topbar-title {
+    font-size: 16px;
+    padding-top: 20px;
     flex: 1 1 auto;
     min-width: 120px;
   }
-  
-  /* Contenedor de acciones - ocupa toda la fila nueva */
+
   .topbar-actions {
     flex: 1 1 100%;
     display: flex;
@@ -546,37 +475,96 @@ html, body {
     justify-content: flex-start;
     margin-top: 4px;
   }
-  
-  /* Los botones se ajustan automáticamente */
   .topbar-actions .btn,
   .topbar-actions button {
     font-size: 11px !important;
     padding: 6px 10px !important;
     white-space: nowrap;
   }
-  
-  /* Ajuste específico para combos - más compacto */
-  #page-combos .topbar-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  
-  /* IMPORTANTE: El contenido de la página no debe ser afectado */
-  .page {
-    padding-top: 12px;
-  }
-}
-/* Asegura que el contenedor de deuda se muestre siempre */
-.deuda-container {
-    display: block !important; /* Visible en todos los dispositivos */
+  #page-combos .topbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .page { padding: 12px; }
+
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
+  .form-group.full { grid-column: 1; }
+
+  .stat-value { font-size: 21px; }
+
+  .mobile-card-list { display: flex; }
+
+  .m-card-footer { display: flex; flex-direction: column; gap: 8px; }
+  .btn-group { width: 100%; }
+
+  .modal { border-radius: 16px 16px 0 0; margin-top: auto; max-height: 95vh; }
+  .modal-overlay { align-items: flex-end; padding: 0; }
+
+  .search-bar { max-width: 100%; }
+
+  .product-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .product-card-img { height: 70px; font-size: 30px; }
+
+  .hide-mobile { display: none !important; }
 }
 
-/* Solo si quieres que tenga un layout distinto en desktop */
+@media (max-width: 960px) {
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+}
+
+@media (min-width: 701px) {
+  .hamburger { display: none !important; }
+}
+
 @media (min-width: 768px) {
-    .deuda-container {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
-    }
+  .deuda-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(82,218,210,0.3); border-radius: 3px; }
+
+/* ===== UTILS ===== */
+.mb-4  { margin-bottom: 4px; }
+.mb-8  { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+.mt-8  { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; }
+.flex-wrap { flex-wrap: wrap; }
+.gap-6 { gap: 6px; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.text-right { text-align: right; }
+.text-muted { color: var(--text-muted); font-size: 12px; }
+.fw-600 { font-weight: 600; }
+.fw-700 { font-weight: 700; }
+.fw-800 { font-weight: 800; }
+.font-display { font-family: var(--font-display); }
+.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.text-gradient {
+  background: linear-gradient(90deg,var(--accent-dark),var(--violet-dark));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.w-full { width: 100%; }
+
+html, body {
+  padding: 0;
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--bg);
+}
+
+.deuda-container {
+  display: block !important;
 }
