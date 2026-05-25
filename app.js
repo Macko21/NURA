@@ -4,7 +4,45 @@
 // ── Firebase refs ─────────────────────────────────────────────────────────────
 const { db, ref, set, onValue, remove } = window._FB;
 const r = path => ref(db, 'nura/' + path);
-const DB = { productos:[], clientes:[], ventas:[], compras:[], combos:[] };
+const DB = { productos:[], clientes:[], ventas:[], compras:[], combos:[], usuarios:[] };
+
+// ── Sesión ─────────────────────────────────────────────────────────────
+const Sesion = {
+  user: null,
+  lastActive: Date.now(),
+  TIMEOUT: 12 * 60 * 60 * 1000,
+  iniciar(user) {
+    this.user = user;
+    this.lastActive = Date.now();
+    localStorage.setItem('nura_sesion', JSON.stringify({ uid: user.id, lastActive: this.lastActive, rol: user.rol }));
+  },
+  cerrar() {
+    this.user = null;
+    localStorage.removeItem('nura_sesion');
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('loginScreen').style.display = '';
+    document.getElementById('loginError').style.display = 'none';
+    document.getElementById('loginPass').value = '';
+    toast('Sesión cerrada por inactividad', 'info');
+  },
+  verificar() {
+    const data = localStorage.getItem('nura_sesion');
+    if (!data) return false;
+    try {
+      const { uid, lastActive, rol } = JSON.parse(data);
+      if (Date.now() - lastActive > this.TIMEOUT) { this.cerrar(); return false; }
+      const usuario = DB.usuarios.find(u => u.id === uid && u.rol === rol && u.activo !== false);
+      if (!usuario) { this.cerrar(); return false; }
+      this.user = usuario;
+      this.lastActive = Date.now();
+      return true;
+    } catch { this.cerrar(); return false; }
+  },
+  touch() { this.lastActive = Date.now(); localStorage.setItem('nura_sesion', JSON.stringify({ ...JSON.parse(localStorage.getItem('nura_sesion')), lastActive: this.lastActive })); },
+  esAdmin() { return this.user?.rol === 'admin'; },
+  esVendedor() { return this.user?.rol === 'vendedor'; }
+};
+
 
 // ── Sync UI ───────────────────────────────────────────────────────────────────
 let _writes = 0;
@@ -34,14 +72,15 @@ async function fbSave(col, item)     { await fbSet(`${col}/${item.id}`, item); }
 async function fbRemove(col, id)     { await fbDel(`${col}/${id}`); }
 async function fbSaveMany(col, items){ const obj={}; items.forEach(it=>{ obj[it.id]=it; }); await fbSet(col, obj); }
 
-// ── Suscribir colecciones en tiempo real ──────────────────────────────────────
-const COLS = ['productos','clientes','ventas','compras','combos'];
+// // ── Suscribir colecciones en tiempo real ──────────────────────────────────────
+const COLS = ['productos','clientes','ventas','compras','combos','usuarios'];
 const RELOAD_PAGES = {
-  productos: ['catalogo','stock','dashboard','reportes'],
+  productos: ['catalogo','stock','dashboard','reportes','misreportes'],
   clientes:  ['clientes','dashboard','ventas','deudas'],
-  ventas:    ['ventas','dashboard','reportes','deudas'],
+  ventas:    ['ventas','dashboard','reportes','deudas','misreportes'],
   compras:   ['compras','dashboard','reportes'],
   combos:    ['combos','catalogo','ventas'],
+  usuarios:  ['usuarios']
 };
 
 let _splashOk = false;
@@ -68,6 +107,15 @@ function genId()    { return Date.now().toString(36) + Math.random().toString(36
 function fmt(n)     { return '$ ' + Math.ceil(Number(n||0)).toLocaleString('es-AR'); }
 function fmtL(n)    { return Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:3}); }
 function fmtDate(d) { return new Date(d).toLocaleDateString('es-AR'); }
+
+// ── Hash SHA-256 ──────────────────────────────────────────────────────
+async function hashPassword(password, salt = '') {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + salt);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 // ── SweetAlert2 ───────────────────────────────────────────────────────────────
 function swalConfirm(title, text) {
@@ -108,19 +156,63 @@ function openModal(title, bodyHTML, onSave, wide=false) {
 function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
 
 // ── Navegación ────────────────────────────────────────────────────────────────
+// ── Navegación (dinámica según rol) ───────────────────────────────────
 let currentPage = 'dashboard';
+const PAGES_ADMIN = ['dashboard','catalogo','clientes','ventas','compras','stock','combos','deudas','reportes','usuarios'];
+const PAGES_VENDEDOR = ['catalogo','combos','stock','clientes','ventas','misreportes'];
+
+function buildMenu() {
+  const menu = document.getElementById('navMenu');
+  if (!menu) return;
+  if (Sesion.esAdmin()) {
+    menu.innerHTML = `
+      <li class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span><span>Dashboard</span></li>
+      <li class="nav-item" data-page="catalogo"><span class="nav-icon">🧴</span><span>Catálogo</span></li>
+      <li class="nav-item" data-page="clientes"><span class="nav-icon">👥</span><span>Clientes</span></li>
+      <li class="nav-item" data-page="ventas"><span class="nav-icon">💸</span><span>Ventas</span></li>
+      <li class="nav-item" data-page="compras"><span class="nav-icon">🛒</span><span>Compras</span></li>
+      <li class="nav-item" data-page="stock"><span class="nav-icon">📦</span><span>Stock</span></li>
+      <li class="nav-item" data-page="combos"><span class="nav-icon">🎁</span><span>Combos</span></li>
+      <li class="nav-item" data-page="deudas"><span class="nav-icon">💳</span><span>Deudas</span></li>
+      <li class="nav-item" data-page="reportes"><span class="nav-icon">📈</span><span>Reportes</span></li>
+      <li class="nav-item" data-page="usuarios"><span class="nav-icon">👤</span><span>Usuarios</span></li>`;
+  } else {
+    menu.innerHTML = `
+      <li class="nav-item active" data-page="catalogo"><span class="nav-icon">🧴</span><span>Catálogo</span></li>
+      <li class="nav-item" data-page="combos"><span class="nav-icon">🎁</span><span>Combos</span></li>
+      <li class="nav-item" data-page="stock"><span class="nav-icon">📦</span><span>Stock</span></li>
+      <li class="nav-item" data-page="clientes"><span class="nav-icon">👥</span><span>Clientes</span></li>
+      <li class="nav-item" data-page="ventas"><span class="nav-icon">💸</span><span>Nueva Venta</span></li>
+      <li class="nav-item" data-page="misreportes"><span class="nav-icon">📈</span><span>Mis Reportes</span></li>`;
+  }
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.onclick = () => navigate(item.dataset.page);
+  });
+}
+
 function navigate(page) {
-  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  document.querySelectorAll('.page').forEach(el=>el.classList.toggle('active',el.id==='page-'+page));
+  const allowed = Sesion.esAdmin() ? PAGES_ADMIN : PAGES_VENDEDOR;
+  if (!allowed.includes(page)) return;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + page));
   document.getElementById('pageTitle').textContent =
-    {dashboard:'Dashboard',catalogo:'Catálogo',clientes:'Clientes',ventas:'Ventas',compras:'Compras',stock:'Stock',reportes:'Reportes',combos:'Combos',deudas:'💳 Deudas'}[page];
-  currentPage=page;
-  document.getElementById('topbarActions').innerHTML='';
+    { dashboard: 'Dashboard', catalogo: 'Catálogo', clientes: 'Clientes', ventas: 'Ventas', compras: 'Compras',
+      stock: 'Stock', reportes: 'Reportes', combos: 'Combos', deudas: '💳 Deudas', usuarios: '👤 Usuarios',
+      misreportes: '📈 Mis Reportes' }[page];
+  currentPage = page;
+  document.getElementById('topbarActions').innerHTML = '';
   renderPage(page);
   document.getElementById('sidebar').classList.remove('open');
 }
+
 function renderPage(page) {
-  ({dashboard:renderDashboard,catalogo:renderCatalogo,clientes:renderClientes,ventas:renderVentas,compras:renderCompras,stock:renderStock,reportes:renderReportes,combos:renderCombos,deudas:renderDeudas})[page]?.();
+  const handlers = {
+    dashboard: renderDashboard, catalogo: renderCatalogo, clientes: renderClientes,
+    ventas: renderVentas, compras: renderCompras, stock: renderStock,
+    reportes: renderReportes, combos: renderCombos, deudas: renderDeudas,
+    usuarios: renderUsuarios, misreportes: renderMisReportes
+  };
+  if (handlers[page]) handlers[page]();
 }
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
@@ -185,8 +277,12 @@ function dashVentas(items) {
 let catalogoSearch='', catalogoFiltro='', catalogoView='grid';
 
 function renderCatalogo() {
-  const el=document.getElementById('page-catalogo');
-  document.getElementById('topbarActions').innerHTML=`<button class="btn btn-outline btn-sm" onclick="listaMayoristaModal()">🏪 Mayorista</button><button class="btn btn-outline btn-sm" onclick="exportarCatalogo()">📄 Exportar</button><button class="btn btn-primary" onclick="formProducto(null)">+ Producto</button>`;
+ const el = document.getElementById('page-catalogo');
+  document.getElementById('topbarActions').innerHTML = Sesion.esAdmin()
+    ? `<button class="btn btn-outline btn-sm" onclick="listaMayoristaModal()">🏪 Mayorista</button>
+       <button class="btn btn-outline btn-sm" onclick="exportarCatalogo()">📄 Exportar</button>
+       <button class="btn btn-primary" onclick="formProducto(null)">+ Producto</button>`
+    : `<button class="btn btn-outline btn-sm" onclick="listaMayoristaModal()">🏪 Mayorista</button>`;
   el.innerHTML=`
     <div class="flex flex-center gap-8 mb-16 flex-wrap">
       <div class="search-bar" style="max-width:100%;"><span class="search-icon">🔍</span><input type="text" placeholder="Buscar nombre, código..." id="catSearch" value="${catalogoSearch.replace(/"/g,'&quot;')}" /></div>
@@ -205,73 +301,172 @@ function filtrarProds(){return DB.productos.filter(p=>(!catalogoSearch||p.nombre
 function catHTML(){return catalogoView==='grid'?catGrid(filtrarProds()):catList(filtrarProds());}
 
 function catGrid(prods) {
-  if(!prods.length)return`<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos. ¡Agregá el primero!</p></div>`;
-  return`<div class="product-grid">${prods.map(p=>{
-    const esAcc=p.tipo==='accesorio',sv=esAcc?p.stockUnidades||0:p.stockLitros||0,sm=esAcc?p.stockMinUnidades||0:p.stockMinLitros||0;
-    const bajo=sv<=sm,pres=!esAcc?(p.presentaciones||[]):[];
-    const pMin=esAcc?p.precioVenta:pres.length?Math.min(...pres.map(x=>x.precioVenta)):0;
-    const pMax=esAcc?p.precioVenta:pres.length?Math.max(...pres.map(x=>x.precioVenta)):0;
-    const pMayMin=esAcc?p.precioMayorista||0:pres.length?Math.min(...pres.map(x=>x.precioMayorista||x.precioVenta)):0;
-    const pMayMax=esAcc?p.precioMayorista||0:pres.length?Math.max(...pres.map(x=>x.precioMayorista||x.precioVenta)):0;
-    return`<div class="product-card">
-      <div class="product-card-img">${EMOJIS_CAT[p.categoria]||'🧴'}<div class="product-card-badge">${bajo?'<span class="badge badge-red">⚠️</span>':''}</div></div>
+  if(!prods.length) return `<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos. ¡Agregá el primero!</p></div>`;
+  return `<div class="product-grid">${prods.map(p => {
+    const esAcc = p.tipo == 'accesorio',
+          sv = esAcc ? (p.stockUnidades || 0) : (p.stockLitros || 0),
+          sm = esAcc ? (p.stockMinUnidades || 0) : (p.stockMinLitros || 0);
+    const bajo = sv <= sm,
+          pres = !esAcc ? (p.presentaciones || []) : [];
+    const pMin = esAcc ? p.precioVenta : (pres.length ? Math.min(...pres.map(x => x.precioVenta)) : 0);
+    const pMax = esAcc ? p.precioVenta : (pres.length ? Math.max(...pres.map(x => x.precioVenta)) : 0);
+    const pMayMin = esAcc ? (p.precioMayorista || 0) : (pres.length ? Math.min(...pres.map(x => x.precioMayorista || x.precioVenta)) : 0);
+    const pMayMax = esAcc ? (p.precioMayorista || 0) : (pres.length ? Math.max(...pres.map(x => x.precioMayorista || x.precioVenta)) : 0);
+
+    // Ganancia para el vendedor (precio venta - precio mayorista)
+    const gananciaMin = esAcc
+      ? (p.precioVenta - (p.precioMayorista || 0))
+      : (pres.length ? Math.min(...pres.map(x => x.precioVenta - (x.precioMayorista || x.precioVenta))) : 0);
+    const gananciaMax = esAcc
+      ? (p.precioVenta - (p.precioMayorista || 0))
+      : (pres.length ? Math.max(...pres.map(x => x.precioVenta - (x.precioMayorista || x.precioVenta))) : 0);
+
+    return `<div class="product-card">
+      <div class="product-card-img">${EMOJIS_CAT[p.categoria] || '🧴'}<div class="product-card-badge">${bajo ? '<span class="badge badge-red">⚠️</span>' : ''}</div></div>
       <div class="product-card-body">
-        ${p.codigo?`<div class="product-card-code">#${p.codigo}</div>`:''}
+        ${p.codigo ? `<div class="product-card-code">#${p.codigo}</div>` : ''}
         <div class="product-card-name">${p.nombre}</div>
         <div class="product-card-cat">${p.categoria}</div>
         ${esAcc
           ? `<div class="product-card-price">${fmt(p.precioVenta)}</div>
              <div class="product-card-unit">por unidad</div>
-             ${p.precioMayorista?`<div style="font-size:11px;color:var(--accent-dark);margin-top:2px;">Mayor: ${fmt(p.precioMayorista)}</div>`:''}`
+             ${p.precioMayorista ? `<div style="font-size:11px;color:var(--accent-dark);margin-top:2px;">Mayor: ${fmt(p.precioMayorista)}</div>` : ''}
+             ${Sesion.esVendedor() ? `<div style="font-size:11px;color:var(--violet-dark);margin-top:2px;">Ganancia: ${fmt(gananciaMin)}</div>` : ''}`
           : pres.length
-            ?`<div class="product-card-price">${pMin===pMax?fmt(pMin):`${fmt(pMin)}–${fmt(pMax)}`}</div>
+            ? `<div class="product-card-price">${pMin === pMax ? fmt(pMin) : `${fmt(pMin)}–${fmt(pMax)}`}</div>
               <div class="product-card-unit">${pres.length} presentación(es)</div>
-              ${pMayMin>0?`<div style="font-size:11px;color:var(--accent-dark);margin-top:2px;">Mayor: ${pMayMin===pMayMax?fmt(pMayMin):`${fmt(pMayMin)}–${fmt(pMayMax)}`}</div>`:''}`
-            :`<div class="product-card-unit" style="color:var(--warning);">Sin presentaciones</div>`}
-        <div class="flex-center gap-8 mt-8"><div class="stock-bar-wrap" style="flex:1;">
-          <div class="stock-bar"><div class="stock-bar-fill ${sv>sm*2?'high':sv>sm?'med':'low'}" style="width:${Math.min(100,sm>0?(sv/(sm*3))*100:100)}%"></div></div>
-          <span class="stock-qty">${esAcc?`${sv} un`:`${fmtL(sv)} L`}</span>
-        </div></div>
+              ${pMayMin > 0 ? `<div style="font-size:11px;color:var(--accent-dark);margin-top:2px;">Mayor: ${pMayMin === pMayMax ? fmt(pMayMin) : `${fmt(pMayMin)}–${fmt(pMayMax)}`}</div>` : ''}
+              ${Sesion.esVendedor() ? `<div style="font-size:11px;color:var(--violet-dark);margin-top:2px;">Ganancia: ${gananciaMin === gananciaMax ? fmt(gananciaMin) : `${fmt(gananciaMin)}–${fmt(gananciaMax)}`}</div>` : ''}`
+            : `<div class="product-card-unit" style="color:var(--warning);">Sin presentaciones</div>`
+        }
+        <div class="flex-center gap-8 mt-8">
+          <div class="stock-bar-wrap" style="flex:1;">
+            <div class="stock-bar"><div class="stock-bar-fill ${sv > sm*2 ? 'high' : sv > sm ? 'med' : 'low'}" style="width:${Math.min(100, sm > 0 ? (sv/(sm*3))*100 : 100)}%"></div></div>
+            <span class="stock-qty">${esAcc ? `${sv} un` : `${fmtL(sv)} L`}</span>
+          </div>
+        </div>
       </div>
-      <div class="product-card-footer">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️</button>
-        <button class="btn btn-outline btn-sm" style="flex:1;" onclick="duplicarProducto('${p.id}')">📋</button>
-        <button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button>
-        <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button>
-      </div>
+ <div class="product-card-footer">
+  ${Sesion.esAdmin() ? `
+    <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️</button>
+    <button class="btn btn-outline btn-sm" style="flex:1;" onclick="duplicarProducto('${p.id}')">📋</button>
+    <button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button>
+    <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button>
+  ` : `
+    <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspProducto('${p.id}')">📲</button>
+    <button class="btn btn-outline btn-sm" style="flex:1;" onclick="verDetalleProducto('${p.id}')">ℹ️</button>
+  `}
+</div>
     </div>`;
   }).join('')}</div>`;
 }
 
 function catList(prods) {
-  if(!prods.length)return`<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos.</p></div>`;
-  const tbl=`<div class="table-wrap hide-mobile"><table>
-    <thead><tr><th>Cód.</th><th>Nombre</th><th>Categoría</th><th>Stock</th><th>Precio Actual</th><th>Precio mayorista</th><th>Acciones</th></tr></thead>
-    <tbody>${prods.map(p=>{const esAcc=p.tipo==='accesorio',sv=esAcc?p.stockUnidades||0:p.stockLitros||0,sm=esAcc?p.stockMinUnidades||0:p.stockMinLitros||0,pres=!esAcc?(p.presentaciones||[]):[];
-      const miniPv=esAcc?fmt(p.precioVenta)+'/un':pres.map(pr=>`${pr.nombre}: <strong>${fmt(pr.precioVenta)}</strong>`).join(' · ');
-      const miniMay=esAcc?(p.precioMayorista?fmt(p.precioMayorista)+'/un':'—'):pres.map(pr=>`${pr.nombre}: <strong>${fmt(pr.precioMayorista||pr.precioVenta)}</strong>`).join(' · ');
-      return`<tr>
-        <td><span class="badge badge-gray">${p.codigo||'—'}</span></td><td class="fw-700">${p.nombre}</td><td>${p.categoria}</td>
-        <td><span class="badge badge-${sv>sm?'green':'red'}">${esAcc?`${sv} un`:`${fmtL(sv)} L`}</span></td>
+  if(!prods.length) return `<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos.</p></div>`;
+
+  const tbl = `<div class="table-wrap hide-mobile"><table>
+    <thead><tr>
+      <th>Cód.</th><th>Nombre</th><th>Categoría</th><th>Stock</th>
+      <th>Precio Actual</th><th>Precio mayorista</th>
+      ${Sesion.esVendedor() ? '<th>Ganancia</th>' : ''}
+      <th>Acciones</th>
+    </tr></thead>
+    <tbody>${prods.map(p => {
+      const esAcc = p.tipo == 'accesorio',
+            sv = esAcc ? (p.stockUnidades || 0) : (p.stockLitros || 0),
+            sm = esAcc ? (p.stockMinUnidades || 0) : (p.stockMinLitros || 0),
+            pres = !esAcc ? (p.presentaciones || []) : [];
+
+      const miniPv = esAcc
+        ? fmt(p.precioVenta) + '/un'
+        : pres.map(pr => `${pr.nombre}: <strong>${fmt(pr.precioVenta)}</strong>`).join(' · ');
+
+      const miniMay = esAcc
+        ? (p.precioMayorista ? fmt(p.precioMayorista) + '/un' : '—')
+        : pres.map(pr => `${pr.nombre}: <strong>${fmt(pr.precioMayorista || pr.precioVenta)}</strong>`).join(' · ');
+
+      // Ganancia para vendedor
+      let miniGanancia = '';
+      if (Sesion.esVendedor()) {
+        if (esAcc) {
+          const gan = p.precioVenta - (p.precioMayorista || 0);
+          miniGanancia = fmt(gan) + '/un';
+        } else {
+          miniGanancia = pres.map(pr => {
+            const gan = pr.precioVenta - (pr.precioMayorista || pr.precioVenta);
+            return `${pr.nombre}: <strong>${fmt(gan)}</strong>`;
+          }).join(' · ');
+        }
+      }
+
+      return `<tr>
+        <td><span class="badge badge-gray">${p.codigo || '—'}</span></td>
+        <td class="fw-700">${p.nombre}</td>
+        <td>${p.categoria}</td>
+        <td><span class="badge badge-${sv > sm ? 'green' : 'red'}">${esAcc ? `${sv} un` : `${fmtL(sv)} L`}</span></td>
         <td style="font-size:12px;">${miniPv}</td>
         <td style="font-size:12px;color:var(--accent-dark);">${miniMay}</td>
+        ${Sesion.esVendedor() ? `<td style="font-size:12px;color:var(--violet-dark);">${miniGanancia}</td>` : ''}
         <td><div class="table-actions">
-          <button class="btn btn-secondary btn-sm" onclick="formProducto('${p.id}')">✏️</button>
-          <button class="btn btn-outline btn-sm" onclick="duplicarProducto('${p.id}')">📋</button>
+          ${Sesion.esAdmin() ? `
+            <button class="btn btn-secondary btn-sm" onclick="formProducto('${p.id}')">✏️</button>
+            <button class="btn btn-outline btn-sm" onclick="duplicarProducto('${p.id}')">📋</button>
+            <button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button>
+          ` : `
+            <button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button>
+          `}
+        </div></td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+
+  const cards = `<div class="mobile-card-list">${prods.map(p => {
+    const esAcc = p.tipo == 'accesorio',
+          sv = esAcc ? (p.stockUnidades || 0) : (p.stockLitros || 0),
+          sm = esAcc ? (p.stockMinUnidades || 0) : (p.stockMinLitros || 0),
+          pres = !esAcc ? (p.presentaciones || []) : [];
+
+    const gananciaHTML = Sesion.esVendedor()
+      ? (esAcc
+          ? `<div class="m-card-row"><span class="m-card-row-label">Ganancia</span><span class="m-card-row-value fw-700" style="color:var(--violet-dark)">${fmt(p.precioVenta - (p.precioMayorista || 0))}</span></div>`
+          : pres.map(pr => {
+              const gan = pr.precioVenta - (pr.precioMayorista || pr.precioVenta);
+              return `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre}</span><span class="m-card-row-value fw-700" style="color:var(--violet-dark)">${fmt(gan)}</span></div>`;
+            }).join('')
+        )
+      : '';
+
+    return `<div class="m-card">
+      <div class="m-card-header">
+        <div>
+          ${p.codigo ? `<div class="text-muted">#${p.codigo}</div>` : ''}
+          <div class="m-card-title">${EMOJIS_CAT[p.categoria] || '🧴'} ${p.nombre}</div>
+          <div class="m-card-subtitle">${p.categoria}</div>
+        </div>
+        <span class="badge badge-${sv > sm ? 'green' : 'red'}">${esAcc ? `${sv} un` : `${fmtL(sv)} L`}</span>
+      </div>
+      <div class="m-card-body">
+        ${esAcc
+          ? `<div class="m-card-row"><span class="m-card-row-label">Actual</span><span class="m-card-row-value fw-700 text-gradient">${fmt(p.precioVenta)}</span></div>
+             ${p.precioMayorista ? `<div class="m-card-row"><span class="m-card-row-label">Mayorista</span><span class="m-card-row-value fw-700" style="color:var(--accent-dark)">${fmt(p.precioMayorista)}</span></div>` : ''}`
+          : pres.map(pr => `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre}</span><span class="m-card-row-value fw-700 text-gradient">${fmt(pr.precioVenta)}${pr.precioMayorista ? ` <span style="color:var(--accent-dark);font-size:10px;">(M:${fmt(pr.precioMayorista)})</span>` : ''}</span></div>`).join('')
+        }
+        ${gananciaHTML}
+      </div>
+      <div class="m-card-footer" style="display:flex; gap: 4px; margin-top: 10px;">
+        ${Sesion.esAdmin() ? `
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️</button>
+          <button class="btn btn-outline btn-sm" style="flex:1;" onclick="duplicarProducto('${p.id}')">📋</button>
           <button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button>
           <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button>
-        </div></td>
-      </tr>`;}).join('')}</tbody></table></div>`;
-  const cards=`<div class="mobile-card-list">${prods.map(p=>{const esAcc=p.tipo==='accesorio',pres=!esAcc?(p.presentaciones||[]):[];const sv=esAcc?p.stockUnidades||0:p.stockLitros||0,sm=esAcc?p.stockMinUnidades||0:p.stockMinLitros||0;return`<div class="m-card">
-    <div class="m-card-header"><div>${p.codigo?`<div class="text-muted">#${p.codigo}</div>`:''}
-      <div class="m-card-title">${EMOJIS_CAT[p.categoria]||'🧴'} ${p.nombre}</div><div class="m-card-subtitle">${p.categoria}</div></div>
-      <span class="badge badge-${sv>sm?'green':'red'}">${esAcc?`${sv} un`:`${fmtL(sv)} L`}</span></div>
-    <div class="m-card-body">${esAcc
-      ?`<div class="m-card-row"><span class="m-card-row-label">Actual</span><span class="m-card-row-value fw-700 text-gradient">${fmt(p.precioVenta)}</span></div>${p.precioMayorista?`<div class="m-card-row"><span class="m-card-row-label">Mayorista</span><span class="m-card-row-value fw-700" style="color:var(--accent-dark)">${fmt(p.precioMayorista)}</span></div>`:''}`
-      :pres.map(pr=>`<div class="m-card-row"><span class="m-card-row-label">${pr.nombre}</span><span class="m-card-row-value fw-700 text-gradient">${fmt(pr.precioVenta)}${pr.precioMayorista?` <span style="color:var(--accent-dark);font-size:10px;">(M:${fmt(pr.precioMayorista)})</span>`:''}</span></div>`).join('')}</div>
-    <div class="m-card-footer" style="display:flex; gap: 4px; margin-top: 10px;"><button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️</button><button class="btn btn-outline btn-sm" style="flex:1;" onclick="duplicarProducto('${p.id}')">📋</button><button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button></div>
-  </div>`;}).join('')}</div>`;
-  return tbl+cards;
+        ` : `
+          <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspProducto('${p.id}')">📲</button>
+        `}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+
+  return tbl + cards;
 }
 
 // ── Lista de precios mayorista ─────────────────────────────────────────────────
@@ -654,6 +849,29 @@ async function guardarProducto(id){
 async function eliminarProducto(id){const p=DB.productos.find(x=>x.id===id);const res=await swalConfirm('¿Eliminar producto?',`Se eliminará <strong>${p?.nombre}</strong>`);if(!res.isConfirmed)return;await fbRemove('productos',id);toast('Producto eliminado');}
 async function duplicarProducto(id){const orig=DB.productos.find(x=>x.id===id);if(!orig)return;const copia=JSON.parse(JSON.stringify(orig));copia.id=genId();copia.nombre=`${orig.nombre} (copia)`;if(copia.presentaciones)copia.presentaciones=copia.presentaciones.map(pr=>({...pr,id:genId()}));await fbSave('productos',copia);toast('Producto duplicado ✅');}
 function wspProducto(id){const p=DB.productos.find(x=>x.id===id);if(!p)return;let msg=`*🌿 NURA — ${p.nombre}*\n📦 ${p.categoria}${p.codigo?' | #'+p.codigo:''}\n\n`;if(p.tipo==='accesorio')msg+=`💲 ${fmt(p.precioVenta)} por unidad\n`;else(p.presentaciones||[]).forEach(pr=>{msg+=`• ${pr.nombre} → ${fmt(pr.precioVenta)}\n`;});if(p.descripcion)msg+=`\n📝 ${p.descripcion}\n`;msg+='\n¡Consultanos! 🌿';window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');}
+window.verDetalleProducto = function(id) {
+  const p = DB.productos.find(x => x.id === id);
+  if (!p) return;
+  let html = '';
+  if (p.tipo === 'accesorio') {
+    const costo = p.precioMayorista || 0;
+    const sugerido = p.precioVenta;
+    const ganancia = sugerido - costo;
+    html += `<div class="m-card-row"><span class="m-card-row-label">Costo (Mayorista)</span><span class="m-card-row-value">${fmt(costo)}</span></div>`;
+    html += `<div class="m-card-row"><span class="m-card-row-label">Precio Sugerido</span><span class="m-card-row-value">${fmt(sugerido)}</span></div>`;
+    html += `<div class="m-card-row"><span class="m-card-row-label">Ganancia</span><span class="m-card-row-value" style="color:var(--violet-dark)">${fmt(ganancia)}</span></div>`;
+  } else {
+    (p.presentaciones || []).forEach(pr => {
+      const costo = pr.precioMayorista || 0;
+      const sugerido = pr.precioVenta;
+      const ganancia = sugerido - costo;
+      html += `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre} – Costo</span><span class="m-card-row-value">${fmt(costo)}</span></div>`;
+      html += `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre} – Sugerido</span><span class="m-card-row-value">${fmt(sugerido)}</span></div>`;
+      html += `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre} – Ganancia</span><span class="m-card-row-value" style="color:var(--violet-dark)">${fmt(ganancia)}</span></div>`;
+    });
+  }
+  openModal(`Detalle de ${p.nombre}`, `<div style="display:flex;flex-direction:column;gap:8px;">${html}</div>`, null);
+};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // COMBOS
@@ -662,179 +880,99 @@ function renderCombos() {
   const el = document.getElementById('page-combos');
   if (!el) return;
 
-  document.getElementById('topbarActions').innerHTML = `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+  // Filtro según rol
+const combos = DB.combos.filter(c => Sesion.esAdmin() || c.vendedorId === Sesion.user.id);
 
-      <button class="btn btn-primary"
-        onclick="formCombo(null)">
-        + Combo
-      </button>
+document.getElementById('topbarActions').innerHTML = Sesion.esAdmin()
+  ? `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+       <button class="btn btn-primary" onclick="formCombo(null)">+ Combo</button>
+       <button class="btn btn-secondary" onclick="imprimirCombos(false)">📄 Actual</button>
+       <button class="btn btn-wsp-sm" onclick="imagenCombosWsp(false)">📲 Actual</button>
+       <button class="btn btn-secondary" onclick="imprimirCombos(true)">📄 Mayorista</button>
+       <button class="btn btn-wsp-sm" onclick="imagenCombosWsp(true)">📲 Mayorista</button>
+     </div>`
+  : `<button class="btn btn-primary" onclick="formCombo(null)">+ Combo</button>`;
 
-      <button class="btn btn-secondary"
-        onclick="imprimirCombos(false)">
-        📄 Actual
-      </button>
-
-      <button class="btn btn-wsp-sm"
-        onclick="imagenCombosWsp(false)">
-        📲 Actual
-      </button>
-
-      <button class="btn btn-secondary"
-        onclick="imprimirCombos(true)">
-        📄 Mayorista
-      </button>
-
-      <button class="btn btn-wsp-sm"
-        onclick="imagenCombosWsp(true)">
-        📲 Mayorista
-      </button>
-
-    </div>
-  `;
-
-  if (!DB.combos.length) {
+  if (!combos.length) {
     el.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">🎁</div>
         <p>No hay combos creados aún</p>
-        <button class="btn btn-primary mt-8" onclick="formCombo(null)">
-          Crear primer combo
-        </button>
-      </div>
-    `;
+        <button class="btn btn-primary mt-8" onclick="formCombo(null)">Crear primer combo</button>
+      </div>`;
     return;
   }
 
-  const cards = DB.combos.map(c => {
-
+  const cards = combos.map(c => {
     const itemsList = (c.items || [])
-      .map(i => `
-        <span class="badge badge-violet" style="margin:2px;">
-          ${i.nombre} x${i.cantidad}
-        </span>
-      `).join('');
+      .map(i => `<span class="badge badge-violet" style="margin:2px;">${i.nombre} x${i.cantidad}</span>`)
+      .join('');
 
     return `
       <div class="m-card" style="border-left:4px solid var(--accent);">
-
         <div class="m-card-header">
-
           <div>
             <div class="m-card-title">🎁 ${c.nombre}</div>
-
-            ${c.descripcion
-              ? `<div class="m-card-subtitle">${c.descripcion}</div>`
-              : ''}
+            ${c.descripcion ? `<div class="m-card-subtitle">${c.descripcion}</div>` : ''}
           </div>
-
           <div style="text-align:right;">
-
-            <div
-              style="font-family:var(--font-display);font-size:22px;font-weight:800;"
-              class="text-gradient"
-            >
-              ${fmt(c.precio)}
-            </div>
-
-            ${c.precioMayorista
-              ? `
-                <div style="
-                  font-size:12px;
-                  color:var(--accent-dark);
-                ">
-                  Mayor: ${fmt(c.precioMayorista)}
-                </div>
-              `
-              : ''}
-
+            <div style="font-family:var(--font-display);font-size:22px;font-weight:800;" class="text-gradient">${fmt(c.precio)}</div>
+            ${c.precioMayorista ? `<div style="font-size:12px;color:var(--accent-dark);">Mayor: ${fmt(c.precioMayorista)}</div>` : ''}
           </div>
-
         </div>
-
-        <div style="
-          margin:8px 0;
-          flex-wrap:wrap;
-          display:flex;
-          gap:4px;
-        ">
-          ${itemsList}
-        </div>
-
+        <div style="margin:8px 0; flex-wrap:wrap; display:flex; gap:4px;">${itemsList}</div>
         <div class="m-card-footer">
-
-          <button
-            class="btn btn-secondary btn-sm"
-            style="flex:1;"
-            onclick="formCombo('${c.id}')"
-          >
-            ✏️ Editar
-          </button>
-
-          <button
-            class="btn btn-wsp-sm btn-sm"
-            style="flex:1;"
-            onclick="wspCombo('${c.id}')"
-          >
-            📲 WhatsApp
-          </button>
-
-          <button
-            class="btn btn-danger btn-sm btn-icon"
-            onclick="eliminarCombo('${c.id}')"
-          >
-            🗑
-          </button>
-
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formCombo('${c.id}')">✏️ Editar</button>
+          <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspCombo('${c.id}')">📲 WhatsApp</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCombo('${c.id}')">🗑</button>
         </div>
-
-      </div>
-    `;
-
+      </div>`;
   }).join('');
 
-  el.innerHTML = `
-    <div
-      style="
-        display:grid;
-        grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
-        gap:16px;
-      "
-    >
-      ${cards}
-    </div>
-  `;
+  el.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px;">${cards}</div>`;
 }
 
 let _comboItems = [];
 function formCombo(id) {
   const c = id ? DB.combos.find(x => x.id === id) : null;
-  _comboItems = c ? c.items.map(x=>({...x})) : [];
+  _comboItems = c ? c.items.map(x => ({...x})) : [];
 
-  // construir lista de vendibles (productos y presentaciones)
   const vendibles = buildVendibles();
+
+  // Si es vendedor, el precio mayorista es calculado automáticamente
+  const esVendedor = Sesion.esVendedor();
+  const precioMayHTML = esVendedor
+    ? `<div style="padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+         <span id="cbCostoMay" style="font-weight:700;color:var(--accent-dark);">${fmt(c ? c.precioMayorista || 0 : 0)}</span>
+       </div>`
+    : moneyInput('cbPrecioMay', c ? c.precioMayorista || '' : '');
 
   const html = `<div style="display:flex;flex-direction:column;gap:14px;">
     <div class="form-grid">
-      <div class="form-group full"><label>Nombre del combo</label><input id="cbNombre" value="${c?c.nombre:''}" placeholder="Ej: Kit Baño Completo" /></div>
-      <div class="form-group full"><label>Descripción (opcional)</label><input id="cbDesc" value="${c?c.descripcion||'':''}" placeholder="Ej: Lavandina + Desengrasante + Limpiavidrios" /></div>
+      <div class="form-group full"><label>Nombre del combo</label><input id="cbNombre" value="${c ? c.nombre : ''}" placeholder="Ej: Kit Baño Completo" /></div>
+      <div class="form-group full"><label>Descripción (opcional)</label><input id="cbDesc" value="${c ? c.descripcion || '' : ''}" placeholder="Ej: Lavandina + Desengrasante + Limpiavidrios" /></div>
     </div>
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);">
       <label style="display:block;margin-bottom:8px;font-weight:700;">Agregar productos al combo</label>
       <div class="flex gap-8 flex-wrap">
-        <select id="cbItemSel" style="flex:2;min-width:0;"><option value="">Seleccioná producto...</option>${vendibles.map(v=>`<option value="${v.key}">${v.label}</option>`).join('')}</select>
+        <select id="cbItemSel" style="flex:2;min-width:0;"><option value="">Seleccioná producto...</option>${vendibles.map(v => `<option value="${v.key}">${v.label}</option>`).join('')}</select>
         <input id="cbCantidad" type="number" min="1" step="1" value="1" style="width:70px;flex-shrink:0;" />
         <button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarItemCombo()">+ Agregar</button>
       </div>
     </div>
     <div id="comboItemsWrap">${renderComboItems()}</div>
     <div class="form-grid">
-      <div class="form-group"><label>Precio combo Actual ($)</label>${moneyInput('cbPrecio',c?c.precio||'':'')}<span class="form-note">Precio especial del combo</span></div>
-      <div class="form-group"><label>Precio combo mayorista ($)</label>${moneyInput('cbPrecioMay',c?c.precioMayorista||'':'')}<span class="form-note">Para vendedores/distribuidores</span></div>
+      <div class="form-group"><label>Precio combo Actual ($)</label>${moneyInput('cbPrecio', c ? c.precio || '' : '')}<span class="form-note">Precio especial del combo</span></div>
+      <div class="form-group">
+        <label>${esVendedor ? 'Costo del combo (automático)' : 'Precio combo mayorista ($)'}</label>
+        ${precioMayHTML}
+        ${!esVendedor ? '<span class="form-note">Para vendedores/distribuidores</span>' : ''}
+      </div>
     </div>
     <div id="cbSugerido" style="font-size:12px;color:var(--text-muted);"></div>
   </div>`;
-  openModal(c?'Editar Combo':'Nuevo Combo', html, guardarCombo.bind(null,id), true);
+
+  openModal(c ? 'Editar Combo' : 'Nuevo Combo', html, guardarCombo.bind(null, id), true);
   setTimeout(actualizarSugeridoCombo, 100);
 }
 
@@ -866,29 +1004,48 @@ window.agregarItemCombo = function() {
 
 function actualizarSugeridoCombo() {
   const total = _comboItems.reduce((s,i) => s + i.precio * i.cantidad, 0);
-  const totalMay = _comboItems.reduce((s,i) => s + (i.precioMayorista||i.precio) * i.cantidad, 0);
-  const el = document.getElementById('cbSugerido');
-  if (el) el.innerHTML = total > 0
-    ? `💡 Suma Actual: <strong>${fmt(total)}</strong> · Suma mayorista: <strong>${fmt(totalMay)}</strong> — el combo puede tener precio menor al total.`
+  const totalMay = _comboItems.reduce((s,i) => s + (i.precioMayorista || i.precio) * i.cantidad, 0);
+  const elSug = document.getElementById('cbSugerido');
+  if (elSug) elSug.innerHTML = total > 0
+    ? `💡 Suma Actual: <strong>${fmt(total)}</strong> · Costo del combo: <strong>${fmt(totalMay)}</strong>`
     : '';
+  const elCosto = document.getElementById('cbCostoMay');
+  if (elCosto) elCosto.textContent = fmt(totalMay);
 }
 
 async function guardarCombo(id) {
   const nombre = document.getElementById('cbNombre').value.trim();
   if (!nombre) { await swalError('El nombre es obligatorio'); return; }
   if (!_comboItems.length) { await swalError('Agregá al menos un producto al combo'); return; }
+
   const precio = parseFloat(document.getElementById('cbPrecio').value) || 0;
   if (!precio) { await swalError('Ingresá el precio del combo'); return; }
+
+  // Calcular costo mayorista automático
+  const costoMayorista = _comboItems.reduce((s, i) => s + (i.precioMayorista || i.precio) * i.cantidad, 0);
+
+  // Si es vendedor, el precio no puede ser menor que el costo
+  if (Sesion.esVendedor() && precio < costoMayorista) {
+    await swalError(`El precio no puede ser menor que el costo del combo (${fmt(costoMayorista)})`);
+    return;
+  }
+
+  // Precio mayorista: automático para vendedor, manual para admin
+  const precioMayorista = Sesion.esVendedor()
+    ? costoMayorista
+    : (parseFloat(document.getElementById('cbPrecioMay').value) || 0);
+
   const combo = {
     id: id || genId(),
     nombre,
     descripcion: document.getElementById('cbDesc').value.trim(),
-    items: _comboItems.map(i => ({ key:i.key, nombre:i.nombre, detalle:i.detalle, precio:i.precio, precioMayorista:i.precioMayorista||i.precio, cantidad:i.cantidad, litrosPorUnidad:i.litrosPorUnidad||0, productoId:i.productoId, presId:i.presId||null, esAcc:i.esAcc })),
+    items: _comboItems.map(i => ({ ...i })),
     precio,
-    precioMayorista: parseFloat(document.getElementById('cbPrecioMay').value) || 0,
+    precioMayorista,
+    vendedorId: Sesion.esVendedor() ? Sesion.user.id : null
   };
+
   closeModal();
-  // Actualizar DB local inmediatamente para que renderCombos lo vea al navegar
   if (id) {
     const idx = DB.combos.findIndex(x => x.id === id);
     if (idx >= 0) DB.combos[idx] = combo; else DB.combos.push(combo);
@@ -897,7 +1054,6 @@ async function guardarCombo(id) {
   }
   navigate('combos');
   toast(id ? 'Combo actualizado ✅' : 'Combo creado ✅');
-  // Guardar en Firebase en paralelo (el listener sincronizará si hay diferencias)
   fbSave('combos', combo);
 }
 
@@ -1318,34 +1474,112 @@ function wspCombos(esMayorista = false) {
 // ══════════════════════════════════════════════════════════════════════════════
 let clienteSearch='';
 function renderClientes(){
-  const el=document.getElementById('page-clientes');
-  document.getElementById('topbarActions').innerHTML=`<button class="btn btn-primary" onclick="formCliente(null)">+ Cliente</button>`;
-  const lista=DB.clientes.filter(c=>!clienteSearch||c.nombre.toLowerCase().includes(clienteSearch.toLowerCase())||(c.telefono||'').includes(clienteSearch));
-  const tbl=`<div class="table-wrap hide-mobile"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Dirección</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>${lista.length===0?`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">👥</div><p>Sin clientes</p></div></td></tr>`:lista.map(c=>`<tr><td class="fw-700">${c.nombre}</td><td>${c.telefono||'—'}</td><td>${c.email||'—'}</td><td>${c.direccion||'—'}</td><td><span class="badge badge-${c.esMayorista?'violet':'gray'}">${c.esMayorista?'Mayorista':'Actual'}</span></td><td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="formCliente('${c.id}')">✏️</button>${c.telefono?`<button class="btn btn-wsp-sm btn-sm" onclick="wspCliente('${c.id}')">📲</button>`:''}<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCliente('${c.id}')">🗑</button></div></td></tr>`).join('')}</tbody></table></div>`;
-  const cards=`<div class="mobile-card-list">${lista.map(c=>`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title">👤 ${c.nombre}</div>${c.email?`<div class="m-card-subtitle">${c.email}</div>`:''}</div><span class="badge badge-${c.esMayorista?'violet':'gray'}">${c.esMayorista?'Mayorista':'Actual'}</span></div><div class="m-card-body">${c.telefono?`<div class="m-card-row"><span class="m-card-row-label">Teléfono</span><span class="m-card-row-value">${c.telefono}</span></div>`:''} ${c.direccion?`<div class="m-card-row"><span class="m-card-row-label">Dirección</span><span class="m-card-row-value">${c.direccion}</span></div>`:''}</div><div class="m-card-footer"><button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formCliente('${c.id}')">✏️ Editar</button>${c.telefono?`<button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspCliente('${c.id}')">📲</button>`:''}<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCliente('${c.id}')">🗑</button></div></div>`).join('')}</div>`;
-  el.innerHTML=`<div class="flex flex-center gap-8 mb-16"><div class="search-bar" style="max-width:100%;"><span class="search-icon">🔍</span><input type="text" placeholder="Buscar cliente..." id="clienteSearch" value="${clienteSearch}" /></div></div>${lista.length===0&&!clienteSearch?`<div class="empty-state"><div class="empty-icon">👥</div><p>No hay clientes</p></div>`:tbl+cards}`;
-  document.getElementById('clienteSearch').oninput=e=>{clienteSearch=e.target.value;renderClientes();};
+  const el = document.getElementById('page-clientes');
+  // Acciones del topbar (solo admin ve el botón)
+  document.getElementById('topbarActions').innerHTML = Sesion.esAdmin()
+    ? `<button class="btn btn-primary" onclick="formCliente(null)">+ Cliente</button>`
+    : `<button class="btn btn-primary" onclick="formCliente(null)">+ Cliente</button>`; // vendedor también puede agregar
+
+  // Filtrar según búsqueda y visibilidad
+  const lista = DB.clientes.filter(c => {
+    const matchSearch = !clienteSearch || c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.telefono || '').includes(clienteSearch);
+    if (!matchSearch) return false;
+    if (Sesion.esAdmin()) return true;                // admin ve todos
+    // Vendedor: solo clientes que creó él o que no tienen dueño (admin)
+    return c.vendedorId === Sesion.user.id || !c.vendedorId;
+  });
+
+  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
+    <th>Nombre</th><th>Teléfono</th><th>Email</th><th>Dirección</th><th>Tipo</th>
+    ${Sesion.esAdmin() ? '<th>Creado por</th>' : ''}
+    <th>Acciones</th>
+  </tr></thead><tbody>${lista.length === 0
+    ? `<tr><td colspan="${Sesion.esAdmin() ? 7 : 6}"><div class="empty-state"><div class="empty-icon">👥</div><p>Sin clientes</p></div></td></tr>`
+    : lista.map(c => {
+        const vendedorNombre = c.vendedorId ? (DB.usuarios.find(u => u.id === c.vendedorId)?.nombre || 'Desconocido') : '—';
+        return `<tr>
+          <td class="fw-700">${c.nombre}</td>
+          <td>${c.telefono || '—'}</td>
+          <td>${c.email || '—'}</td>
+          <td>${c.direccion || '—'}</td>
+          <td><span class="badge badge-${c.esMayorista ? 'violet' : 'gray'}">${c.esMayorista ? 'Mayorista' : 'Actual'}</span></td>
+          ${Sesion.esAdmin() ? `<td style="font-size:11px;color:var(--text-muted);">${vendedorNombre}</td>` : ''}
+          <td><div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="formCliente('${c.id}')">✏️</button>
+            ${c.telefono ? `<button class="btn btn-wsp-sm btn-sm" onclick="wspCliente('${c.id}')">📲</button>` : ''}
+            ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCliente('${c.id}')">🗑</button>` : ''}
+          </div></td>
+        </tr>`;
+      }).join('')
+  }</tbody></table></div>`;
+
+  const cards = `<div class="mobile-card-list">${lista.map(c => {
+    const vendedorNombre = Sesion.esAdmin() && c.vendedorId
+      ? `<div style="font-size:10px;color:var(--text-muted);">Creado por: ${DB.usuarios.find(u => u.id === c.vendedorId)?.nombre || 'Desconocido'}</div>`
+      : '';
+    return `<div class="m-card">
+      <div class="m-card-header">
+        <div>
+          <div class="m-card-title">👤 ${c.nombre}</div>
+          ${c.email ? `<div class="m-card-subtitle">${c.email}</div>` : ''}
+          ${vendedorNombre}
+        </div>
+        <span class="badge badge-${c.esMayorista ? 'violet' : 'gray'}">${c.esMayorista ? 'Mayorista' : 'Actual'}</span>
+      </div>
+      <div class="m-card-body">
+        ${c.telefono ? `<div class="m-card-row"><span class="m-card-row-label">Teléfono</span><span class="m-card-row-value">${c.telefono}</span></div>` : ''}
+        ${c.direccion ? `<div class="m-card-row"><span class="m-card-row-label">Dirección</span><span class="m-card-row-value">${c.direccion}</span></div>` : ''}
+      </div>
+      <div class="m-card-footer">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formCliente('${c.id}')">✏️ Editar</button>
+        ${c.telefono ? `<button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspCliente('${c.id}')">📲</button>` : ''}
+        ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCliente('${c.id}')">🗑</button>` : ''}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+
+  el.innerHTML = `<div class="flex flex-center gap-8 mb-16">
+    <div class="search-bar" style="max-width:100%;"><span class="search-icon">🔍</span><input type="text" placeholder="Buscar cliente..." id="clienteSearch" value="${clienteSearch}" /></div>
+  </div>
+  ${lista.length === 0 && !clienteSearch ? `<div class="empty-state"><div class="empty-icon">👥</div><p>No hay clientes</p></div>` : tbl + cards}`;
+
+  document.getElementById('clienteSearch').oninput = e => {
+    clienteSearch = e.target.value;
+    renderClientes();
+  };
 }
 function formCliente(id){
-  const c=id?DB.clientes.find(x=>x.id===id):null;
-  openModal(c?'Editar Cliente':'Nuevo Cliente',`<div class="form-grid">
-    <div class="form-group full"><label>Nombre completo</label><input id="cNombre" value="${c?c.nombre:''}" placeholder="Nombre y apellido" /></div>
-    <div class="form-group"><label>Teléfono / WhatsApp</label><input id="cTelefono" value="${c?c.telefono||'':''}" placeholder="+54 9 ..." /></div>
-    <div class="form-group"><label>Email</label><input id="cEmail" type="email" value="${c?c.email||'':''}" /></div>
-    <div class="form-group full"><label>Dirección</label><input id="cDireccion" value="${c?c.direccion||'':''}" /></div>
+  const c = id ? DB.clientes.find(x => x.id === id) : null;
+  openModal(c ? 'Editar Cliente' : 'Nuevo Cliente', `<div class="form-grid">
+    <div class="form-group full"><label>Nombre completo</label><input id="cNombre" value="${c ? c.nombre : ''}" placeholder="Nombre y apellido" /></div>
+    <div class="form-group"><label>Teléfono / WhatsApp</label><input id="cTelefono" value="${c ? c.telefono || '' : ''}" placeholder="+54 9 ..." /></div>
+    <div class="form-group"><label>Email</label><input id="cEmail" type="email" value="${c ? c.email || '' : ''}" /></div>
+    <div class="form-group full"><label>Dirección</label><input id="cDireccion" value="${c ? c.direccion || '' : ''}" /></div>
     <div class="form-group full">
       <label>Tipo de cliente</label>
       <select id="cEsMayorista">
-        <option value="0" ${!c?.esMayorista?'selected':''}>🛍️ Actual (precio de lista)</option>
-        <option value="1" ${c?.esMayorista?'selected':''}>🏪 Mayorista / Vendedor (precio mayorista)</option>
+        <option value="0" ${!c?.esMayorista ? 'selected' : ''}>🛍️ Actual (precio de lista)</option>
+        <option value="1" ${c?.esMayorista ? 'selected' : ''}>🏪 Mayorista / Vendedor (precio mayorista)</option>
       </select>
       <span class="form-note">Los mayoristas ven precio mayorista automáticamente en ventas</span>
     </div>
-    <div class="form-group full"><label>Notas</label><textarea id="cNotas">${c?c.notas||'':''}</textarea></div>
-  </div>`,async()=>{
-    const nombre=document.getElementById('cNombre').value.trim();if(!nombre){await swalError('El nombre es obligatorio');return;}
-    const cl={id:c?c.id:genId(),nombre,telefono:document.getElementById('cTelefono').value.trim(),email:document.getElementById('cEmail').value.trim(),direccion:document.getElementById('cDireccion').value.trim(),notas:document.getElementById('cNotas').value.trim(),esMayorista:document.getElementById('cEsMayorista').value==='1'};
-    closeModal();await fbSave('clientes',cl);toast(c?'Cliente actualizado ✅':'Cliente creado ✅');
+    <div class="form-group full"><label>Notas</label><textarea id="cNotas">${c ? c.notas || '' : ''}</textarea></div>
+  </div>`, async () => {
+    const nombre = document.getElementById('cNombre').value.trim();
+    if(!nombre){ await swalError('El nombre es obligatorio'); return; }
+    const cl = {
+      id: c ? c.id : genId(),
+      nombre,
+      telefono: document.getElementById('cTelefono').value.trim(),
+      email: document.getElementById('cEmail').value.trim(),
+      direccion: document.getElementById('cDireccion').value.trim(),
+      notas: document.getElementById('cNotas').value.trim(),
+      esMayorista: document.getElementById('cEsMayorista').value == '1',
+      vendedorId: Sesion.esVendedor() ? Sesion.user.id : (c ? c.vendedorId || null : null)  // NUEVO
+    };
+    closeModal();
+    await fbSave('clientes', cl);
+    toast(c ? 'Cliente actualizado ✅' : 'Cliente creado ✅');
   });
 }
 async function eliminarCliente(id){const c=DB.clientes.find(x=>x.id===id);const res=await swalConfirm('¿Eliminar cliente?',`Se eliminará a <strong>${c?.nombre}</strong>`);if(!res.isConfirmed)return;await fbRemove('clientes',id);toast('Cliente eliminado');}
@@ -1356,12 +1590,66 @@ function wspCliente(id){const c=DB.clientes.find(x=>x.id===id);if(!c?.telefono)r
 // ══════════════════════════════════════════════════════════════════════════════
 let ventaItems=[];
 function renderVentas(){
-  const el=document.getElementById('page-ventas');
-  document.getElementById('topbarActions').innerHTML=`<button class="btn btn-outline btn-sm" onclick="resumenPendientesModal()">📋 Pendientes</button><button class="btn btn-primary" onclick="formVenta()">+ Venta</button>`;
-  const ventas=[...DB.ventas].sort((a,b)=>b.fecha-a.fecha);
-  const tbl=`<div class="table-wrap hide-mobile"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Items</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${ventas.length===0?`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div></td></tr>`:ventas.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<tr><td>${fmtDate(v.fecha)}</td><td>${cl?cl.nombre:v.clienteNombre||'—'} ${cl?.esMayorista?'<span class="badge badge-violet" style="font-size:10px;">Mayor.</span>':''}</td><td>${v.items.length}</td><td class="fw-700">${fmt(v.total)}</td><td>${estadoSelect(v)}</td><td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button><button class="btn btn-wsp-sm btn-sm" onclick="wspVenta('${v.id}')">📲</button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button></div></td></tr>`;}).join('')}</tbody></table></div>`;
-  const cards=`<div class="mobile-card-list">${ventas.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title">${cl?cl.nombre:v.clienteNombre||'Sin cliente'}${cl?.esMayorista?' <span class="badge badge-violet" style="font-size:10px;">Mayorista</span>':''}</div><div class="m-card-subtitle">${fmtDate(v.fecha)} · ${v.items.length} ítem(s)</div></div>${estadoSelect(v)}</div><div style="font-family:var(--font-display);font-size:22px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div><div class="m-card-footer mt-8"><button class="btn btn-secondary btn-sm" style="flex:1;" onclick="verVenta('${v.id}')">👁 Ver</button><button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspVenta('${v.id}')">📲</button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button></div></div>`;}).join('')}</div>`;
-  el.innerHTML=ventas.length===0?`<div class="empty-state"><div class="empty-icon">🛒</div><p>No hay ventas registradas</p></div>`:tbl+cards;
+  const el = document.getElementById('page-ventas');
+  document.getElementById('topbarActions').innerHTML = `
+    ${Sesion.esAdmin() ? `<button class="btn btn-outline btn-sm" onclick="resumenPendientesModal()">📋 Pendientes</button>` : ''}
+    <button class="btn btn-primary" onclick="formVenta()">+ Venta</button>`;
+
+  const ventas = [...DB.ventas]
+    .filter(v => Sesion.esAdmin() || v.vendedorId === Sesion.user.id)   // Filtro según rol
+    .sort((a,b) => b.fecha - a.fecha);
+
+  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
+    <th>Fecha</th><th>Cliente</th>${Sesion.esAdmin() ? '<th>Vendedor</th>' : ''}<th>Items</th><th>Total</th><th>Estado</th><th>Acciones</th>
+  </tr></thead><tbody>${ventas.length === 0
+    ? `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div></td></tr>`
+    : ventas.map(v => {
+        const cl = DB.clientes.find(c => c.id === v.clienteId);
+        const gananciaVendedor = Sesion.esVendedor()
+          ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
+          : null;
+        return `<tr>
+          <td>${fmtDate(v.fecha)}</td>
+          <td>${cl ? cl.nombre : v.clienteNombre || '—'} ${cl?.esMayorista ? '<span class="badge badge-violet" style="font-size:10px;">Mayor.</span>' : ''}</td>
+          ${Sesion.esAdmin() ? `<td>${v.vendedorNombre || '—'}</td>` : ''}
+          <td>${v.items.length}</td>
+          <td class="fw-700">${fmt(v.total)}</td>
+          <td>${estadoSelect(v)}</td>
+          <td><div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button>
+            <button class="btn btn-wsp-sm btn-sm" onclick="wspVenta('${v.id}')">📲</button>
+            ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
+          </div></td>
+        </tr>`;
+      }).join('')
+  }</tbody></table></div>`;
+
+  const cards = `<div class="mobile-card-list">${ventas.map(v => {
+    const cl = DB.clientes.find(c => c.id === v.clienteId);
+    const gananciaVendedor = Sesion.esVendedor()
+      ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
+      : null;
+    return `<div class="m-card">
+      <div class="m-card-header">
+        <div>
+          <div class="m-card-title">${cl ? cl.nombre : v.clienteNombre || 'Sin cliente'}${cl?.esMayorista ? ' <span class="badge badge-violet" style="font-size:10px;">Mayorista</span>' : ''}</div>
+          <div class="m-card-subtitle">${fmtDate(v.fecha)} · ${v.items.length} ítem(s)</div>
+        </div>
+        ${estadoSelect(v)}
+      </div>
+      <div style="font-family:var(--font-display);font-size:22px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div>
+      ${gananciaVendedor !== null ? `<div style="font-size:12px;color:var(--violet-dark);margin-top:4px;">Ganancia: ${fmt(gananciaVendedor)}</div>` : ''}
+      <div class="m-card-footer mt-8">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="verVenta('${v.id}')">👁 Ver</button>
+        <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspVenta('${v.id}')">📲</button>
+        ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+
+  el.innerHTML = ventas.length === 0
+    ? `<div class="empty-state"><div class="empty-icon">🛒</div><p>No hay ventas registradas</p></div>`
+    : tbl + cards;
 }
 // ── Resumen de pendientes multi-venta por cliente ─────────────────────────────
 function resumenPendientesModal() {
@@ -1532,28 +1820,30 @@ function buildVendibles(){
 
 function formVenta(){ventaItems=[];renderModalVenta();}
 function renderModalVenta(){
-  const vendibles=buildVendibles();
-  openModal('Nueva Venta',`
+  const vendibles = buildVendibles();
+  openModal('Nueva Venta', `
     <div class="form-group mb-12">
       <label>Cliente <span style="color:var(--danger)">*</span></label>
       <select id="vCliente" style="border-color:var(--danger);">
         <option value="">— Seleccioná un cliente (obligatorio) —</option>
-        ${DB.clientes.map(c=>`<option value="${c.id}">${c.nombre}${c.esMayorista?' 🏪':''}</option>`).join('')}
+        ${DB.clientes.map(c => `<option value="${c.id}">${c.nombre}${c.esMayorista ? ' 🏪' : ''}</option>`).join('')}
       </select>
     </div>
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;border:1px solid var(--border);">
       <label style="display:block;margin-bottom:8px;">Agregar producto o combo</label>
       <div class="flex gap-8 flex-wrap">
-        <select id="vItemSel" style="flex:2;min-width:0;"><option value="">Seleccioná...</option>${vendibles.map(v=>`<option value="${v.key}">${v.label}</option>`).join('')}</select>
+        <select id="vItemSel" style="flex:2;min-width:0;"><option value="">Seleccioná...</option>${vendibles.map(v => `<option value="${v.key}">${v.label}</option>`).join('')}</select>
         <input id="vCantidad" type="number" min="1" step="1" value="1" style="width:70px;flex-shrink:0;" />
         <button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarItemVenta()">+ Agregar</button>
       </div>
     </div>
     <div id="ventaCartWrap">${renderVentaCart()}</div>
     <div class="form-grid keep-2 mt-12">
-      <div class="form-group"><label>Descuento ($)</label>${moneyInput('vDescuento','0','updateVentaTotals()')}</div>
+      <div class="form-group"><label>Descuento ($)</label>${moneyInput('vDescuento', '0', 'updateVentaTotals()')}</div>
       <div class="form-group"><label>Observaciones</label><input id="vObs" type="text" placeholder="Notas..." /></div>
+      <div class="form-group"><label>Costo de envío ($)</label>${moneyInput('vEnvio', '0', 'updateVentaTotals()')}</div>
     </div>
+    ${Sesion.esAdmin() ? `
     <div class="form-group mt-8">
       <label style="font-weight:800;">Tipo de precio</label>
       <div style="display:flex;gap:10px;margin-top:6px;">
@@ -1566,13 +1856,16 @@ function renderModalVenta(){
           <span>🏪 <strong>Mayorista</strong></span>
         </label>
       </div>
-    </div>
-    <div id="ventaTotalBox"></div>`,guardarVenta,true);
-  setTimeout(updateVentaTotals,30);
+    </div>` : ''}
+    <div id="ventaTotalBox"></div>`, guardarVenta, true);
+  setTimeout(updateVentaTotals, 30);
 }
 
 // Lee si es mayorista del radio button (no del cliente)
 function esVentaMayorista() {
+  // Si es vendedor, siempre usa precio mayorista (oculta el selector)
+  if (Sesion.esVendedor()) return true;
+  // Admin puede elegir
   return document.querySelector('input[name="vTipoPrecio"]:checked')?.value === 'mayorista';
 }
 
@@ -1586,13 +1879,94 @@ window.recalcPreciosVenta = function() {
   updateVentaTotals();
 };
 
-function renderVentaCart(){
-  if(!ventaItems.length)return`<div class="empty-state" style="padding:16px;"><div class="empty-icon">🛒</div><p>Agregá productos</p></div>`;
-  const esMay = esVentaMayorista();
-  const tbl=`<div class="table-wrap hide-mobile"><table class="cart-table"><thead><tr><th>Producto</th><th>Pres.</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th></th></tr></thead><tbody>${ventaItems.map((item,i)=>`<tr><td class="fw-600">${item.nombre}</td><td><span class="badge ${item.esCombo?'badge-green':'badge-violet'}">${item.detalle}</span>${esMay?'<span class="badge badge-violet" style="font-size:9px;margin-left:3px;">Mayor.</span>':''}</td><td><input type="number" min="1" value="${item.cantidad}" style="width:55px;padding:4px 6px;" onchange="_updVI(${i},+this.value)" /></td><td>${fmt(item.precioAplicado||item.precio)}</td><td class="fw-700">${fmt(item.subtotal)}</td><td><button class="btn btn-danger btn-sm btn-icon" onclick="_rmVI(${i})">✕</button></td></tr>`).join('')}</tbody></table></div>`;
-  const cards=`<div class="mobile-card-list" style="gap:7px;">${ventaItems.map((item,i)=>`<div class="m-card" style="padding:10px 12px;"><div class="m-card-header" style="margin-bottom:7px;"><div><div class="m-card-title" style="font-size:13px;">${item.nombre}</div><span class="badge ${item.esCombo?'badge-green':'badge-violet'}">${item.detalle}</span>${esMay?'<span class="badge badge-violet" style="font-size:9px;margin-left:3px;">Mayor.</span>':''}</div><button class="btn btn-danger btn-sm btn-icon" onclick="_rmVI(${i})">✕</button></div><div class="flex-center gap-8"><label style="font-size:11px;color:var(--text-muted);">Cant.</label><input type="number" min="1" value="${item.cantidad}" style="width:60px;padding:5px 8px;" onchange="_updVI(${i},+this.value)" /><span style="flex:1;text-align:right;font-family:var(--font-display);font-weight:800;font-size:16px;" class="text-gradient">${fmt(item.subtotal)}</span></div></div>`).join('')}</div>`;
-  return tbl+cards;
+function renderVentaCart() {
+  if (!ventaItems.length) return `<div class="empty-state" style="padding:16px;"><div class="empty-icon">🛒</div><p>Agregá productos</p></div>`;
+
+  const esMay = Sesion.esAdmin() ? esVentaMayorista() : true; // vendedor siempre usa precios mayoristas
+
+  // Versión escritorio (tabla)
+  const tbl = `<div class="table-wrap hide-mobile"><table class="cart-table"><thead><tr>
+    <th>Producto</th><th>Pres.</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th></th>
+  </tr></thead><tbody>${ventaItems.map((item, i) => `
+    <tr>
+      <td class="fw-600">${item.nombre}</td>
+      <td>
+        <span class="badge ${item.esCombo ? 'badge-green' : 'badge-violet'}">${item.detalle}</span>
+        ${esMay && Sesion.esAdmin() ? '<span class="badge badge-violet" style="font-size:9px;margin-left:3px;">Mayor.</span>' : ''}
+      </td>
+      <td><input type="number" min="1" value="${item.cantidad}" style="width:55px;padding:4px 6px;" onchange="_updVI(${i},+this.value)" /></td>
+      <td>
+        <input type="number" 
+               min="${item.precioMayorista || 0}" 
+               step="0.01" 
+               value="${(item.precioAplicado || item.precio).toFixed(2)}" 
+               style="width:85px;padding:4px 6px;" 
+               onchange="cambiarPrecioVenta(${i}, +this.value)" />
+      </td>
+      <td class="fw-700">${fmt(item.subtotal)}</td>
+      <td><button class="btn btn-danger btn-sm btn-icon" onclick="_rmVI(${i})">✕</button></td>
+    </tr>`).join('')}</tbody></table></div>`;
+
+  // Versión móvil (cards)
+  const cards = `<div class="mobile-card-list" style="gap:7px;">${ventaItems.map((item, i) => `
+    <div class="m-card" style="padding:10px 12px;">
+      <div class="m-card-header" style="margin-bottom:7px;">
+        <div>
+          <div class="m-card-title" style="font-size:13px;">${item.nombre}</div>
+          <span class="badge ${item.esCombo ? 'badge-green' : 'badge-violet'}">${item.detalle}</span>
+          ${esMay && Sesion.esAdmin() ? '<span class="badge badge-violet" style="font-size:9px;margin-left:3px;">Mayor.</span>' : ''}
+        </div>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="_rmVI(${i})">✕</button>
+      </div>
+      <div class="flex-center gap-8" style="flex-wrap:wrap;">
+        <label style="font-size:11px;color:var(--text-muted);">Cant.</label>
+        <input type="number" min="1" value="${item.cantidad}" style="width:55px;padding:5px 8px;" onchange="_updVI(${i},+this.value)" />
+        <label style="font-size:11px;color:var(--text-muted);">Precio</label>
+        <input type="number" 
+               min="${item.precioMayorista || 0}" 
+               step="0.01" 
+               value="${(item.precioAplicado || item.precio).toFixed(2)}" 
+               style="width:80px;padding:5px 8px;" 
+               onchange="cambiarPrecioVenta(${i}, +this.value)" />
+        <span style="flex:1;text-align:right;font-family:var(--font-display);font-weight:800;font-size:16px;" class="text-gradient">${fmt(item.subtotal)}</span>
+      </div>
+    </div>`).join('')}</div>`;
+
+  return tbl + cards;
 }
+
+window.cambiarPrecioVenta = function(i, nuevoPrecio) {
+  const item = ventaItems[i];
+  if (!item) return;
+  const min = item.precioMayorista || 0;
+  if (nuevoPrecio < min) {
+    toast(`El precio no puede ser menor que el costo mayorista (${fmt(min)})`, 'error');
+    // Revertir al mínimo en los inputs
+    const inputs = document.querySelectorAll('#ventaCartWrap input[type="number"]');
+    // Buscar el input de precio correspondiente (en la tabla es el 4to input, en mobile varía)
+    // Estrategia: actualizar todos los inputs cuyo valor original era el mismo
+    item.precioAplicado = min;
+    // Refrescar la vista para reflejar el mínimo
+    document.getElementById('ventaCartWrap').innerHTML = renderVentaCart();
+    updateVentaTotals();
+    return;
+  }
+  item.precioAplicado = nuevoPrecio;
+  item.subtotal = item.precioAplicado * item.cantidad;
+  updateVentaTotals();
+  // Actualizar el subtotal en la vista sin regenerar todo
+  const rows = document.querySelectorAll('#ventaCartWrap tbody tr');
+  if (rows[i]) {
+    const subtd = rows[i].querySelector('td:last-child');
+    if (subtd) subtd.innerHTML = fmt(item.subtotal);
+  }
+  // Actualizar la vista mobile también
+  const cards = document.querySelectorAll('#ventaCartWrap .m-card');
+  if (cards[i]) {
+    const subSpan = cards[i].querySelector('.text-gradient');
+    if (subSpan) subSpan.textContent = fmt(item.subtotal);
+  }
+};
 
 window._updVI=function(i,v){
   const esMay = esVentaMayorista();
@@ -1621,37 +1995,75 @@ window.agregarItemVenta=async function(){
   updateVentaTotals();
 };
 
-window.updateVentaTotals=function(){const sub=ventaItems.reduce((s,i)=>s+i.subtotal,0),desc=parseFloat(document.getElementById('vDescuento')?.value)||0,total=Math.max(0,sub-desc);const box=document.getElementById('ventaTotalBox');if(box)box.innerHTML=`<div class="cost-calc-box mt-12"><div class="cost-row"><span>Subtotal</span><span>${fmt(sub)}</span></div><div class="cost-row"><span>Descuento</span><span style="color:var(--danger)">-${fmt(desc)}</span></div><div class="cost-row total"><span>Total</span><span>${fmt(total)}</span></div></div>`;};
+window.updateVentaTotals = function() {
+  const sub = ventaItems.reduce((s,i) => s + i.subtotal, 0),
+        desc = parseFloat(document.getElementById('vDescuento')?.value) || 0,
+        envio = parseFloat(document.getElementById('vEnvio')?.value) || 0,
+        total = Math.max(0, sub - desc + envio);
+  const box = document.getElementById('ventaTotalBox');
+  if (box) box.innerHTML = `
+    <div class="cost-calc-box mt-12">
+      <div class="cost-row"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+      ${desc ? `<div class="cost-row"><span>Descuento</span><span style="color:var(--danger)">-${fmt(desc)}</span></div>` : ''}
+      ${envio ? `<div class="cost-row"><span>Envío</span><span>${fmt(envio)}</span></div>` : ''}
+      <div class="cost-row total"><span>Total</span><span>${fmt(total)}</span></div>
+    </div>`;
+};
 
 async function guardarVenta(){
-  const clienteId=document.getElementById('vCliente')?.value||'';
+  const clienteId = document.getElementById('vCliente')?.value || '';
   if(!clienteId){ await swalError('⚠️ Debés seleccionar un cliente antes de confirmar la venta.'); return; }
-  if(!ventaItems.length){await swalError('Agregá al menos un producto');return;}
+  if(!ventaItems.length){ await swalError('Agregá al menos un producto'); return; }
   const esMay = esVentaMayorista();
-  const sub=ventaItems.reduce((s,i)=>s+i.subtotal,0),desc=parseFloat(document.getElementById('vDescuento')?.value)||0,total=Math.max(0,sub-desc);
-  const cl=DB.clientes.find(c=>c.id===clienteId);
-  const prodsUpd={};
-  ventaItems.forEach(item=>{
+  const sub = ventaItems.reduce((s,i) => s + i.subtotal, 0);
+  const desc = parseFloat(document.getElementById('vDescuento')?.value) || 0;
+  const envio = parseFloat(document.getElementById('vEnvio')?.value) || 0; // NUEVO
+  const total = Math.max(0, sub - desc + envio); // Suma el envío
+  const cl = DB.clientes.find(c => c.id === clienteId);
+  const prodsUpd = {};
+  ventaItems.forEach(item => {
     if(item.esCombo){
-      (item.comboItems||[]).forEach(ci=>{
-        const p=DB.productos.find(x=>x.id===ci.productoId);
-        if(!p)return;
-        if(ci.esAcc)p.stockUnidades=Math.max(0,(p.stockUnidades||0)-ci.cantidad*item.cantidad);
-        else p.stockLitros=Math.max(0,(p.stockLitros||0)-(ci.litrosPorUnidad||0)*ci.cantidad*item.cantidad);
-        prodsUpd[p.id]=p;
+      (item.comboItems || []).forEach(ci => {
+        const p = DB.productos.find(x => x.id === ci.productoId);
+        if(!p) return;
+        if(ci.esAcc) p.stockUnidades = Math.max(0, (p.stockUnidades || 0) - ci.cantidad * item.cantidad);
+        else p.stockLitros = Math.max(0, (p.stockLitros || 0) - (ci.litrosPorUnidad || 0) * ci.cantidad * item.cantidad);
+        prodsUpd[p.id] = p;
       });
     } else {
-      const p=DB.productos.find(x=>x.id===item.productoId);
-      if(!p)return;
-      if(item.esAcc)p.stockUnidades=Math.max(0,(p.stockUnidades||0)-item.cantidad);
-      else p.stockLitros=Math.max(0,(p.stockLitros||0)-item.litrosPorUnidad*item.cantidad);
-      prodsUpd[p.id]=p;
+      const p = DB.productos.find(x => x.id === item.productoId);
+      if(!p) return;
+      if(item.esAcc) p.stockUnidades = Math.max(0, (p.stockUnidades || 0) - item.cantidad);
+      else p.stockLitros = Math.max(0, (p.stockLitros || 0) - item.litrosPorUnidad * item.cantidad);
+      prodsUpd[p.id] = p;
     }
   });
-  const venta={id:genId(),fecha:Date.now(),clienteId,clienteNombre:cl?cl.nombre:'',esMayorista:esMay,items:ventaItems.map(i=>({...i})),subtotal:sub,descuento:desc,total,estado:'pendiente',obs:document.getElementById('vObs')?.value.trim()||''};
+
+  // Construir objeto venta
+  const venta = {
+    id: genId(),
+    fecha: Date.now(),
+    clienteId,
+    clienteNombre: cl ? cl.nombre : '',
+    vendedorId: Sesion.esVendedor() ? Sesion.user.id : null,          // NUEVO
+    vendedorNombre: Sesion.esVendedor() ? Sesion.user.nombre : '',    // NUEVO
+    esMayorista: esMay,
+    items: ventaItems.map(i => ({...i})),
+    subtotal: sub,
+    descuento: desc,
+    envio: envio,        // NUEVO
+    total,
+    estado: 'pendiente',
+    obs: document.getElementById('vObs')?.value.trim() || ''
+  };
+
   closeModal();
-  await Promise.all([...Object.values(prodsUpd).map(p=>fbSave('productos',p)),fbSave('ventas',venta)]);
-  swalSuccess('¡Venta registrada!',`Total: <strong>${fmt(total)}</strong>${esMay?' <span class="badge badge-violet">Precio mayorista</span>':''}`);
+  await Promise.all([
+    ...Object.values(prodsUpd).map(p => fbSave('productos', p)),
+    fbSave('ventas', venta)
+  ]);
+
+  swalSuccess('¡Venta registrada!', `Total: <strong>${fmt(total)}</strong>${esMay ? ' <span class="badge badge-violet">Precio mayorista</span>' : ''}`);
 }
 
 function verVenta(id){const v=DB.ventas.find(x=>x.id===id);if(!v)return;const cl=DB.clientes.find(c=>c.id===v.clienteId);openModal('Detalle de Venta',`<p class="mb-8"><strong>Fecha:</strong> ${fmtDate(v.fecha)}</p><p class="mb-8"><strong>Cliente:</strong> ${cl?cl.nombre:v.clienteNombre||'—'}${v.esMayorista?' <span class="badge badge-violet">Mayorista</span>':''}</p>${v.obs?`<p class="mb-12"><strong>Obs:</strong> ${v.obs}</p>`:''}<p class="mb-12"><strong>Estado:</strong> <span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></p><div class="table-wrap mb-12"><table class="cart-table"><thead><tr><th>Producto</th><th>Pres.</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody>${v.items.map(i=>`<tr><td class="fw-600">${i.nombre}</td><td><span class="badge badge-violet">${i.detalle}</span></td><td>${i.cantidad}</td><td>${fmt(i.precioAplicado||i.precio)}</td><td class="fw-700">${fmt(i.subtotal)}</td></tr>`).join('')}</tbody></table></div><div class="cost-calc-box"><div class="cost-row"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div><div class="cost-row"><span>Descuento</span><span style="color:var(--danger)">-${fmt(v.descuento||0)}</span></div><div class="cost-row total"><span>Total</span><span>${fmt(v.total)}</span></div></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button class="btn btn-wsp-sm" onclick="wspVenta('${v.id}')">📲 WhatsApp</button></div>`,null,true);}
@@ -1821,6 +2233,58 @@ function renderReportes(){
     </div>`;
 }
 function wspReporte(){const tv=DB.ventas.reduce((s,v)=>s+v.total,0),tc=DB.compras.reduce((s,c)=>s+c.total,0),sb=DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length;window.open('https://wa.me/?text='+encodeURIComponent(`*📊 Resumen NURA — ${new Date().toLocaleDateString('es-AR')}*\n\n💰 Ventas: ${fmt(tv)}\n🚚 Compras: ${fmt(tc)}\n📈 Ganancia: ${fmt(tv-tc)}\n📦 Productos: ${DB.productos.length} | 👥 Clientes: ${DB.clientes.length}\n⚠️ Stock bajo: ${sb}\n\n_NURA Gestión_`),'_blank');}
+
+function renderMisReportes() {
+  if (!Sesion.esVendedor()) return navigate('catalogo');
+  const el = document.getElementById('page-misreportes');
+  const misVentas = DB.ventas.filter(v => v.vendedorId === Sesion.user.id);
+
+  if (misVentas.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><p>Aún no tienes ventas registradas</p></div>`;
+    return;
+  }
+
+  const totalVendido = misVentas.reduce((s, v) => s + v.total, 0);
+  const gananciaBruta = misVentas.reduce((s, v) => {
+    const ganV = v.items.reduce((sum, i) => sum + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0);
+    return s + ganV + (v.envio || 0);
+  }, 0);
+  const deudaAdmin = misVentas.reduce((s, v) => {
+    const costo = v.items.reduce((sum, i) => sum + (i.precioMayorista || 0) * i.cantidad, 0);
+    return s + costo;
+  }, 0);
+
+  const topP = {};
+  misVentas.forEach(v => v.items.forEach(i => {
+    topP[i.nombre] = (topP[i.nombre] || 0) + i.subtotal;
+  }));
+  const topCl = {};
+  misVentas.forEach(v => {
+    const cl = DB.clientes.find(c => c.id === v.clienteId);
+    const n = cl ? cl.nombre : v.clienteNombre || '?';
+    topCl[n] = (topCl[n] || 0) + v.total;
+  });
+
+  el.innerHTML = `
+    <div class="grid-3 mb-16">
+      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Total vendido</div><div class="stat-value">${fmt(totalVendido)}</div></div></div>
+      <div class="stat-card"><div class="stat-icon violet">💸</div><div class="stat-info"><div class="stat-label">Tu ganancia</div><div class="stat-value">${fmt(gananciaBruta)}</div></div></div>
+      <div class="stat-card"><div class="stat-icon orange">🧾</div><div class="stat-info"><div class="stat-label">Debés al admin</div><div class="stat-value">${fmt(deudaAdmin)}</div></div></div>
+    </div>
+    <div class="grid-2 mb-16">
+      <div class="card"><div class="section-title mb-12">🏆 Tus productos más vendidos</div>
+        ${Object.entries(topP).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,v],i)=>`
+          <div class="cost-row"><span>${i+1}. ${n}</span><span>${fmt(v)}</span></div>
+        `).join('') || '<p class="text-muted">Sin ventas</p>'}
+      </div>
+      <div class="card"><div class="section-title mb-12">👑 Tus mejores clientes</div>
+        ${Object.entries(topCl).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,v],i)=>`
+          <div class="cost-row"><span>${i+1}. ${n}</span><span>${fmt(v)}</span></div>
+        `).join('') || '<p class="text-muted">Sin ventas</p>'}
+      </div>
+    </div>
+  `;
+}
 
 // ── WhatsApp catálogo global ──────────────────────────────────────────────────
 document.getElementById('btnWhatsappGlobal').onclick=async function(){
@@ -2123,8 +2587,223 @@ window.wspDeudaCliente = function(clienteKey) {
   window.open(`https://wa.me/${tel||''}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
-navigate('dashboard');
-document.getElementById('sidebarClose').onclick = function() {
-  document.getElementById('sidebar').classList.remove('open');
-};
+// navigate('dashboard');
+// document.getElementById('sidebarClose').onclick = function() {
+//   document.getElementById('sidebar').classList.remove('open');
+// };
 console.log('🌿 NURA — Realtime Database + PWA + Combos + Mayorista');
+
+// ── Login ────────────────────────────────────────────────────────────
+(async function setupLogin() {
+  console.log('DB.usuarios al iniciar:', DB.usuarios);
+  // Esperar a que Firebase esté listo y DB.usuarios cargado
+   await new Promise(resolve => {
+    const check = () => {
+      if (window._FB_READY && DB.usuarios !== undefined) { // ← cambiado
+        resolve();
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+
+  // Crear admin por defecto si no existe
+  if (!DB.usuarios.find(u => u.username === 'admin')) {
+    const salt = genId();
+    const admin = {
+      id: genId(),
+      nombre: 'Admin Principal',
+      username: 'admin',
+      passwordHash: await hashPassword('admin123', salt),
+      salt,
+      rol: 'admin',
+      activo: true
+    };
+    await fbSave('usuarios', admin);
+  }
+
+  document.getElementById('loginBtn').onclick = login;
+  document.getElementById('loginPass').onkeydown = e => { if (e.key === 'Enter') login(); };
+  document.getElementById('loginUser').onkeydown = e => { if (e.key === 'Enter') login(); };
+  document.getElementById('loginRole').onkeydown = e => { if (e.key === 'Enter') login(); };
+
+  if (Sesion.verificar()) {
+  // Hay sesión válida → ocultar login, mostrar app
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  buildMenu();
+  currentPage = Sesion.esAdmin() ? 'dashboard' : 'catalogo';
+  navigate(currentPage);
+  iniciarControlInactividad();
+} else {
+  document.getElementById('loginScreen').style.display = '';
+  document.getElementById('app').style.display = 'none';
+}
+})();
+
+function iniciarControlInactividad() {
+  setInterval(() => {
+    if (Sesion.user && Date.now() - Sesion.lastActive > Sesion.TIMEOUT) {
+      Sesion.cerrar();
+    }
+  }, 60000);
+  ['click', 'keydown'].forEach(ev => document.addEventListener(ev, () => Sesion.touch()));
+}
+
+async function login() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const rol = document.getElementById('loginRole').value;
+  const errorEl = document.getElementById('loginError');
+  const loginBtn = document.getElementById('loginBtn');
+  errorEl.style.display = 'none';
+
+  if (!username || !password) {
+    errorEl.textContent = 'Completá todos los campos';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  // Activar spinner
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Ingresando...';
+
+  try {
+    const user = DB.usuarios.find(u => u.username === username && u.rol === rol && u.activo !== false);
+    if (!user) {
+      errorEl.textContent = 'Usuario o contraseña incorrectos';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    const hash = await hashPassword(password, user.salt);
+    if (hash !== user.passwordHash) {
+      errorEl.textContent = 'Usuario o contraseña incorrectos';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    Sesion.iniciar(user);
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    buildMenu();
+    currentPage = Sesion.esAdmin() ? 'dashboard' : 'catalogo';
+    navigate(currentPage);
+    iniciarControlInactividad();
+  } catch (err) {
+    errorEl.textContent = 'Error al conectar';
+    errorEl.style.display = 'block';
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Ingresar';
+  }
+}
+
+function renderUsuarios() {
+  if (!Sesion.esAdmin()) return navigate('dashboard');
+  const el = document.getElementById('page-usuarios');
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-primary" onclick="formUsuario(null)">+ Usuario</button>`;
+  const lista = DB.usuarios.filter(u => u.rol !== 'admin' || u.id === Sesion.user.id);
+  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Activo</th><th>Acciones</th></tr></thead><tbody>
+    ${lista.map(u => `
+      <tr>
+        <td class="fw-700">${u.username}</td>
+        <td>${u.nombre}</td>
+        <td><span class="badge badge-${u.rol==='admin'?'violet':'blue'}">${u.rol}</span></td>
+        <td><span class="badge badge-${u.activo!==false?'green':'red'}">${u.activo!==false?'Sí':'No'}</span></td>
+        <td><div class="table-actions">
+          <button class="btn btn-secondary btn-sm" onclick="formUsuario('${u.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarUsuario('${u.id}')">🗑</button>
+        </div></td>
+      </tr>`).join('')}
+  </tbody></table></div>`;
+  const cards = `<div class="mobile-card-list">${lista.map(u => `
+    <div class="m-card">
+      <div class="m-card-header"><div><div class="m-card-title">${u.username}</div><div class="m-card-subtitle">${u.nombre}</div></div><span class="badge badge-${u.rol==='admin'?'violet':'blue'}">${u.rol}</span></div>
+      <div class="m-card-footer">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formUsuario('${u.id}')">✏️ Editar</button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarUsuario('${u.id}')">🗑</button>
+      </div>
+    </div>`).join('')}</div>`;
+  el.innerHTML = lista.length ? tbl+cards : `<div class="empty-state"><div class="empty-icon">👤</div><p>No hay usuarios</p></div>`;
+}
+
+window.formUsuario = async function(id) {
+  if (!Sesion.esAdmin()) return;
+  const u = id ? DB.usuarios.find(x => x.id === id) : null;
+  const isAdmin = u?.rol === 'admin';
+  openModal(u ? 'Editar Usuario' : 'Nuevo Usuario', `
+    <div class="form-grid">
+      <div class="form-group full"><label>Nombre completo</label><input id="uNombre" value="${u ? u.nombre : ''}" /></div>
+      <div class="form-group"><label>Usuario</label><input id="uUsername" value="${u ? u.username : ''}" ${isAdmin ? 'readonly' : ''} /></div>
+      <div class="form-group"><label>Nueva contraseña ${u ? '(dejar vacía si no cambia)' : ''}</label><input type="password" id="uPassword" /></div>
+      <div class="form-group"><label>Rol</label><select id="uRol" ${isAdmin ? 'disabled' : ''}>
+        <option value="vendedor" ${u?.rol==='vendedor'?'selected':''}>Vendedor</option>
+        <option value="admin" ${u?.rol==='admin'?'selected':''}>Admin</option>
+      </select></div>
+      <div class="form-group"><label>Activo</label><select id="uActivo">
+        <option value="1" ${u?.activo!==false?'selected':''}>Sí</option>
+        <option value="0" ${u?.activo===false?'selected':''}>No</option>
+      </select></div>
+    </div>`, async () => {
+    const nombre = document.getElementById('uNombre').value.trim();
+    const username = document.getElementById('uUsername').value.trim();
+    const password = document.getElementById('uPassword').value;
+    const rol = document.getElementById('uRol').value;
+    const activo = document.getElementById('uActivo').value === '1';
+    if (!nombre || !username || (!u && !password)) {
+      await swalError('Nombre, usuario y contraseña son obligatorios');
+      return;
+    }
+    if (!u && DB.usuarios.find(x => x.username === username)) {
+      await swalError('El nombre de usuario ya existe');
+      return;
+    }
+    const usuario = {
+      id: u ? u.id : genId(),
+      nombre,
+      username,
+      salt: u ? u.salt : genId(),
+      rol,
+      activo
+    };
+    if (password) {
+      usuario.passwordHash = await hashPassword(password, usuario.salt);
+    } else if (u) {
+      usuario.passwordHash = u.passwordHash;
+    }
+    closeModal();
+    await fbSave('usuarios', usuario);
+    toast(u ? 'Usuario actualizado' : 'Usuario creado');
+  });
+};
+
+window.eliminarUsuario = async function(id) {
+  if (!Sesion.esAdmin()) return;
+  const u = DB.usuarios.find(x => x.id === id);
+  if (!u) return;
+  if (u.id === Sesion.user.id) {
+    await swalError('No podés eliminar tu propio usuario');
+    return;
+  }
+  const res = await swalConfirm('¿Eliminar usuario?', `Se eliminará a <strong>${u.nombre}</strong>`);
+  if (!res.isConfirmed) return;
+  await fbRemove('usuarios', id);
+  toast('Usuario eliminado');
+};
+// Cerrar sesión
+document.getElementById('logoutBtn').onclick = () => {
+  Swal.fire({
+    title: 'Cerrar sesión',
+    text: '¿Estás seguro?',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, salir',
+    cancelButtonText: 'Cancelar'
+  }).then(result => {
+    if (result.isConfirmed) {
+      Sesion.cerrar();
+    }
+  });
+};

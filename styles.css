@@ -71,7 +71,7 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
   position: relative;
 }
 .logo-img {
-  width: 130px; height: 130px; object-fit: contain;
+  width: 80px; height: 80px; object-fit: contain;
   filter: drop-shadow(0 0 16px rgba(82,218,210,0.45)) drop-shadow(0 0 6px rgba(167,139,250,0.3));
   flex-shrink: 0; margin-bottom: 5px;
 }
@@ -568,3 +568,54 @@ html, body {
 .deuda-container {
   display: block !important;
 }
+
+/* ===== LOGIN ===== */
+#loginScreen {
+  position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999;
+  font-family: var(--font-body);
+}
+.login-box {
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  padding: 30px 24px; width: 100%; max-width: 380px; margin: 16px; text-align: center;
+  border: 1px solid var(--border);
+}
+.login-box .logo-img { width: 80px; height: 80px; margin-bottom: 12px; }
+.login-box h2 { font-family: var(--font-display); font-size: 22px; margin-bottom: 4px; }
+.login-box .sub { font-size: 11px; color: var(--text-muted); margin-bottom: 20px; }
+.login-box input, .login-box select {
+  width: 100%; margin-bottom: 10px; padding: 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 14px; background: var(--surface); transition: border-color var(--transition);
+}
+.login-box input:focus, .login-box select:focus { border-color: var(--accent); outline: none; }
+.login-box button {
+  width: 100%; padding: 12px; background: linear-gradient(135deg, var(--accent-dark), var(--accent));
+  color: #fff; border: none; border-radius: var(--radius-sm); font-weight: 700; font-size: 14px; cursor: pointer;
+  margin-top: 6px; transition: filter var(--transition);
+}
+.login-box button:hover { filter: brightness(1.08); }
+.login-box .error { color: var(--danger); font-size: 12px; margin-top: 6px; display: none; }
+
+/* Botón cerrar sesión en topbar */
+#logoutBtn {
+  margin-left: auto;          /* empuja a la derecha */
+  font-size: 12px;
+  padding: 6px 12px;
+  white-space: nowrap;
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(244,63,94,0.06);
+}
+#logoutBtn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* En móvil: asegurar que no se rompa el layout */
+@media (max-width: 700px) {
+  #logoutBtn {
+    font-size: 11px;
+    padding: 5px 10px;
+    order: 10; /* queda siempre al final de la fila */
+  }
+}
+#loginBtn { min-width: 120px; }

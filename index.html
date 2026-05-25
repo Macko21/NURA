@@ -2,16 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
- <meta
-  name="viewport"
-  content="
-    width=device-width,
-    initial-scale=1.0,
-    maximum-scale=1.0,
-    user-scalable=no,
-    viewport-fit=cover
-  "
-/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#52dad2" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -32,12 +23,9 @@
   <script src="env.js"></script>
 
   <script type="module">
-    import { initializeApp }
-      from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-    import { getDatabase, ref, set, onValue, remove, update }
-      from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { getDatabase, ref, set, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
-   
     const app = initializeApp(FIREBASE_CONFIG);
     const db  = getDatabase(app);
 
@@ -57,14 +45,26 @@
       <div style="height:100%;background:linear-gradient(90deg,#52dad2,#a78bfa);animation:splashLoad 1.2s ease-in-out infinite;border-radius:2px;"></div>
     </div>
   </div>
-  <style>
-    @keyframes splashPulse { from{filter:drop-shadow(0 0 10px rgba(82,218,210,0.3))} to{filter:drop-shadow(0 0 24px rgba(82,218,210,0.7))} }
-    @keyframes splashLoad  { 0%{transform:translateX(-100%)} 100%{transform:translateX(400%)} }
-  </style>
+
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen">
+    <div class="login-box">
+      <img src="logo.png" alt="Nura" class="logo-img" />
+      <h2>NUR<span style="color:#a78bfa;">A</span></h2>
+      <div class="sub">artículos de limpieza</div>
+      <input type="text" id="loginUser" placeholder="Usuario" autocomplete="off" />
+      <input type="password" id="loginPass" placeholder="Contraseña" />
+      <select id="loginRole">
+        <option value="admin">🔐 Admin</option>
+        <option value="vendedor">🏪 Vendedor</option>
+      </select>
+      <button id="loginBtn">Ingresar</button>
+      <div class="error" id="loginError">Usuario o contraseña incorrectos</div>
+    </div>
+  </div>
 
   <!-- SYNC BAR -->
   <div id="syncBar" style="display:none;position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#1ab8af,#a78bfa);z-index:8000;animation:syncP .9s ease-in-out infinite alternate;pointer-events:none;"></div>
-  <style>@keyframes syncP{from{opacity:.5}to{opacity:1}}</style>
 
   <!-- APP -->
   <div id="app" style="display:none;">
@@ -77,54 +77,7 @@
           <span class="logo-sub">artículos de limpieza</span>
         </div>
       </div>
-      <ul class="nav-menu">
-
-  <li class="nav-item active" data-page="dashboard">
-    <span class="nav-icon">📊</span>
-    <span>Dashboard</span>
-  </li>
-
-  <li class="nav-item" data-page="catalogo">
-    <span class="nav-icon">🧴</span>
-    <span>Catálogo</span>
-  </li>
-
-  <li class="nav-item" data-page="clientes">
-    <span class="nav-icon">👥</span>
-    <span>Clientes</span>
-  </li>
-
-  <li class="nav-item" data-page="ventas">
-    <span class="nav-icon">💸</span>
-    <span>Ventas</span>
-  </li>
-
-  <li class="nav-item" data-page="compras">
-    <span class="nav-icon">🛒</span>
-    <span>Compras</span>
-  </li>
-
-  <li class="nav-item" data-page="stock">
-    <span class="nav-icon">📦</span>
-    <span>Stock</span>
-  </li>
-
-  <li class="nav-item" data-page="combos">
-    <span class="nav-icon">🎁</span>
-    <span>Combos</span>
-  </li>
-
-  <li class="nav-item" data-page="deudas">
-    <span class="nav-icon">💳</span>
-    <span>Deudas</span>
-  </li>
-
-  <li class="nav-item" data-page="reportes">
-    <span class="nav-icon">📈</span>
-    <span>Reportes</span>
-  </li>
-
-</ul>
+      <ul class="nav-menu" id="navMenu"></ul>
       <div class="sidebar-footer">
         <div id="syncStatus" style="display:flex;align-items:center;gap:8px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:rgba(255,255,255,0.35);">
           <span id="syncDot" style="width:6px;height:6px;border-radius:50%;background:#52dad2;flex-shrink:0;transition:background .3s;"></span>
@@ -142,6 +95,8 @@
         <button class="hamburger" id="hamburger">☰</button>
         <div class="topbar-title" id="pageTitle">Dashboard</div>
         <div class="topbar-actions" id="topbarActions"></div>
+         <!-- BOTÓN CERRAR SESIÓN -->
+        <button id="logoutBtn" class="btn btn-sm btn-outline" style="flex-shrink:0;">🚪 Salir</button>
       </header>
       <div class="page active" id="page-dashboard"></div>
       <div class="page" id="page-catalogo"></div>
@@ -152,6 +107,8 @@
       <div class="page" id="page-combos"></div>
       <div class="page" id="page-deudas"></div>
       <div class="page" id="page-reportes"></div>
+      <div class="page" id="page-usuarios"></div>
+      <div class="page" id="page-misreportes"></div>
     </main>
   </div>
 
@@ -204,29 +161,15 @@
       _dip.prompt(); await _dip.userChoice; _dip = null;
       const b = document.getElementById('installBanner'); if(b) b.remove();
     };
+
+    // bloquear zoom multitouch
+    document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) event.preventDefault();
+      lastTouchEnd = now;
+    }, false);
   </script>
-  <script>
-
-  // bloquear zoom multitouch
-  document.addEventListener('gesturestart', function (e) {
-    e.preventDefault();
-  });
-
-  // bloquear doble tap zoom
-  let lastTouchEnd = 0;
-
-  document.addEventListener('touchend', function (event) {
-
-    const now = Date.now();
-
-    if (now - lastTouchEnd <= 300) {
-      event.preventDefault();
-    }
-
-    lastTouchEnd = now;
-
-  }, false);
-
-</script>
 </body>
 </html>
