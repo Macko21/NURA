@@ -84,7 +84,7 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
 .logo-brand .letra-a { color: #a78bfa; -webkit-text-fill-color: #a78bfa; text-shadow: 0 0 14px rgba(167,139,250,0.8); }
 .logo-sub { font-size: 8.5px; color: rgba(255,255,255,0.28); letter-spacing: 3px; text-transform: uppercase; margin-top: 5px; font-weight: 600; }
 
-.nav-menu { list-style: none; padding: 14px 10px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.nav-menu { list-style: none; padding: 14px 10px; flex: none; display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   display: flex; align-items: center; gap: 11px;
   padding: 11px 13px; border-radius: var(--radius-sm);
@@ -103,7 +103,7 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
 
 .sidebar-footer { padding: 14px 10px 22px; }
 .btn-wsp {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px;
+  display: flex; align-items: center; gap: 4px; width: 100%; padding: 5px 50px; margin-top: -10px;
   background: var(--wsp); color: #fff; border: none; border-radius: var(--radius-sm);
   font-family: var(--font-body); font-size: 13px; font-weight: 600;
   cursor: pointer; transition: all var(--transition);
@@ -118,20 +118,63 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: flex-end;
-  padding: env(safe-area-inset-top) 20px 10px 20px;
-  gap: 12px;
+  align-items: center; /* Centrado vertical */
+  padding: env(safe-area-inset-top) 16px 0 16px; /* Ajuste de padding lateral */
+  gap: 12px; /* Espacio entre el hamburguesa y el título */
   position: sticky;
   top: 0;
   z-index: 50;
-  box-shadow: 0 1px 0 var(--border);
 }
+
+#sidebarClose {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  #sidebarClose {
+    display: block; /* La cruz solo se muestra en el menú móvil */
+  }
+  .logo-img{
+    width: 80px; /* Logo un poco más pequeño en móvil */
+    height: 80px;
+  }
+}
+
+@media (min-width: 701px) {
+  .hamburger { display: none !important; }
+}
+
 .hamburger { 
   background: none; border: none; font-size: 20px; color: var(--text); cursor: pointer; padding: 4px 8px;
   min-height: 40px; min-width: 40px; display: flex; align-items: center; justify-content: center;
   position: relative; z-index: 60;
 }
-.topbar-title { font-family: var(--font-display); font-size: 18px; font-weight: 800; flex: 1; color: var(--text); }
+.topbar-title {
+  position: static; /* Quitamos el absolute */
+  transform: none;  /* Quitamos el transform */
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  flex: 1; /* Ocupa el espacio restante entre el menú y las acciones */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== MÓVIL ===== */
+@media (max-width: 700px) {
+  .topbar {
+    padding-left: 10px; /* Un poco menos de espacio en móvil */    
+    gap: 8px;
+  }
+  
+  .topbar-title {
+    font-size: 16px; /* Un poco más pequeño en móvil */
+    padding-top: 20px; /* Ajuste vertical para mejor alineación con el menú */
+  }
+}
+
 .topbar-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
 /* ===== PAGES ===== */
@@ -421,9 +464,10 @@ textarea { resize: vertical; min-height: 70px; }
 @media (max-width: 960px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) {
   :root { --topbar-h: 52px; }
-  .sidebar { transform: translateX(-100%); padding-top: max(env(safe-area-inset-top), 8px); }
+  .sidebar { transform: translateX(-100%); padding-top: max(env(safe-area-inset-top), 8px); overflow-y: auto; /* Permite scroll si el contenido es alto */
+  padding-bottom: 30px; /* Espacio extra al final */}
   .sidebar.open { transform: none; box-shadow: 4px 0 32px rgba(0,0,0,0.4); }
-  .hamburger { display: flex; }
+  .hamburger { display: flex; padding-top: 18px;}
   .main-content { margin-left: 0; }
   .page { padding: 12px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
@@ -446,6 +490,7 @@ textarea { resize: vertical; min-height: 70px; }
   .search-bar { max-width: 100%; }
   .product-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .product-card-img { height: 70px; font-size: 30px; }
+  
 }
 @media (max-width: 400px) { .product-grid { grid-template-columns: 1fr; } }
 
@@ -521,4 +566,17 @@ html, body {
   .page {
     padding-top: 12px;
   }
+}
+/* Asegura que el contenedor de deuda se muestre siempre */
+.deuda-container {
+    display: block !important; /* Visible en todos los dispositivos */
+}
+
+/* Solo si quieres que tenga un layout distinto en desktop */
+@media (min-width: 768px) {
+    .deuda-container {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
 }

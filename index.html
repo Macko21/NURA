@@ -69,6 +69,7 @@
   <!-- APP -->
   <div id="app" style="display:none;">
     <nav class="sidebar" id="sidebar">
+      <button id="sidebarClose" style="position:absolute; top:10px; right:10px; background:none; border:none; color:white; font-size:24px; z-index:101;">✕</button>
       <div class="sidebar-logo">
         <img src="logo.png" alt="Nura" class="logo-img" />
         <div class="logo-text">
@@ -113,6 +114,11 @@
     <span>Combos</span>
   </li>
 
+  <li class="nav-item" data-page="deudas">
+    <span class="nav-icon">💳</span>
+    <span>Deudas</span>
+  </li>
+
   <li class="nav-item" data-page="reportes">
     <span class="nav-icon">📈</span>
     <span>Reportes</span>
@@ -144,6 +150,7 @@
       <div class="page" id="page-compras"></div>
       <div class="page" id="page-stock"></div>
       <div class="page" id="page-combos"></div>
+      <div class="page" id="page-deudas"></div>
       <div class="page" id="page-reportes"></div>
     </main>
   </div>
