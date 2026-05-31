@@ -1,64 +1,64 @@
 "use strict";
 
-const { createPlayer, getPlayer, getRanking, db } = require("./database");
-
-function run(sql, ...params) {
-  try {
-    db.prepare(sql).run(...params);
-    return Promise.resolve(true);
-  } catch(e) { return Promise.reject(e); }
-}
+const { createPlayer, getPlayer, updatePlayer, getRanking } = require("./database");
 
 async function createOrLoadPlayer(player) {
   await createPlayer(player);
   return getPlayer(player.id);
 }
 
-function getPlayerProfile(playerId) { return getPlayer(playerId); }
-
-function addCoins(id, amount) {
-  return run("UPDATE players SET coins=coins+?, coins_won=coins_won+? WHERE id=?", amount, amount, id);
+function getPlayerProfile(id) {
+  return getPlayer(id);
 }
 
-function removeCoins(id, amount) {
-  return run("UPDATE players SET coins=CASE WHEN coins>=? THEN coins-? ELSE coins END, coins_bet=coins_bet+? WHERE id=?", amount, amount, amount, id);
+async function registerGamePlayed(id, score) {
+  const p = await getPlayer(id);
+  if (!p) return;
+  return updatePlayer(id, {
+    games_played:  (p.games_played  || 0) + 1,
+    total_score:   (p.total_score   || 0) + score,
+    highest_score: Math.max(p.highest_score || 0, score)
+  });
 }
 
-function registerGamePlayed(id, score) {
-  return run("UPDATE players SET games_played=games_played+1, total_score=total_score+?, highest_score=CASE WHEN ?>highest_score THEN ? ELSE highest_score END WHERE id=?", score, score, score, id);
-}
-
-function registerWin(id) {
-  return run("UPDATE players SET games_won=games_won+1, ranking_points=ranking_points+100, win_streak=win_streak+1 WHERE id=?", id);
+async function registerWin(id) {
+  const p = await getPlayer(id);
+  if (!p) return;
+  return updatePlayer(id, {
+    games_won:      (p.games_won      || 0) + 1,
+    ranking_points: (p.ranking_points || 0) + 100,
+    win_streak:     (p.win_streak     || 0) + 1
+  });
 }
 
 function resetWinStreak(id) {
-  return run("UPDATE players SET win_streak=0 WHERE id=?", id);
+  return updatePlayer(id, { win_streak: 0 });
 }
 
-function registerStraight(id) {
-  return run("UPDATE players SET stairs=stairs+1 WHERE id=?", id);
+// Stubs — para uso futuro
+function registerStraight(id)    { return Promise.resolve(); }
+function registerFiveOnes(id)    { return Promise.resolve(); }
+function registerKick(id)        { return Promise.resolve(); }
+
+async function registerDisconnect(id) {
+  const p = await getPlayer(id);
+  if (!p) return;
+  return updatePlayer(id, { disconnects: (p.disconnects || 0) + 1 });
 }
 
-function registerFiveOnes(id) {
-  return run("UPDATE players SET five_ones=five_ones+1 WHERE id=?", id);
+function getTopRanking() {
+  return getRanking();
 }
-
-function registerKick(id) {
-  return run("UPDATE players SET inactivity_kicks=inactivity_kicks+1 WHERE id=?", id);
-}
-
-function registerDisconnect(id) {
-  return run("UPDATE players SET disconnects=disconnects+1 WHERE id=?", id);
-}
-
-function getTopRanking() { return getRanking(); }
 
 module.exports = {
-  createOrLoadPlayer, getPlayerProfile,
-  addCoins, removeCoins,
-  registerGamePlayed, registerWin, resetWinStreak,
-  registerStraight, registerFiveOnes,
-  registerKick, registerDisconnect,
+  createOrLoadPlayer,
+  getPlayerProfile,
+  registerGamePlayed,
+  registerWin,
+  resetWinStreak,
+  registerStraight,
+  registerFiveOnes,
+  registerKick,
+  registerDisconnect,
   getTopRanking
 };

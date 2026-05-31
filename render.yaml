@@ -4,10 +4,7 @@ services:
     runtime: node
     buildCommand: npm install
     startCommand: node backend/server.js
-    envVars:
-      - key: PORT
-        value: 3000
     disk:
-      name: database
-      mountPath: /database
+      name: db
+      mountPath: /app/database
       sizeGB: 1

@@ -3,99 +3,99 @@
 /**
  * ============================================================
  * LOS 10.000 DE MACKO — database.js
- * Usa better-sqlite3 (síncrono, compatible con todos los entornos)
+ * Almacenamiento en JSON puro. Sin dependencias nativas.
+ * Compatible con Node.js 18, 20, 22, 24 y cualquier hosting.
  * ============================================================
  */
 
 const path = require("path");
 const fs   = require("fs");
 
-// Asegurar que existe la carpeta database/
-const dbDir = path.join(__dirname, "../database");
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+const DB_DIR  = path.join(__dirname, "../database");
+const DB_FILE = path.join(DB_DIR, "players.json");
 
-const Database = require("better-sqlite3");
-const db = new Database(path.join(dbDir, "los10000.db"));
-
-// WAL mode = mejor performance
-db.pragma("journal_mode = WAL");
-
-/* ── Inicializar tablas ──────────────────────────────────── */
-function initializeDatabase() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS players (
-      id              TEXT PRIMARY KEY,
-      alias           TEXT NOT NULL,
-      name            TEXT NOT NULL,
-      created_at      INTEGER NOT NULL,
-      games_played    INTEGER DEFAULT 0,
-      games_won       INTEGER DEFAULT 0,
-      ranking_points  INTEGER DEFAULT 0,
-      total_score     INTEGER DEFAULT 0,
-      highest_score   INTEGER DEFAULT 0,
-      coins           INTEGER DEFAULT 0,
-      coins_won       INTEGER DEFAULT 0,
-      coins_bet       INTEGER DEFAULT 0,
-      stairs          INTEGER DEFAULT 0,
-      five_ones       INTEGER DEFAULT 0,
-      inactivity_kicks INTEGER DEFAULT 0,
-      disconnects     INTEGER DEFAULT 0,
-      win_streak      INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS matches (
-      id               TEXT PRIMARY KEY,
-      room_code        TEXT,
-      winner_id        TEXT,
-      winner_alias     TEXT,
-      players_count    INTEGER,
-      duration_seconds INTEGER,
-      started_at       INTEGER,
-      finished_at      INTEGER
-    );
-  `);
-  console.log("✅ SQLite listo (better-sqlite3)");
+// Crear carpeta si no existe
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
-/* ── Queries ─────────────────────────────────────────────── */
+// Crear archivo si no existe
+if (!fs.existsSync(DB_FILE)) {
+  fs.writeFileSync(DB_FILE, JSON.stringify({ players: {} }, null, 2), "utf8");
+}
+
+/* ── Leer / escribir ─────────────────────────────────────── */
+function readDB() {
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch(e) {
+    return { players: {} };
+  }
+}
+
+function writeDB(data) {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+  } catch(e) {
+    console.error("Error escribiendo DB:", e.message);
+  }
+}
+
+/* ── API ─────────────────────────────────────────────────── */
+function initializeDatabase() {
+  // Verificar que el archivo existe y es válido
+  readDB();
+  console.log("✅ Base de datos JSON lista:", DB_FILE);
+}
+
 function createPlayer(player) {
   try {
-    db.prepare(`
-      INSERT OR IGNORE INTO players (id, alias, name, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(player.id, player.alias, player.name, Date.now());
+    const db = readDB();
+    if (!db.players[player.id]) {
+      db.players[player.id] = {
+        id:             player.id,
+        alias:          player.alias || player.name,
+        name:           player.name,
+        created_at:     Date.now(),
+        games_played:   0,
+        games_won:      0,
+        ranking_points: 0,
+        total_score:    0,
+        highest_score:  0,
+        win_streak:     0,
+        disconnects:    0
+      };
+      writeDB(db);
+    }
     return Promise.resolve(true);
   } catch(e) { return Promise.reject(e); }
 }
 
 function getPlayer(playerId) {
   try {
-    const row = db.prepare("SELECT * FROM players WHERE id = ?").get(playerId);
-    return Promise.resolve(row);
+    const db = readDB();
+    return Promise.resolve(db.players[playerId] || null);
+  } catch(e) { return Promise.reject(e); }
+}
+
+function updatePlayer(playerId, fields) {
+  try {
+    const db = readDB();
+    if (!db.players[playerId]) return Promise.resolve(false);
+    Object.assign(db.players[playerId], fields);
+    writeDB(db);
+    return Promise.resolve(true);
   } catch(e) { return Promise.reject(e); }
 }
 
 function getRanking() {
   try {
-    const rows = db.prepare(
-      "SELECT * FROM players ORDER BY ranking_points DESC LIMIT 100"
-    ).all();
+    const db   = readDB();
+    const rows = Object.values(db.players)
+      .sort((a, b) => b.games_won - a.games_won || b.ranking_points - a.ranking_points)
+      .slice(0, 100);
     return Promise.resolve(rows);
   } catch(e) { return Promise.reject(e); }
 }
 
-function runUpdate(sql, params) {
-  try {
-    db.prepare(sql).run(...params);
-    return Promise.resolve(true);
-  } catch(e) { return Promise.reject(e); }
-}
-
-module.exports = {
-  db,
-  initializeDatabase,
-  createPlayer,
-  getPlayer,
-  getRanking,
-  runUpdate
-};
+module.exports = { initializeDatabase, createPlayer, getPlayer, updatePlayer, getRanking };
