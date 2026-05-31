@@ -105,18 +105,28 @@ function eliminatePlayer(roomId, playerId) {
   reconnTimers.delete(playerId);
   clients.delete(playerId);
 
-  diceDisconnect(roomId, playerId, broadcastRoom);
+  const match = getMatch(roomId);
+
+  // Solo avanzar turno si hay partida activa
+  if (match) {
+    diceDisconnect(roomId, playerId, broadcastRoom);
+  }
+
   removePlayer(roomId, playerId);
 
-  const winner = getAutomaticWinner(roomId);
-  if (winner) {
-    const match = getMatch(roomId);
-    broadcastRoom(roomId, "GAME_OVER", {
-      winner, match: match ? snapshotMatch(match) : null
-    });
-    destroyMatch(roomId);
-    return;
+  // Ganador automático SOLO si la partida ya empezó
+  // En sala de espera (sin match) no hay ganador automático
+  if (match) {
+    const winner = getAutomaticWinner(roomId);
+    if (winner) {
+      broadcastRoom(roomId, "GAME_OVER", {
+        winner, match: snapshotMatch(match)
+      });
+      destroyMatch(roomId);
+      return;
+    }
   }
+
   broadcastRoomState(roomId);
 }
 
@@ -312,8 +322,15 @@ wss.on("connection", socket => {
     // Timer: si no reconecta en RECONN_MS → eliminar definitivamente
     const timerId = setTimeout(() => {
       console.log(`❌ Eliminado por timeout: ${playerId}`);
-      broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
-      eliminatePlayer(roomId, playerId);
+      const currentRoom = getRoom(roomId);
+      // Solo notificar si la sala sigue existiendo
+      if (currentRoom) {
+        broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
+        eliminatePlayer(roomId, playerId);
+      } else {
+        reconnTimers.delete(playerId);
+        clients.delete(playerId);
+      }
     }, RECONN_MS);
 
     reconnTimers.set(playerId, timerId);

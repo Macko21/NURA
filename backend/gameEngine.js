@@ -75,11 +75,11 @@ function calculateScore(dice) {
       scoringDice += 5;
 
     } else if (count === 4) {
-      // Cuarteto = trío × 2
+      // Cuarteto = face × 1000
       if (face === 1) {
         score += 2000;
       } else {
-        score += face * 200;
+        score += face * 1000;
       }
       scoringDice += 4;
 
