@@ -80,9 +80,9 @@ const DOT_POSITIONS = {
   6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
 };
 
-function makeDieSVG(value, scoring=false) {
+function makeDieSVG(value, hot=false) {
   const dots = DOT_POSITIONS[value] || [];
-  const dotColor = scoring ? '#1a5010' : '#1a1a2e';
+  const dotColor = hot ? '#6b3400' : '#1a1a2e';
   const circles = dots.map(([cx,cy]) =>
     `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${dotColor}"/>`
   ).join('');
@@ -92,20 +92,52 @@ function makeDieSVG(value, scoring=false) {
 function makeDie(value, state='normal') {
   const el = document.createElement('div');
   el.className = 'die rolling'
-    + (state === 'scoring' ? ' scoring' : '')
+    + (state === 'scoring' ? ' scoring' : '')  // verde individual
+    + (state === 'hot'     ? ' hot'     : '')  // dorado caliente
     + (state === 'dead'    ? ' dead'    : '');
-  el.innerHTML = makeDieSVG(value, state === 'scoring');
+  el.innerHTML = makeDieSVG(value, state === 'hot');
   el.dataset.val = value;
   return el;
+}
+
+/* Calcula cuáles dados puntúan individualmente (sin ser todos calientes) */
+function scoringIndices(dice) {
+  const counts = {};
+  dice.forEach(d => counts[d] = (counts[d]||0)+1);
+  const result = [];
+  dice.forEach((val, i) => {
+    const c = counts[val];
+    // Trio o más → todos los de ese valor puntúan
+    if (c >= 3) { result.push(i); return; }
+    // Sueltos: solo 1 y 5
+    if (val === 1 || val === 5) result.push(i);
+  });
+  return result;
 }
 
 function showDice(dice, mode) {
   const row = $('dice-row');
   row.innerHTML = '';
+
+  // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
+  let greenIdx = [];
+  if (mode === 'scored') {
+    // Verificar primero si es escalera (todos calientes)
+    const sorted = [...dice].sort((a,b)=>a-b).join('');
+    const isStr  = dice.length===5 && ['12345','23456','13456'].includes(sorted);
+    if (isStr) {
+      // Escalera = todos calientes → usar modo 'all' (dorado)
+      mode = 'all';
+    } else {
+      greenIdx = scoringIndices(dice);
+    }
+  }
+
   dice.forEach((val, i) => {
     let state = 'normal';
-    if (mode === 'all')  state = 'scoring';
-    if (mode === 'dead') state = 'dead';
+    if (mode === 'all')    state = 'hot';     // todos calientes → dorado
+    if (mode === 'dead')   state = 'dead';
+    if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring'; // verdes individuales
     const die = makeDie(val, state);
     die.style.animationDelay = (i * 55) + 'ms';
     row.appendChild(die);
@@ -590,7 +622,7 @@ function handle(type, data) {
     case 'ROLL_RESULT':
       S.match=data.match;
       renderSB(data.match);
-      showDice(data.dice,'normal');
+      showDice(data.dice,'scored');
       setMsg(
         `Tiro ${data.rollCount}/3 — +${data.rollScore} pts` +
         (data.autoBank ? ' — Banco automático...' : ''),
@@ -917,7 +949,7 @@ function showWin(playerName, desc, dice) {
   (dice||[]).forEach(v => {
     const d = document.createElement('div');
     d.className = 'win-die';
-    d.innerHTML = makeDieSVG(v, false);
+    d.innerHTML = makeDieSVG(v, true);
     wr.appendChild(d);
   });
   $('modal-win').classList.remove('hidden');
