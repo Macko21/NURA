@@ -48,7 +48,7 @@ const DICE_MAX = 6;
  * ============================================================
  */
 
-const TURN_TIMEOUT_MS = 30000;
+const TURN_TIMEOUT_MS = 15000;
 
 const INACTIVITY_LIMIT = 3;
 

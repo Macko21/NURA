@@ -11,6 +11,7 @@ const S = {
   ws:null, chatOpen:false, chatUnread:0,
   joiningRoom:false, isOwner:false
 };
+let _playAgainTimer = null;
 
 /* ── Persistencia de sesión ──────────────────────────── */
 const SESSION_KEY = 'macko_session';
@@ -116,11 +117,11 @@ function showEntryBanner(gained) {
 }
 
 /* ── Contador de tiempo ──────────────────────────────── */
-const TURN_SECS  = 30;
+const TURN_SECS  = 15;
 const CIRCUMFERENCE = 2 * Math.PI * 18; // r=18 del SVG
 
 let _timerInterval = null;
-let _timerSecsLeft = TURN_SECS;
+let _timerSecsLeft = TURN_SECS; // 15 segundos
 
 function startTimer(seconds) {
   stopTimer();
@@ -298,6 +299,49 @@ function syncMyScore(match) {
   if (me) $('my-score').textContent = me.score||0;
 }
 
+function updateGameRoomCode() {
+  const el = $('game-room-code');
+  if (el) el.textContent = S.roomCode || '—';
+}
+
+function goToPlayAgain(room) {
+  // Cancelar timer si lo llaman manualmente
+  clearInterval(_playAgainTimer);
+  _playAgainTimer = null;
+
+  // Cerrar modal
+  $('modal-win').classList.add('hidden');
+
+  // Resetear hint y botones del modal
+  const hint = $('play-again-hint');
+  if (hint) hint.classList.add('hidden');
+
+  // Actualizar estado
+  S.roomId   = room.id;
+  S.roomCode = room.code;
+  saveSession();
+
+  // Resetear botón ready
+  $('btn-ready').disabled    = false;
+  $('btn-ready').textContent = 'Estoy listo ✓';
+
+  // Limpiar chat de juego y dados
+  $('chat-msgs').innerHTML = '';
+  clearDice();
+
+  // Mostrar sala de espera con los mismos jugadores
+  renderRoom(room);
+
+  // El dueño original sigue siendo el primero de la sala
+  const amOwner = room.players[0]?.id === S.id;
+  S.isOwner = amOwner;
+  $('btn-cancel-room').classList.toggle('hidden', !amOwner);
+  $('btn-leave-room').classList.toggle('hidden', amOwner);
+
+  showScreen('screen-room');
+  toast('🎲 ¡Revancha! Marcá listo cuando estés.', 3000);
+}
+
 /* ── WebSocket ───────────────────────────────────────── */
 function connect(cb) {
   const proto = location.protocol==='https:' ? 'wss' : 'ws';
@@ -338,6 +382,7 @@ function handle(type, data) {
       updateTurnUI(data.match);
       toast('🔄 Reconectado a la partida', 3000);
       sys('Reconectado');
+      updateGameRoomCode();
       break;
 
     case 'RECONNECTED_LOBBY':
@@ -376,6 +421,7 @@ function handle(type, data) {
       clearDice();
       toast('🎲 Te uniste a la partida en curso. Necesitás 1000+ para entrar.', 4000);
       sys('Entraste a la partida en curso — necesitás 1000+ para entrar al juego');
+      updateGameRoomCode();
       break;
 
     case 'PLAYER_JOINED_GAME':
@@ -434,6 +480,7 @@ function handle(type, data) {
       updateTurnUI(data.match);
       clearDice();
       sys('¡La partida comenzó!');
+      updateGameRoomCode();
       SFX.score();
       // Iniciar timer si es mi turno
       if (data.firstPlayer?.id === S.id) startTimer(TURN_SECS);
@@ -620,6 +667,51 @@ function handle(type, data) {
       break;
 
     /* ── Error ───────────────────────────────────────── */
+    case 'PLAY_AGAIN': {
+      // El servidor reseteó la sala — todos vuelven a esperar
+      S.match   = null;
+      S.entered = false;
+      S.myTurn  = false;
+      stopTimer();
+
+      // Mostrar hint en el modal con cuenta regresiva
+      const hint    = $('play-again-hint');
+      const cdEl    = $('play-again-countdown');
+      const btnPA   = $('btn-play-again');
+      if (hint)  hint.classList.remove('hidden');
+      if (btnPA) btnPA.textContent = '🎲 ¡Jugar de nuevo!';
+
+      let cd = 4;
+      if (cdEl) cdEl.textContent = cd;
+
+      clearInterval(_playAgainTimer);
+      _playAgainTimer = setInterval(() => {
+        cd--;
+        if (cdEl) cdEl.textContent = cd;
+        if (cd <= 0) {
+          clearInterval(_playAgainTimer);
+          _playAgainTimer = null;
+          // Ir a la sala automáticamente
+          goToPlayAgain(data.room);
+        }
+      }, 1000);
+      break;
+    }
+
+    case 'LEFT_GAME':
+      // Yo salí de la partida
+      stopTimer();
+      clearSession();
+      S.match=null; S.roomId=null; S.roomCode=null;
+      S.entered=false; S.myTurn=false;
+      $('btn-ready').disabled=false;
+      $('btn-ready').textContent='Estoy listo ✓';
+      $('chat-msgs').innerHTML='';
+      clearDice();
+      toast('Saliste de la partida', 2500);
+      showScreen('screen-lobby');
+      break;
+
     case 'ERROR':
       S.joiningRoom = false;
       const joinBtn = $('btn-join-confirm');
@@ -854,6 +946,14 @@ function initUI() {
     else doJoin();
   };
 
+  /* Código en partida */
+  $('btn-copy-game-code').onclick = () => {
+    const code = S.roomCode || '';
+    navigator.clipboard?.writeText(code)
+      .then(()  => toast('Código copiado: ' + code))
+      .catch(()  => toast('Código: ' + code));
+  };
+
   /* Sala de espera */
   $('btn-copy-code').onclick = () => {
     navigator.clipboard?.writeText(S.roomCode||'')
@@ -917,20 +1017,53 @@ function initUI() {
   $('chat-send').onclick  = sendChat;
   $('chat-input').onkeydown = e => { if (e.key==='Enter') sendChat(); };
 
+  /* Salir de partida en curso */
+  $('btn-leave-game').onclick = () => {
+    if (!S.roomId || !S.match) return;
+    if (!confirm('¿Seguro que querés salir de la partida?')) return;
+    wsSend('LEAVE_GAME', { roomId:S.roomId, playerId:S.id });
+  };
+
   /* Ranking */
   $('btn-back-ranking').onclick = () => showScreen('screen-lobby');
 
   /* Modal victoria */
+  // Botón "Revancha" — ir a la sala ahora sin esperar la cuenta regresiva
+  $('btn-play-again').onclick = () => {
+    clearInterval(_playAgainTimer);
+    _playAgainTimer = null;
+    // Pedir la sala actualizada al servidor para ir directamente
+    if (S.roomId) {
+      // Intentar con la sala que ya tenemos en memoria
+      // El servidor ya mandó PLAY_AGAIN con los datos de la sala
+      // Si llegamos aquí antes del auto-redirect, forzamos la transición
+      const hint = $('play-again-hint');
+      if (hint) hint.classList.add('hidden');
+      $('modal-win').classList.add('hidden');
+      // Si tenemos roomId, pedir estado actual
+      wsSend('GET_ROOM_STATE', { roomId:S.roomId });
+    } else {
+      showScreen('screen-lobby');
+    }
+  };
+
+  // Botón "Salir" — volver al lobby sin revancha
   $('btn-new-game').onclick = () => {
+    clearInterval(_playAgainTimer);
+    _playAgainTimer = null;
     $('modal-win').classList.add('hidden');
+    // Notificar al servidor que me voy de la sala
+    if (S.roomId) wsSend('LEAVE_ROOM', { roomId:S.roomId, playerId:S.id });
     S.match = null; S.roomId = null; S.roomCode = null;
-    S.entered = false; S.myTurn = false;
+    S.entered = false; S.myTurn = false; S.isOwner = false;
     $('btn-ready').disabled    = false;
     $('btn-ready').textContent = 'Estoy listo ✓';
     $('chat-msgs').innerHTML   = '';
     stopTimer();
     clearDice();
     clearSession();
+    const hint = $('play-again-hint');
+    if (hint) hint.classList.add('hidden');
     showScreen('screen-lobby');
   };
 

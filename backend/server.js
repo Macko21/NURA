@@ -102,10 +102,28 @@ async function onMatchWon(match, roomId) {
     }
   } catch (e) { console.error("DB post-win:", e.message); }
 
+  // Notificar fin de partida
   broadcastRoom(roomId, "GAME_OVER", {
     winner, match: snapshotMatch(match)
   });
+
+  // Destruir el match pero mantener la sala
   destroyMatch(roomId);
+
+  // Resetear sala para revancha: volver a "waiting", limpiar listos
+  const room = getRoom(roomId);
+  if (room) {
+    room.status = "waiting";
+    for (const p of room.players) {
+      p.ready  = false;
+      p.score  = 0;
+      p.entered = false;
+    }
+    // Mandar a todos a la sala de espera con la misma sala
+    setTimeout(() => {
+      broadcastRoom(roomId, "PLAY_AGAIN", { room });
+    }, 4000); // 4s para que vean el modal de victoria
+  }
 }
 
 /* ── Eliminar jugador definitivamente ────────────────────── */
@@ -376,6 +394,30 @@ wss.on("connection", socket => {
           message:    String(data.message || "").slice(0, 500),
           timestamp:  Date.now()
         });
+        return;
+      }
+
+      /* ── ESTADO DE SALA (para revancha manual) ────────── */
+      if (type === "GET_ROOM_STATE") {
+        const room = getRoom(data.roomId);
+        if (room) {
+          send(socket, "PLAY_AGAIN", { room });
+        }
+        return;
+      }
+
+      /* ── SALIR DE PARTIDA EN CURSO ─────────────────────── */
+      if (type === "LEAVE_GAME") {
+        const { roomId, playerId } = data;
+        const match = getMatch(roomId);
+        if (!match) return;
+
+        // Informar al jugador que salió
+        send(socket, "LEFT_GAME", { playerId });
+
+        // Eliminar de sala y match
+        eliminatePlayer(roomId, playerId);
+        socket.roomId = null;
         return;
       }
 

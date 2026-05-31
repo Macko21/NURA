@@ -563,3 +563,57 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
 }
 .btn-danger:hover { border-color:#e05555; background:rgba(224,85,85,.1); }
 .hidden { display:none !important; }
+
+/* ── Botón salir de partida ──────────────────────────── */
+.btn-leave-game {
+  position:absolute; top:8px; right:8px;
+  background:rgba(224,85,85,.12);
+  border:1px solid rgba(224,85,85,.3);
+  color:#e05555; border-radius:6px;
+  padding:5px 10px; font-size:12px;
+  font-family:inherit; font-weight:600;
+  cursor:pointer; z-index:10;
+  transition:background .15s, border-color .15s;
+}
+.btn-leave-game:hover {
+  background:rgba(224,85,85,.25);
+  border-color:#e05555;
+}
+
+/* ── Modal victoria — botones revancha ───────────────── */
+.win-actions {
+  display:flex; gap:10px; margin-bottom:12px;
+}
+.win-actions .btn {
+  flex:1;
+}
+.play-again-hint {
+  font-size:13px; color:var(--text2);
+  margin-bottom:12px; text-align:center;
+}
+.play-again-hint.hidden { display:none; }
+
+/* ── Código de sala en partida ───────────────────────── */
+.game-topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:6px 12px; flex-shrink:0;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+}
+.game-room-code {
+  display:flex; align-items:center; gap:6px;
+}
+.game-room-label {
+  font-size:11px; color:var(--text2);
+  text-transform:uppercase; letter-spacing:.5px;
+}
+.game-room-value {
+  font-family:monospace; font-size:16px;
+  font-weight:700; letter-spacing:3px;
+  color:var(--gold);
+}
+.btn-copy-code-inline {
+  background:none; border:none; cursor:pointer;
+  font-size:14px; padding:2px 4px; opacity:.7;
+  transition:opacity .15s;
+}
+.btn-copy-code-inline:hover { opacity:1; }

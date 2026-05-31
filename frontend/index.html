@@ -73,6 +73,14 @@
 
 <!-- ══ JUEGO ══ -->
 <div id="screen-game" class="screen">
+  <div class="game-topbar">
+    <div class="game-room-code">
+      <span class="game-room-label">Sala</span>
+      <span id="game-room-code" class="game-room-value">—</span>
+      <button id="btn-copy-game-code" class="btn-copy-code-inline" title="Copiar código">📋</button>
+    </div>
+    <button id="btn-leave-game" class="btn-leave-game" title="Salir de la partida">✕ Salir</button>
+  </div>
   <div id="scoreboard" class="scoreboard"></div>
 
   <div class="game-table">
@@ -164,7 +172,11 @@
     <h2 id="win-name" class="win-name"></h2>
     <p id="win-desc" class="win-desc"></p>
     <div id="win-dice" class="win-dice-row"></div>
-    <button class="btn btn-gold" id="btn-new-game">Volver al lobby</button>
+    <div class="win-actions">
+      <button class="btn btn-gold" id="btn-play-again">🎲 Revancha</button>
+      <button class="btn btn-ghost" id="btn-new-game">← Salir</button>
+    </div>
+    <p id="play-again-hint" class="play-again-hint hidden">Volviendo a la sala en <span id="play-again-countdown">4</span>s...</p>
   </div>
 </div>
 
