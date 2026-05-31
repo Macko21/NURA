@@ -321,6 +321,12 @@ function updateGameRoomCode() {
   if (el) el.textContent = S.roomCode || '—';
 }
 
+/* Resetear el botón de unirse a sala */
+function resetJoinBtn() {
+  const btn = $('btn-join-confirm');
+  if (btn) { btn.disabled = false; btn.textContent = 'Entrar →'; }
+}
+
 /* ── Volver al lobby limpio ──────────────────────────── */
 function goLobby(msg) {
   stopTimer();
@@ -415,13 +421,21 @@ function wsSend(type, data={}) {
 function handle(type, data) {
   switch(type) {
 
-    case 'IDENTIFIED': break;
+    case 'IDENTIFIED':
+      // Si había un joiningRoom pendiente, puede reintentar
+      if (S.joiningRoom) {
+        S.joiningRoom = false;
+        resetJoinBtn();
+      }
+      break;
 
     /* ── Reconexión ─────────────────────────────────── */
     case 'RECONNECTED':
-      S.roomId  = data.match.roomId;
-      S.match   = data.match;
-      S.entered = data.match.players.find(p=>p.id===S.id)?.entered || false;
+      S.roomId      = data.match.roomId;
+      S.match       = data.match;
+      S.entered     = data.match.players.find(p=>p.id===S.id)?.entered || false;
+      S.joiningRoom = false;
+      resetJoinBtn();
       saveSession();
       showScreen('screen-game');
       renderSB(data.match);
@@ -432,8 +446,10 @@ function handle(type, data) {
       break;
 
     case 'RECONNECTED_LOBBY':
-      S.roomId   = data.room.id;
-      S.roomCode = data.room.code;
+      S.roomId      = data.room.id;
+      S.roomCode    = data.room.code;
+      S.joiningRoom = false;
+      resetJoinBtn();
       saveSession();
       renderRoom(data.room);
       showScreen('screen-room');
@@ -521,6 +537,9 @@ function handle(type, data) {
       S.match=data.match; S.entered=false;
       saveSession();
       showScreen('screen-game');
+      // Resetear botones al iniciar partida nueva
+      $('btn-roll').disabled = false;
+      $('btn-bank').disabled = true;
       renderSB(data.match);
       updateTurnUI(data.match);
       clearDice();
@@ -644,6 +663,8 @@ function handle(type, data) {
     case 'TURN_START':
       S.match=data.match;
       renderSB(data.match);
+      // Siempre resetear el botón tirar al cambiar de turno
+      $('btn-roll').disabled = false;
       updateTurnUI(data.match);
       $('turn-points').textContent = '0';
       $('roll-count').textContent  = '— / 3';
@@ -1011,6 +1032,12 @@ function initUI() {
     SFX.roll();
     $('btn-roll').disabled = true;
     wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
+    // Safety: si en 8s no llega respuesta del servidor, rehabilitar el botón
+    setTimeout(() => {
+      if (S.myTurn && $('btn-roll') && $('btn-roll').disabled) {
+        $('btn-roll').disabled = false;
+      }
+    }, 8000);
   };
 
   $('btn-bank').onclick = () => {
