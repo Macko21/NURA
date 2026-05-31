@@ -8,7 +8,7 @@
 const S = {
   id:null, name:null, roomId:null, roomCode:null,
   match:null, myTurn:false, entered:false,
-  ws:null, chatOpen:false, chatUnread:0,
+  ws:null,
   joiningRoom:false, isOwner:false
 };
 let _playAgainTimer  = null;
@@ -341,7 +341,7 @@ function goLobby(msg) {
   S.isOwner  = false;
   $('btn-ready').disabled    = false;
   $('btn-ready').textContent = 'Estoy listo ✓';
-  $('chat-msgs').innerHTML   = '';
+  const cm = $('chat-msgs'); if(cm) cm.innerHTML = '';
   $('modal-win').classList.add('hidden');
   clearDice();
   const hint = $('play-again-hint');
@@ -365,7 +365,7 @@ function goToPlayAgain(room) {
   saveSession();
   $('btn-ready').disabled    = false;
   $('btn-ready').textContent = 'Estoy listo ✓';
-  $('chat-msgs').innerHTML   = '';
+  const c2 = $('chat-msgs'); if(c2) c2.innerHTML = '';
   clearDice();
   renderRoom(room);
   const amOwner = room.players[0]?.id === S.id;
@@ -868,12 +868,6 @@ function addChat(name, text) {
   d.innerHTML = `<span class="cn">${esc(name)}</span>: ${esc(text)}`;
   msgs.appendChild(d);
   msgs.scrollTop = msgs.scrollHeight;
-  if (!S.chatOpen) {
-    S.chatUnread++;
-    const b = $('chat-badge');
-    b.textContent = S.chatUnread;
-    b.classList.remove('hidden');
-  }
 }
 
 function sys(text) {
@@ -977,11 +971,11 @@ function initUI() {
 
   /* Unirse */
   $('btn-back-join').onclick = () => showScreen('screen-lobby');
-  $('input-code').oninput = function() { this.value = this.value.toUpperCase(); };
+  $('input-code').oninput = function() { this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6); };
 
   $('btn-join-confirm').onclick = () => {
-    const code = $('input-code').value.trim().toUpperCase();
-    if (code.length < 4) { toast('Código inválido'); return; }
+    const code = $('input-code').value.trim().replace(/[^0-9]/g, '');
+    if (code.length < 4 || !/^[0-9]+$/.test(code)) { toast('Código inválido — solo números'); return; }
     if (S.joiningRoom)   { toast('Ya estás intentando entrar...'); return; }
     S.joiningRoom = true;
     $('btn-join-confirm').disabled    = true;
@@ -1054,18 +1048,7 @@ function initUI() {
     });
   };
 
-  /* Chat */
-  $('chat-toggle').onclick = () => {
-    const p = $('chat-panel');
-    S.chatOpen = p.classList.contains('hidden');
-    p.classList.toggle('hidden');
-    if (S.chatOpen) {
-      S.chatUnread = 0;
-      $('chat-badge').classList.add('hidden');
-      $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
-    }
-  };
-  $('chat-close').onclick   = () => { $('chat-panel').classList.add('hidden'); S.chatOpen = false; };
+  /* Chat fijo */
   $('chat-send').onclick    = sendChat;
   $('chat-input').onkeydown = e => { if (e.key==='Enter') sendChat(); };
 

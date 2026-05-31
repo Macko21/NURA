@@ -68,7 +68,7 @@
   <div class="page-body">
     <div class="field">
       <label>Código de sala</label>
-      <input id="input-code" class="code-input" type="text" placeholder="A7X92K" maxlength="6" autocomplete="off">
+      <input id="input-code" class="code-input" type="number" placeholder="123456" maxlength="6" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
     </div>
     <button class="btn btn-gold" id="btn-join-confirm">Entrar →</button>
   </div>
@@ -162,16 +162,12 @@
     </div>
   </div>
 
-  <!-- Chat -->
-  <div id="chat-fab" class="chat-fab">
-    <button id="chat-toggle" class="chat-toggle-btn">💬<span id="chat-badge" class="chat-badge hidden"></span></button>
-    <div id="chat-panel" class="chat-panel hidden">
-      <div class="chat-hdr"><span>Chat</span><button id="chat-close">✕</button></div>
-      <div id="chat-msgs" class="chat-msgs"></div>
-      <div class="chat-foot">
-        <input id="chat-input" type="text" placeholder="Molestá..." maxlength="200">
-        <button id="chat-send">↑</button>
-      </div>
+  <!-- Chat fijo abajo -->
+  <div id="chat-bar" class="chat-bar">
+    <div id="chat-msgs" class="chat-msgs"></div>
+    <div class="chat-foot">
+      <input id="chat-input" type="text" placeholder="Escribí algo..." maxlength="200" autocomplete="off">
+      <button id="chat-send" class="chat-send-btn">↑</button>
     </div>
   </div>
 </div>

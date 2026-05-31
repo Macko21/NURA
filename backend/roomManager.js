@@ -18,7 +18,7 @@ const { v4: uuidv4 } = require("uuid");
 * ============================================================
   */
   function generateRoomCode(length = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const chars = "0123456789";
 
 let code = "";
 
