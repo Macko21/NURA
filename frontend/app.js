@@ -82,7 +82,7 @@ const DOT_POSITIONS = {
 
 function makeDieSVG(value, scoring=false) {
   const dots = DOT_POSITIONS[value] || [];
-  const dotColor = scoring ? '#8B6914' : '#1a1a2e';
+  const dotColor = scoring ? '#1a5010' : '#1a1a2e';
   const circles = dots.map(([cx,cy]) =>
     `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${dotColor}"/>`
   ).join('');
