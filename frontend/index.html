@@ -66,6 +66,8 @@
     <p class="hint">Compartí el código · la partida arranca cuando todos estén listos</p>
     <div id="players-list" class="players-list"></div>
     <button class="btn btn-gold" id="btn-ready">Estoy listo ✓</button>
+    <button class="btn btn-ghost" id="btn-leave-room">← Salir de la sala</button>
+    <button class="btn btn-danger hidden" id="btn-cancel-room">✕ Cancelar sala</button>
   </div>
 </div>
 
@@ -74,8 +76,18 @@
   <div id="scoreboard" class="scoreboard"></div>
 
   <div class="game-table">
-    <!-- Banner turno -->
-    <div id="turn-banner" class="turn-banner"></div>
+
+    <!-- Banner turno + timer -->
+    <div class="turn-header">
+      <div id="turn-banner" class="turn-banner"></div>
+      <div id="turn-timer" class="turn-timer hidden">
+        <svg class="timer-ring" viewBox="0 0 44 44">
+          <circle class="timer-ring-bg" cx="22" cy="22" r="18"/>
+          <circle id="timer-ring-bar" class="timer-ring-bar" cx="22" cy="22" r="18"/>
+        </svg>
+        <span id="timer-secs" class="timer-secs">30</span>
+      </div>
+    </div>
 
     <!-- Área de dados -->
     <div class="dice-zone">

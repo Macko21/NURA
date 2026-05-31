@@ -3,18 +3,24 @@
 /**
  * ============================================================
  * LOS 10.000 DE MACKO — backend/server.js
- * Con soporte de reconexión: al desconectarse el jugador
- * tiene 30s para volver antes de ser eliminado de la sala.
+ * ============================================================
+ * - Reconexión: 30s de gracia al desconectarse
+ * - JOIN en partida activa: cualquiera con el código entra
+ *   como jugador nuevo (necesita entrar con 1000+ igual)
+ * - LEAVE_ROOM: salir de sala de espera
+ * - CANCEL_ROOM: el dueño cancela la sala
+ * - No duplica jugadores
  * ============================================================
  */
 
 const { initializeDatabase } = require("./database");
-const path    = require("path");
-const http    = require("http");
-const express = require("express");
+const path      = require("path");
+const http      = require("http");
+const express   = require("express");
 const WebSocket = require("ws");
 
 const {
+  rooms,
   createRoom, getRoom, getRoomByCode,
   addPlayer, removePlayer,
   setReady, allPlayersReady,
@@ -34,6 +40,8 @@ const {
   handleDisconnect: diceDisconnect,
   snapshotMatch
 } = require("./diceManager");
+
+const { createPlayerState } = require("./matchState");
 
 /* ── Express ─────────────────────────────────────────────── */
 const app  = express();
@@ -55,9 +63,9 @@ const wss    = new WebSocket.Server({ server });
 console.log("🎲 Iniciando Los 10.000 de Macko...");
 
 /* ── Clientes y timers de reconexión ────────────────────── */
-const clients       = new Map(); // playerId → socket
-const reconnTimers  = new Map(); // playerId → timeoutId
-const RECONN_MS     = 30_000;   // 30s para reconectarse
+const clients      = new Map(); // playerId → socket
+const reconnTimers = new Map(); // playerId → timeoutId
+const RECONN_MS    = 30_000;   // 30s para reconectarse
 
 /* ── Helpers de comunicación ─────────────────────────────── */
 function send(socket, type, data = {}) {
@@ -221,15 +229,96 @@ wss.on("connection", socket => {
       /* ── UNIRSE ────────────────────────────────────────── */
       if (type === "JOIN_ROOM") {
         const room = getRoomByCode(data.code);
-        if (!room) { send(socket, "ERROR", { message: "Sala no encontrada" }); return; }
-        if (room.status !== "waiting") { send(socket, "ERROR", { message: "La partida ya inició" }); return; }
+        if (!room) {
+          send(socket, "ERROR", { message: "Sala no encontrada" });
+          return;
+        }
 
-        const player = addPlayer(room.id, data.playerId, data.playerName);
-        clients.set(data.playerId, socket);
-        socket.playerId = data.playerId;
-        socket.roomId   = room.id;
-        send(socket, "JOIN_SUCCESS", { room, player });
-        broadcastRoomState(room.id);
+        // Evitar que el mismo jugador entre dos veces
+        const alreadyIn = room.players.find(p => p.id === data.playerId);
+        if (alreadyIn) {
+          // Ya está en la sala — reconectar socket
+          clients.set(data.playerId, socket);
+          socket.playerId = data.playerId;
+          socket.roomId   = room.id;
+          const match = getMatch(room.id);
+          if (match) {
+            send(socket, "RECONNECTED", {
+              room,
+              match: snapshotMatch(match),
+              playerId: data.playerId
+            });
+          } else {
+            send(socket, "JOIN_SUCCESS", { room, player: alreadyIn });
+          }
+          return;
+        }
+
+        if (room.players.length >= room.maxPlayers) {
+          send(socket, "ERROR", { message: "La sala está llena" });
+          return;
+        }
+
+        // ── SALA DE ESPERA: entrada normal ─────────────────
+        if (room.status === "waiting") {
+          const player = addPlayer(room.id, data.playerId, data.playerName);
+          clients.set(data.playerId, socket);
+          socket.playerId = data.playerId;
+          socket.roomId   = room.id;
+          send(socket, "JOIN_SUCCESS", { room, player });
+          broadcastRoomState(room.id);
+          return;
+        }
+
+        // ── PARTIDA EN CURSO: unirse como jugador nuevo ────
+        if (room.status === "playing") {
+          const match = getMatch(room.id);
+          if (!match) {
+            send(socket, "ERROR", { message: "No se encontró la partida activa" });
+            return;
+          }
+
+          // Crear jugador en la sala
+          const newPlayer = {
+            id:                data.playerId,
+            name:              data.playerName,
+            alias:             data.playerName + "#" + Math.floor(1000 + Math.random() * 9000),
+            ready:             true,
+            score:             0,
+            entered:           false,
+            connected:         true,
+            reconnectAttempts: 0,
+            inactivityStrikes: 0
+          };
+          room.players.push(newPlayer);
+
+          // Crear estado del jugador en el match (al final de la cola)
+          const playerState = createPlayerState(newPlayer);
+          match.players.push(playerState);
+
+          clients.set(data.playerId, socket);
+          socket.playerId = data.playerId;
+          socket.roomId   = room.id;
+
+          // Informar al nuevo jugador
+          send(socket, "JOINED_ACTIVE_GAME", {
+            room,
+            match:    snapshotMatch(match),
+            playerId: data.playerId
+          });
+
+          // Informar a todos los demás
+          broadcastRoom(room.id, "PLAYER_JOINED_GAME", {
+            playerId:   data.playerId,
+            playerName: data.playerName,
+            match:      snapshotMatch(match)
+          });
+
+          console.log(`➕ ${data.playerName} se unió a partida en curso: ${room.code}`);
+          return;
+        }
+
+        send(socket, "ERROR", { message: "No se puede unir a esta sala" });
         return;
       }
 
@@ -290,6 +379,39 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── SALIR DE SALA (jugador no dueño, solo lobby) ──── */
+      if (type === "LEAVE_ROOM") {
+        const { roomId, playerId } = data;
+        const room = getRoom(roomId);
+        if (!room || room.status !== "waiting") return;
+
+        send(socket, "PLAYER_REMOVED", { playerId });
+        removePlayer(roomId, playerId);
+        socket.roomId = null;
+        clients.delete(playerId);
+        broadcastRoomState(roomId);
+        return;
+      }
+
+      /* ── CANCELAR SALA (solo el dueño, solo lobby) ──────── */
+      if (type === "CANCEL_ROOM") {
+        const { roomId, playerId } = data;
+        const room = getRoom(roomId);
+        if (!room || room.status !== "waiting") return;
+
+        const isOwner = room.players[0]?.id === playerId;
+        if (!isOwner) return;
+
+        broadcastRoom(roomId, "ROOM_CANCELLED", { roomId });
+
+        for (const p of room.players) {
+          const sock = clients.get(p.id);
+          if (sock) sock.roomId = null;
+        }
+        rooms.delete(roomId);
+        return;
+      }
+
     } catch (err) {
       console.error("WS error:", err);
       send(socket, "ERROR", { message: "Error procesando mensaje" });
@@ -305,25 +427,21 @@ wss.on("connection", socket => {
 
     try { await registerDisconnect(playerId); } catch (e) {}
 
-    // Notificar a la sala que el jugador se desconectó temporalmente
     broadcastRoom(roomId, "PLAYER_DISCONNECTED", { playerId });
 
-    // Si era su turno en el match, avanzar después del período de gracia
-    // (pero no eliminar aún — esperamos reconexión)
+    // Si era su turno, avanzar para no bloquear la partida
     const match = getMatch(roomId);
     if (match) {
       const cur = match.players[match.currentPlayerIndex];
       if (cur?.id === playerId) {
-        // Avanzar el turno para no bloquear la partida
         diceDisconnect(roomId, playerId, broadcastRoom);
       }
     }
 
-    // Timer: si no reconecta en RECONN_MS → eliminar definitivamente
+    // Timer: 30s para reconectarse antes de ser eliminado
     const timerId = setTimeout(() => {
       console.log(`❌ Eliminado por timeout: ${playerId}`);
       const currentRoom = getRoom(roomId);
-      // Solo notificar si la sala sigue existiendo
       if (currentRoom) {
         broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
         eliminatePlayer(roomId, playerId);
