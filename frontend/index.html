@@ -4,11 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Los 10.000 de Macko</title>
+
+<!-- PWA meta tags -->
+<meta name="theme-color" content="#D4AF37">
+<meta name="description" content="Juego de dados familiar — 10.000 puntos para ganar">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="10.000 Macko">
+
+<!-- Iconos -->
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="styles.css">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0c0c14">
 </head>
 <body>
 
@@ -33,6 +47,13 @@
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
       </div>
       <button class="btn btn-link" id="btn-ranking">🏆 Ranking global</button>
+    </div>
+
+    <!-- Banner de instalación PWA -->
+    <div id="pwa-install-bar" class="pwa-install-bar hidden">
+      <span class="pwa-install-text">📲 Instalá el juego como app</span>
+      <button id="pwa-install-btn" class="pwa-install-btn">Instalar</button>
+      <button id="pwa-install-close" class="pwa-install-close">✕</button>
     </div>
   </div>
 </div>
@@ -73,6 +94,8 @@
 
 <!-- ══ JUEGO ══ -->
 <div id="screen-game" class="screen">
+
+  <!-- Barra superior: código + botón salir -->
   <div class="game-topbar">
     <div class="game-room-code">
       <span class="game-room-label">Sala</span>
@@ -81,6 +104,7 @@
     </div>
     <button id="btn-leave-game" class="btn-leave-game" title="Salir de la partida">✕ Salir</button>
   </div>
+
   <div id="scoreboard" class="scoreboard"></div>
 
   <div class="game-table">
@@ -93,7 +117,7 @@
           <circle class="timer-ring-bg" cx="22" cy="22" r="18"/>
           <circle id="timer-ring-bar" class="timer-ring-bar" cx="22" cy="22" r="18"/>
         </svg>
-        <span id="timer-secs" class="timer-secs">30</span>
+        <span id="timer-secs" class="timer-secs">15</span>
       </div>
     </div>
 

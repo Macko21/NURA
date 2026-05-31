@@ -437,8 +437,17 @@ function handleDisconnect(roomId, playerId, broadcast) {
   }
 }
 
+/* Marcar jugador como reconectado */
+function handleReconnect(roomId, playerId) {
+  const match = matches.get(roomId);
+  if (!match) return;
+  const player = getPlayerById(match, playerId);
+  if (!player) return;
+  player.disconnected = false;
+}
+
 module.exports = {
   createMatch, startFirstTurnTimer, getMatch, destroyMatch,
   handleEntryRoll, handleRoll, handleBank,
-  handleDisconnect, snapshotMatch, rollDice
+  handleDisconnect, handleReconnect, snapshotMatch, rollDice
 };

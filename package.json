@@ -1,13 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="92.16" fill="#0c0c14"/>
-  <rect x="40.96" y="40.96" width="430.08" height="430.08" rx="71.68" fill="#14141f"/>
-  <rect x="51.2" y="51.2" width="409.6" height="409.6" rx="61.44" fill="none" stroke="#D4AF37" stroke-width="12.8"/>
-  <!-- dado grande centro -->
-  <rect x="128" y="128" width="256" height="256" rx="46.08" fill="#1c1c2c" stroke="#D4AF37" stroke-width="10.24"/>
-  <!-- puntos del dado (cara 5) -->
-  <circle cx="179.2" cy="179.2" r="25.6" fill="#D4AF37"/>
-  <circle cx="332.8" cy="179.2" r="25.6" fill="#D4AF37"/>
-  <circle cx="256"  cy="256"  r="25.6" fill="#D4AF37"/>
-  <circle cx="179.2" cy="332.8" r="25.6" fill="#D4AF37"/>
-  <circle cx="332.8" cy="332.8" r="25.6" fill="#D4AF37"/>
-</svg>
+{
+  "name": "los10000-macko",
+  "version": "1.0.0",
+  "description": "Juego de dados familiar - Los 10.000 de Macko",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "uuid": "^9.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

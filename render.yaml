@@ -1,3 +1,10 @@
-node_modules/
-database/players.json
-.env
+services:
+  - type: web
+    name: los10000-macko
+    runtime: node
+    buildCommand: npm install
+    startCommand: node backend/server.js
+    disk:
+      name: db
+      mountPath: /app/database
+      sizeGB: 1

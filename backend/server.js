@@ -38,6 +38,7 @@ const {
   createMatch, startFirstTurnTimer, getMatch, destroyMatch,
   handleEntryRoll, handleRoll, handleBank,
   handleDisconnect: diceDisconnect,
+  handleReconnect:  diceReconnect,
   snapshotMatch
 } = require("./diceManager");
 
@@ -193,14 +194,18 @@ wss.on("connection", socket => {
             // Jugador reconectado en partida activa
             const player = room.players.find(p => p.id === playerId);
             if (player) {
-              player.connected = true;
+              player.connected    = true;
+              player.disconnected = false;
+              // Marcar como reconectado en el match también
+              diceReconnect(roomId, playerId);
               send(socket, "RECONNECTED", {
                 room,
                 match: snapshotMatch(match),
                 playerId
               });
               broadcastRoom(roomId, "PLAYER_RECONNECTED", {
-                playerId, playerName: player.name
+                playerId, playerName: player.name,
+                match: snapshotMatch(match)
               });
               return;
             }
