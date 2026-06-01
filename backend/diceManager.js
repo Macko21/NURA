@@ -23,9 +23,8 @@ const {
 const matches    = new Map();
 const turnTimers = new Map();
 
-// FIX BUG 2: track si ya hay un banco automático pendiente por sala
-// para evitar que handleBank y el setTimeout lo ejecuten dos veces
-const pendingAutoBank = new Set();
+// Lock por sala: evita que _advanceTurn corra dos veces en paralelo
+const advancing  = new Set();
 
 /* ── Dados ───────────────────────────────────────────────── */
 function rollDice(count = TOTAL_DICE) {
@@ -52,7 +51,6 @@ function clearTurnTimer(roomId) {
 function resetTurnTimer(roomId, onTimeout) {
   clearTurnTimer(roomId);
   const id = setTimeout(() => {
-    // FIX BUG 1: verificar que el partido sigue activo antes de ejecutar
     const match = matches.get(roomId);
     if (!match || match.status !== "playing") return;
     onTimeout(roomId);
@@ -89,19 +87,17 @@ function snapshotMatch(match) {
   };
 }
 
-/* ── Avanzar turno ───────────────────────────────────────────
- * Avanza el índice manualmente sin llamar nextTurn() múltiples
- * veces para evitar resets de datos en jugadores intermedios.
- * ──────────────────────────────────────────────────────────── */
+/* ── Avanzar turno ───────────────────────────────────────── */
 function _advanceTurn(match, roomId, broadcast) {
+  // LOCK: si ya está avanzando esta sala, ignorar
+  if (advancing.has(roomId)) return;
+  advancing.add(roomId);
+
   clearTurnTimer(roomId);
-  // Limpiar flag de banco automático al avanzar turno
-  pendingAutoBank.delete(roomId);
 
   const total = match.players.length;
-  if (total === 0) return;
+  if (total === 0) { advancing.delete(roomId); return; }
 
-  // Buscar el siguiente jugador activo
   let found = null;
   for (let i = 1; i <= total; i++) {
     const idx = (match.currentPlayerIndex + i) % total;
@@ -113,13 +109,12 @@ function _advanceTurn(match, roomId, broadcast) {
     }
   }
 
-  if (!found) return;
+  if (!found) { advancing.delete(roomId); return; }
 
-  // Resetear datos de turno solo del jugador que va ahora
   startTurn(match);
 
   const next = getCurrentPlayer(match);
-  if (!next) return;
+  if (!next) { advancing.delete(roomId); return; }
 
   pushHistory(match, "TURN_START", { playerId: next.id });
   broadcast(roomId, "TURN_START", {
@@ -128,18 +123,21 @@ function _advanceTurn(match, roomId, broadcast) {
     match:      snapshotMatch(match)
   });
 
-  // FIX BUG 1: siempre iniciar timer del nuevo turno
+  // Liberar lock ANTES de resetear el timer
+  advancing.delete(roomId);
+
   resetTurnTimer(roomId, id => _handleTimeout(id, broadcast));
 }
 
 /* ── Banco + avanzar ─────────────────────────────────────── */
 function _bank(match, roomId, broadcast, auto = false) {
-  // FIX BUG 2: si ya se bancó (por doble llamada), ignorar
-  if (auto && !pendingAutoBank.has(roomId)) return;
-  if (auto) pendingAutoBank.delete(roomId);
+  // Si esta sala está bloqueada avanzando, no bancar
+  if (advancing.has(roomId)) return;
 
   const cur = getCurrentPlayer(match);
   if (!cur) return;
+
+  // Cancelar el timer ANTES de todo (evita race con _handleTimeout)
   clearTurnTimer(roomId);
 
   const gained   = cur.turnPoints;
@@ -161,10 +159,14 @@ function _bank(match, roomId, broadcast, auto = false) {
 
 /* ── Timeout ─────────────────────────────────────────────── */
 function _handleTimeout(roomId, broadcast) {
+  // Si ya está avanzando (p.ej. banco automático en curso), ignorar
+  if (advancing.has(roomId)) return;
+
   const match = matches.get(roomId);
   if (!match || match.status !== "playing") return;
   const cur = getCurrentPlayer(match);
   if (!cur) return;
+
   cur.turnPoints = 0;
   pushHistory(match, "TIMEOUT", { playerId: cur.id });
   broadcast(roomId, "TIMEOUT", { playerId: cur.id, playerName: cur.name });
@@ -187,7 +189,6 @@ function createMatch(room) {
 }
 
 function startFirstTurnTimer(roomId, broadcast) {
-  // FIX BUG 1: asegurarse de que el timer del primer turno siempre arranca
   clearTurnTimer(roomId);
   const id = setTimeout(() => {
     const match = matches.get(roomId);
@@ -201,7 +202,7 @@ function getMatch(roomId)     { return matches.get(roomId) || null; }
 
 function destroyMatch(roomId) {
   clearTurnTimer(roomId);
-  pendingAutoBank.delete(roomId);
+  advancing.delete(roomId);
   matches.delete(roomId);
 }
 
@@ -226,7 +227,6 @@ function handleEntryRoll(roomId, playerId, broadcast) {
   cur.entryAttemptsUsed++;
   const attemptsLeft = maxAttempts - cur.entryAttemptsUsed;
 
-  // Victoria instantánea: 11111 con score = 0
   if (isInstantWin(dice, cur.score)) {
     cur.score   = MAX_SCORE;
     cur.entered = true;
@@ -241,9 +241,8 @@ function handleEntryRoll(roomId, playerId, broadcast) {
 
   const { score: rollScore } = calculateScore(dice);
 
-  // Entró con ≥1000: se restan 1000 y el resto queda anotado
   if (canEnterGame(rollScore)) {
-    const gained   = getEntryScore(rollScore); // rollScore - 1000
+    const gained   = getEntryScore(rollScore);
     cur.score      = gained;
     cur.entered    = true;
     cur.turnPoints = 0;
@@ -257,12 +256,10 @@ function handleEntryRoll(roomId, playerId, broadcast) {
       match: snapshotMatch(match)
     });
 
-    // Al entrar el turno SIEMPRE termina
     _advanceTurn(match, roomId, broadcast);
     return { ok: true, event: "PLAYER_ENTERED", dice, gained };
   }
 
-  // Falló
   pushHistory(match, "ENTRY_FAILED", { playerId, dice, rollScore, attemptsLeft });
 
   if (attemptsLeft > 0) {
@@ -275,7 +272,6 @@ function handleEntryRoll(roomId, playerId, broadcast) {
     return { ok: true, event: "ENTRY_FAILED", dice, attemptsLeft };
   }
 
-  // Sin intentos → pasa turno
   broadcast(roomId, "ENTRY_FAILED", {
     playerId, playerName: cur.name, dice, rollScore, attemptsLeft: 0,
     entryAttemptsUsed: cur.entryAttemptsUsed, entryAttempts: maxAttempts,
@@ -296,13 +292,10 @@ function handleRoll(roomId, playerId, broadcast) {
     return { ok: false, error: "No es tu turno" };
   if (!cur.entered)
     return { ok: false, error: "Primero debés entrar al juego" };
-
-  // FIX BUG 2: si hay banco automático pendiente, no aceptar más tiros
-  if (pendingAutoBank.has(roomId))
-    return { ok: false, error: "Banco automático en proceso" };
-
   if (cur.mustStop)
-    return { ok: false, error: "Banco automático en proceso" };
+    return { ok: false, error: "Esperá el banco automático" };
+  if (advancing.has(roomId))
+    return { ok: false, error: "Esperá el turno siguiente" };
 
   const diceCount = cur.remainingDice || TOTAL_DICE;
   const dice      = rollDice(diceCount);
@@ -315,6 +308,7 @@ function handleRoll(roomId, playerId, broadcast) {
   // Tirada muerta
   if (rollScore === 0) {
     cur.turnPoints = 0;
+    clearTurnTimer(roomId); // cancelar timer inmediatamente
     pushHistory(match, "DEAD_ROLL", { playerId, dice });
     broadcast(roomId, "DEAD_ROLL", {
       playerId, playerName: cur.name, dice, match: snapshotMatch(match)
@@ -323,13 +317,13 @@ function handleRoll(roomId, playerId, broadcast) {
     return { ok: true, event: "DEAD_ROLL", dice };
   }
 
-  // Acumular
   cur.turnPoints += rollScore;
   const projected = cur.score + cur.turnPoints;
 
   // Bust
   if (projected > MAX_SCORE) {
     cur.turnPoints = 0;
+    clearTurnTimer(roomId);
     pushHistory(match, "BUST", { playerId, dice, rollScore, projected });
     broadcast(roomId, "BUST", {
       playerId, playerName: cur.name, dice, rollScore, projected,
@@ -352,7 +346,7 @@ function handleRoll(roomId, playerId, broadcast) {
     return { ok: true, event: "WIN", dice };
   }
 
-  // Dados calientes: todos puntúan
+  // Dados calientes
   if (allDiceScoring) {
     cur.extraRolls++;
     cur.remainingDice = TOTAL_DICE;
@@ -371,14 +365,14 @@ function handleRoll(roomId, playerId, broadcast) {
     return { ok: true, event: "HOT_DICE", dice };
   }
 
-  // Tiro extra de dados calientes → banco automático
+  // Tiro extra caliente → banco automático
   if (cur.isHotDiceTurn) {
     cur.isHotDiceTurn = false;
     cur.mustStop      = true;
     cur.canContinue   = false;
 
-    // FIX BUG 2: marcar banco automático pendiente
-    pendingAutoBank.add(roomId);
+    // Cancelar timer ANTES del broadcast para evitar race
+    clearTurnTimer(roomId);
 
     broadcast(roomId, "ROLL_RESULT", {
       playerId, playerName: cur.name, dice, rollScore,
@@ -386,10 +380,15 @@ function handleRoll(roomId, playerId, broadcast) {
       canContinue: false, mustStop: true, rollCount: cur.rollCount,
       autoBank: true, match: snapshotMatch(match)
     });
+
+    // Banco después de mostrar los dados (1.5s), sin posibilidad de race
     setTimeout(() => {
-      if (!matches.get(roomId) || !pendingAutoBank.has(roomId)) return;
-      _bank(match, roomId, broadcast, true);
-    }, 1600);
+      const m = matches.get(roomId);
+      if (!m || m.status !== "playing") return;
+      if (advancing.has(roomId)) return;
+      _bank(match, roomId, broadcast, false); // false = no chequea nada extra
+    }, 1500);
+
     return { ok: true, event: "ROLL_RESULT_AUTOBANK", dice };
   }
 
@@ -402,8 +401,8 @@ function handleRoll(roomId, playerId, broadcast) {
     cur.canContinue = false;
     cur.mustStop    = true;
 
-    // FIX BUG 2: marcar banco automático pendiente
-    pendingAutoBank.add(roomId);
+    // Cancelar timer ANTES para evitar race con _handleTimeout
+    clearTurnTimer(roomId);
 
     broadcast(roomId, "ROLL_RESULT", {
       playerId, playerName: cur.name, dice, rollScore,
@@ -411,10 +410,15 @@ function handleRoll(roomId, playerId, broadcast) {
       canContinue: false, mustStop: true, rollCount: cur.rollCount,
       autoBank: true, match: snapshotMatch(match)
     });
+
+    // Banco después de mostrar los dados
     setTimeout(() => {
-      if (!matches.get(roomId) || !pendingAutoBank.has(roomId)) return;
-      _bank(match, roomId, broadcast, true);
-    }, 1600);
+      const m = matches.get(roomId);
+      if (!m || m.status !== "playing") return;
+      if (advancing.has(roomId)) return;
+      _bank(match, roomId, broadcast, false);
+    }, 1500);
+
     return { ok: true, event: "ROLL_RESULT_AUTOBANK", dice };
 
   } else {
@@ -439,16 +443,16 @@ function handleBank(roomId, playerId, broadcast) {
   if (!match || match.status !== "playing")
     return { ok: false, error: "Partida no activa" };
 
-  // FIX BUG 2: si hay banco automático pendiente, ignorar banco manual
-  // (el setTimeout ya va a bancar)
-  if (pendingAutoBank.has(roomId))
-    return { ok: true, event: "BANK_IGNORED_AUTO_PENDING" };
+  if (advancing.has(roomId))
+    return { ok: true, event: "BANK_IGNORED" };
 
   const cur = getCurrentPlayer(match);
   if (!cur || cur.id !== playerId)
     return { ok: false, error: "No es tu turno" };
   if (!cur.entered)
     return { ok: false, error: "Aún no entraste al juego" };
+  if (cur.mustStop)
+    return { ok: true, event: "BANK_IGNORED_MUSTSSTOP" };
   if (cur.turnPoints === 0)
     return { ok: false, error: "Sin puntos para anotar" };
 

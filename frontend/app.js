@@ -427,19 +427,50 @@ function showConfirm(msg, onYes) {
 }
 
 /* ── WebSocket ───────────────────────────────────────── */
+let _reconnectTimer = null;
+let _pingTimer      = null;
+
 function connect(cb) {
+  // Cancelar cualquier reconexión pendiente
+  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  if (_pingTimer)      { clearInterval(_pingTimer);     _pingTimer      = null; }
+
+  // Si ya hay una conexión abierta o conectando, no abrir otra
+  if (S.ws && (S.ws.readyState === WebSocket.OPEN || S.ws.readyState === WebSocket.CONNECTING)) {
+    cb?.();
+    return;
+  }
+
   const proto = location.protocol==='https:' ? 'wss' : 'ws';
   S.ws = new WebSocket(`${proto}://${location.host}`);
+
   S.ws.onopen = () => {
+    console.log('WS conectado');
+    // Siempre mandar roomId para reconexión automática
     wsSend('IDENTIFY', { playerId:S.id, playerName:S.name, roomId:S.roomId });
     cb?.();
+
+    // Ping cada 25s para mantener viva la conexión
+    _pingTimer = setInterval(() => {
+      if (S.ws?.readyState === WebSocket.OPEN) {
+        try { S.ws.send(JSON.stringify({type:'PING'})); } catch(e){}
+      }
+    }, 25000);
   };
+
   S.ws.onmessage = e => {
-    try { const {type,data}=JSON.parse(e.data); handle(type,data); }
+    try { const {type,data}=JSON.parse(e.data); if(type!=='PONG') handle(type,data); }
     catch(x){ console.error(x); }
   };
-  S.ws.onclose = () => setTimeout(()=>connect(), 2500);
-  S.ws.onerror = ()=>{};
+
+  S.ws.onclose = (ev) => {
+    console.log('WS cerrado, reconectando...');
+    if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
+    // Reconectar en 2s, siempre con el roomId guardado para restaurar sesión
+    _reconnectTimer = setTimeout(() => connect(), 2000);
+  };
+
+  S.ws.onerror = () => {};
 }
 
 function wsSend(type, data={}) {

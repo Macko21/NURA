@@ -4,13 +4,6 @@
  * ============================================================
  * LOS 10.000 DE MACKO — backend/server.js
  * ============================================================
- * - Reconexión: 30s de gracia al desconectarse
- * - JOIN en partida activa: cualquiera con el código entra
- *   como jugador nuevo (necesita entrar con 1000+ igual)
- * - LEAVE_ROOM: salir de sala de espera
- * - CANCEL_ROOM: el dueño cancela la sala
- * - No duplica jugadores
- * ============================================================
  */
 
 const { initializeDatabase } = require("./database");
@@ -63,12 +56,11 @@ const wss    = new WebSocket.Server({ server });
 
 console.log("🎲 Iniciando Los 10.000 de Macko...");
 
-/* ── Clientes y timers de reconexión ────────────────────── */
 const clients      = new Map(); // playerId → socket
 const reconnTimers = new Map(); // playerId → timeoutId
-const RECONN_MS    = 30_000;   // 30s para reconectarse
+const RECONN_MS    = 120_000;  // 2 minutos de gracia (era 30s)
 
-/* ── Helpers de comunicación ─────────────────────────────── */
+/* ── Helpers ─────────────────────────────────────────────── */
 function send(socket, type, data = {}) {
   if (socket?.readyState === WebSocket.OPEN)
     socket.send(JSON.stringify({ type, data }));
@@ -103,27 +95,22 @@ async function onMatchWon(match, roomId) {
     }
   } catch (e) { console.error("DB post-win:", e.message); }
 
-  // Notificar fin de partida
   broadcastRoom(roomId, "GAME_OVER", {
     winner, match: snapshotMatch(match)
   });
-
-  // Destruir el match pero mantener la sala
   destroyMatch(roomId);
 
-  // Resetear sala para revancha: volver a "waiting", limpiar listos
   const room = getRoom(roomId);
   if (room) {
     room.status = "waiting";
     for (const p of room.players) {
-      p.ready  = false;
-      p.score  = 0;
+      p.ready   = false;
+      p.score   = 0;
       p.entered = false;
     }
-    // Mandar a todos a la sala de espera con la misma sala
     setTimeout(() => {
       broadcastRoom(roomId, "PLAY_AGAIN", { room });
-    }, 4000); // 4s para que vean el modal de victoria
+    }, 4000);
   }
 }
 
@@ -133,16 +120,10 @@ function eliminatePlayer(roomId, playerId) {
   clients.delete(playerId);
 
   const match = getMatch(roomId);
-
-  // Solo avanzar turno si hay partida activa
-  if (match) {
-    diceDisconnect(roomId, playerId, broadcastRoom);
-  }
+  if (match) diceDisconnect(roomId, playerId, broadcastRoom);
 
   removePlayer(roomId, playerId);
 
-  // Ganador automático SOLO si la partida ya empezó
-  // En sala de espera (sin match) no hay ganador automático
   if (match) {
     const winner = getAutomaticWinner(roomId);
     if (winner) {
@@ -153,8 +134,47 @@ function eliminatePlayer(roomId, playerId) {
       return;
     }
   }
-
   broadcastRoomState(roomId);
+}
+
+/* ── Reconectar jugador a sala/partida ───────────────────── */
+function doReconnect(socket, playerId, room, match) {
+  const roomId = room.id;
+
+  // Cancelar timer de eliminación
+  if (reconnTimers.has(playerId)) {
+    clearTimeout(reconnTimers.get(playerId));
+    reconnTimers.delete(playerId);
+  }
+
+  clients.set(playerId, socket);
+  socket.playerId = playerId;
+  socket.roomId   = roomId;
+
+  const player = room.players.find(p => p.id === playerId);
+  if (player) {
+    player.connected    = true;
+    player.disconnected = false;
+  }
+
+  if (match) {
+    diceReconnect(roomId, playerId);
+    send(socket, "RECONNECTED", {
+      room,
+      match: snapshotMatch(match),
+      playerId
+    });
+    broadcastRoom(roomId, "PLAYER_RECONNECTED", {
+      playerId,
+      playerName: player?.name || "",
+      match: snapshotMatch(match)
+    });
+    console.log(`🔄 Reconectado a partida: ${playerId}`);
+  } else {
+    send(socket, "RECONNECTED_LOBBY", { room, playerId });
+    broadcastRoomState(roomId);
+    console.log(`🔄 Reconectado a lobby: ${playerId}`);
+  }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -162,11 +182,15 @@ function eliminatePlayer(roomId, playerId) {
    ══════════════════════════════════════════════════════════ */
 wss.on("connection", socket => {
 
+  /* Ping/pong para detectar conexiones caídas */
+  socket.isAlive = true;
+  socket.on("pong", () => { socket.isAlive = true; });
+
   socket.on("message", async rawMsg => {
     try {
       const { type, data } = JSON.parse(rawMsg.toString());
 
-      /* ── IDENTIFY / RECONEXIÓN ─────────────────────────── */
+      /* ── IDENTIFY ──────────────────────────────────────── */
       if (type === "IDENTIFY") {
         const { playerId, playerName, roomId } = data;
 
@@ -174,52 +198,23 @@ wss.on("connection", socket => {
         socket.roomId   = roomId || null;
         clients.set(playerId, socket);
 
-        // Cancelar timer de eliminación si estaba pendiente
-        if (reconnTimers.has(playerId)) {
-          clearTimeout(reconnTimers.get(playerId));
-          reconnTimers.delete(playerId);
-          console.log(`🔄 Reconectado: ${playerId}`);
-        }
-
         try {
           await createOrLoadPlayer({ id: playerId, alias: playerName, name: playerName });
         } catch (e) { console.error("DB identify:", e.message); }
 
-        // Si viene con roomId, intentar restaurar su sesión
+        // Intentar reconectar si viene con roomId
         if (roomId) {
           const room  = getRoom(roomId);
           const match = getMatch(roomId);
 
-          if (room && match) {
-            // Jugador reconectado en partida activa
+          if (room) {
             const player = room.players.find(p => p.id === playerId);
             if (player) {
-              player.connected    = true;
-              player.disconnected = false;
-              // Marcar como reconectado en el match también
-              diceReconnect(roomId, playerId);
-              send(socket, "RECONNECTED", {
-                room,
-                match: snapshotMatch(match),
-                playerId
-              });
-              broadcastRoom(roomId, "PLAYER_RECONNECTED", {
-                playerId, playerName: player.name,
-                match: snapshotMatch(match)
-              });
+              doReconnect(socket, playerId, room, match || null);
               return;
             }
-          }
-
-          if (room && !match) {
-            // Sala de espera — reconectar
-            const player = room.players.find(p => p.id === playerId);
-            if (player) {
-              player.connected = true;
-              send(socket, "RECONNECTED_LOBBY", { room, playerId });
-              broadcastRoomState(roomId);
-              return;
-            }
+            // No está en la sala pero tiene roomId válido → mandarlo como identificado
+            // para que el cliente sepa que puede intentar unirse
           }
         }
 
@@ -231,6 +226,13 @@ wss.on("connection", socket => {
       if (type === "GET_RANKING") {
         const rows = await getTopRanking();
         send(socket, "RANKING", { ranking: rows });
+        return;
+      }
+
+      /* ── ESTADO DE SALA ────────────────────────────────── */
+      if (type === "GET_ROOM_STATE") {
+        const room = getRoom(data.roomId);
+        if (room) send(socket, "PLAY_AGAIN", { room });
         return;
       }
 
@@ -257,23 +259,44 @@ wss.on("connection", socket => {
           return;
         }
 
-        // Evitar que el mismo jugador entre dos veces
-        const alreadyIn = room.players.find(p => p.id === data.playerId);
-        if (alreadyIn) {
-          // Ya está en la sala — reconectar socket
-          clients.set(data.playerId, socket);
-          socket.playerId = data.playerId;
-          socket.roomId   = room.id;
+        // Buscar si ya está en la sala (por playerId)
+        const alreadyById = room.players.find(p => p.id === data.playerId);
+        if (alreadyById) {
+          // Ya está — reconectar
           const match = getMatch(room.id);
+          doReconnect(socket, data.playerId, room, match || null);
+          return;
+        }
+
+        // NUEVO FIX: buscar si hay un jugador con el mismo nombre desconectado
+        // Si existe, reconectarlo en vez de crear uno nuevo
+        const match = getMatch(room.id);
+        const disconnectedSameName = room.players.find(p =>
+          p.name.toLowerCase() === data.playerName.toLowerCase() &&
+          p.disconnected === true
+        );
+        if (disconnectedSameName) {
+          console.log(`🔄 Reconectando por nombre: ${data.playerName} → ${disconnectedSameName.id}`);
+          // Actualizar el id del jugador al nuevo playerId del cliente
+          const oldId = disconnectedSameName.id;
+          disconnectedSameName.id        = data.playerId;
+          disconnectedSameName.connected  = true;
+          disconnectedSameName.disconnected = false;
+
+          // Actualizar en el match también
           if (match) {
-            send(socket, "RECONNECTED", {
-              room,
-              match: snapshotMatch(match),
-              playerId: data.playerId
-            });
-          } else {
-            send(socket, "JOIN_SUCCESS", { room, player: alreadyIn });
+            const mp = match.players.find(p => p.id === oldId);
+            if (mp) mp.id = data.playerId;
           }
+
+          // Cancelar timer de eliminación del ID viejo
+          if (reconnTimers.has(oldId)) {
+            clearTimeout(reconnTimers.get(oldId));
+            reconnTimers.delete(oldId);
+            clients.delete(oldId);
+          }
+
+          doReconnect(socket, data.playerId, room, match || null);
           return;
         }
 
@@ -282,7 +305,7 @@ wss.on("connection", socket => {
           return;
         }
 
-        // ── SALA DE ESPERA: entrada normal ─────────────────
+        // Sala de espera: entrada normal
         if (room.status === "waiting") {
           const player = addPlayer(room.id, data.playerId, data.playerName);
           clients.set(data.playerId, socket);
@@ -293,15 +316,13 @@ wss.on("connection", socket => {
           return;
         }
 
-        // ── PARTIDA EN CURSO: unirse como jugador nuevo ────
+        // Partida en curso: unirse como jugador nuevo
         if (room.status === "playing") {
-          const match = getMatch(room.id);
           if (!match) {
             send(socket, "ERROR", { message: "No se encontró la partida activa" });
             return;
           }
 
-          // Crear jugador en la sala
           const newPlayer = {
             id:                data.playerId,
             name:              data.playerName,
@@ -315,7 +336,6 @@ wss.on("connection", socket => {
           };
           room.players.push(newPlayer);
 
-          // Crear estado del jugador en el match (al final de la cola)
           const playerState = createPlayerState(newPlayer);
           match.players.push(playerState);
 
@@ -323,21 +343,17 @@ wss.on("connection", socket => {
           socket.playerId = data.playerId;
           socket.roomId   = room.id;
 
-          // Informar al nuevo jugador
           send(socket, "JOINED_ACTIVE_GAME", {
             room,
             match:    snapshotMatch(match),
             playerId: data.playerId
           });
 
-          // Informar a todos los demás
           broadcastRoom(room.id, "PLAYER_JOINED_GAME", {
             playerId:   data.playerId,
             playerName: data.playerName,
             match:      snapshotMatch(match)
           });
-
-          console.log(`➕ ${data.playerName} se unió a partida en curso: ${room.code}`);
           return;
         }
 
@@ -402,36 +418,22 @@ wss.on("connection", socket => {
         return;
       }
 
-      /* ── ESTADO DE SALA (para revancha manual) ────────── */
-      if (type === "GET_ROOM_STATE") {
-        const room = getRoom(data.roomId);
-        if (room) {
-          send(socket, "PLAY_AGAIN", { room });
-        }
-        return;
-      }
-
-      /* ── SALIR DE PARTIDA EN CURSO ─────────────────────── */
+      /* ── SALIR DE PARTIDA ──────────────────────────────── */
       if (type === "LEAVE_GAME") {
         const { roomId, playerId } = data;
         const match = getMatch(roomId);
         if (!match) return;
-
-        // Informar al jugador que salió
         send(socket, "LEFT_GAME", { playerId });
-
-        // Eliminar de sala y match
         eliminatePlayer(roomId, playerId);
         socket.roomId = null;
         return;
       }
 
-      /* ── SALIR DE SALA (jugador no dueño, solo lobby) ──── */
+      /* ── SALIR DE SALA ─────────────────────────────────── */
       if (type === "LEAVE_ROOM") {
         const { roomId, playerId } = data;
         const room = getRoom(roomId);
         if (!room || room.status !== "waiting") return;
-
         send(socket, "PLAYER_REMOVED", { playerId });
         removePlayer(roomId, playerId);
         socket.roomId = null;
@@ -440,17 +442,14 @@ wss.on("connection", socket => {
         return;
       }
 
-      /* ── CANCELAR SALA (solo el dueño, solo lobby) ──────── */
+      /* ── CANCELAR SALA ─────────────────────────────────── */
       if (type === "CANCEL_ROOM") {
         const { roomId, playerId } = data;
         const room = getRoom(roomId);
         if (!room || room.status !== "waiting") return;
-
         const isOwner = room.players[0]?.id === playerId;
         if (!isOwner) return;
-
         broadcastRoom(roomId, "ROOM_CANCELLED", { roomId });
-
         for (const p of room.players) {
           const sock = clients.get(p.id);
           if (sock) sock.roomId = null;
@@ -470,13 +469,20 @@ wss.on("connection", socket => {
     const { roomId, playerId } = socket;
     if (!roomId || !playerId) return;
 
-    console.log(`⚡ Desconectado: ${playerId} — esperando reconexión ${RECONN_MS/1000}s`);
+    console.log(`⚡ Desconectado: ${playerId} — gracia ${RECONN_MS/1000}s`);
 
     try { await registerDisconnect(playerId); } catch (e) {}
 
+    // Marcar como desconectado (no eliminar aún)
+    const room = getRoom(roomId);
+    if (room) {
+      const p = room.players.find(p => p.id === playerId);
+      if (p) p.disconnected = true;
+    }
+
     broadcastRoom(roomId, "PLAYER_DISCONNECTED", { playerId });
 
-    // Si era su turno, avanzar para no bloquear la partida
+    // Si era su turno, avanzar para no bloquear
     const match = getMatch(roomId);
     if (match) {
       const cur = match.players[match.currentPlayerIndex];
@@ -485,9 +491,8 @@ wss.on("connection", socket => {
       }
     }
 
-    // Timer: 30s para reconectarse antes de ser eliminado
+    // Timer de 2 minutos antes de eliminar definitivamente
     const timerId = setTimeout(() => {
-      console.log(`❌ Eliminado por timeout: ${playerId}`);
       const currentRoom = getRoom(roomId);
       if (currentRoom) {
         broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
@@ -501,6 +506,20 @@ wss.on("connection", socket => {
     reconnTimers.set(playerId, timerId);
   });
 });
+
+/* ── Heartbeat: detectar sockets zombies ─────────────────── */
+const heartbeat = setInterval(() => {
+  wss.clients.forEach(socket => {
+    if (!socket.isAlive) {
+      socket.terminate();
+      return;
+    }
+    socket.isAlive = false;
+    socket.ping();
+  });
+}, 30000); // cada 30 segundos
+
+wss.on("close", () => clearInterval(heartbeat));
 
 /* ── Init ────────────────────────────────────────────────── */
 initializeDatabase();
