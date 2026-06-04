@@ -1,16 +1,17 @@
 "use strict";
-
+require("dotenv").config();
 /**
  * ============================================================
  * LOS 10.000 DE MACKO — backend/server.js
  * ============================================================
  */
 
-const { initializeDatabase } = require("./database");
+const { initializeDatabase, buyShopItem, rewardWinner, pool } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
 const WebSocket = require("ws");
+const bcrypt    = require("bcrypt");
 
 const {
   rooms,
@@ -36,18 +37,63 @@ const {
 } = require("./diceManager");
 
 const { createPlayerState } = require("./matchState");
+const { register, login, requireAuth, requestPasswordReset } = require("./authManager");
 
 /* ── Express ─────────────────────────────────────────────── */
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// IMPORTANTÍSIMO: Para que Express pueda leer el req.body del login/registro
+app.use(express.json()); 
 app.use(express.static(path.join(__dirname, "../frontend")));
+
 app.get("/", (req, res) =>
   res.sendFile(path.join(__dirname, "../frontend/index.html"))
 );
-app.get("/ranking", async (req, res) => {
+
+// Nuevas rutas de Autenticación
+app.post("/api/register", register);
+app.post("/api/login", login);
+
+// Ruta de ranking AHORA PROTEGIDA con requireAuth
+app.get("/ranking", requireAuth, async (req, res) => {
   try { res.json(await getTopRanking()); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Ruta para comprar en la tienda (PROTEGIDA)
+app.post("/api/shop/buy", requireAuth, async (req, res) => {
+  const { itemId } = req.body;
+  const userId = req.user.userId; // Obtenido del token por requireAuth
+
+  try {
+    const result = await buyShopItem(userId, itemId);
+    res.json({ message: "Compra exitosa", newBalance: result.newBalance });
+  } catch (error) {
+    console.error("Error en tienda:", error.message);
+    res.status(400).json({ error: error.message || "Error al procesar la compra" });
+  }
+});
+
+// Ruta para obtener el saldo actual del jugador
+app.get("/api/user/balance", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    // Hacemos la consulta a la tabla players
+    const result = await pool.query(
+      "SELECT coins FROM players WHERE user_id = $1", 
+      [userId]
+    );
+    
+    if (result.rows.length > 0) {
+      res.json({ coins: result.rows[0].coins });
+    } else {
+      res.status(404).json({ error: "Jugador no encontrado" });
+    }
+  } catch (err) {
+    console.error("Error al consultar saldo:", err);
+    res.status(500).json({ error: "Error al consultar saldo" });
+  }
 });
 
 /* ── HTTP + WS ───────────────────────────────────────────── */
@@ -87,6 +133,10 @@ async function onMatchWon(match, roomId) {
   if (!winner) return;
   try {
     await registerWin(winner.id);
+    
+    // NUEVO: Premiar al ganador con 250 monedas
+    await rewardWinner(winner.id, 250); 
+    
     for (const p of match.players) {
       await registerGamePlayed(p.id, p.score);
       if (p.id !== winner.id) await resetWinStreak(p.id);
@@ -520,6 +570,39 @@ const heartbeat = setInterval(() => {
 }, 30000); // cada 30 segundos
 
 wss.on("close", () => clearInterval(heartbeat));
+
+
+// Solicitar recuperación
+app.post("/api/forgot-password", requestPasswordReset);
+
+// Cambiar la clave (se llama desde reset-password.html)
+app.post("/api/reset-password", async (req, res) => {
+  const { token, newPassword } = req.body;
+   
+  
+  // Vamos a buscar el usuario SOLAMENTE por el token, sin mirar la fecha.
+  // Además, quitamos el espacio por si acaso.
+  const query = "SELECT id, reset_expires, NOW() as hora_servidor FROM users WHERE reset_token = $1";
+  const result = await pool.query(query, [token.trim()]);
+  
+  
+  if (result.rows.length === 0) {
+    return res.status(400).json({ error: "Token no existe en DB. Revisa si el token en la URL es el mismo que en la tabla." });
+  }
+
+  // Ahora comprobamos la fecha manualmente aquí
+  const row = result.rows[0];
+    
+  if (new Date(row.reset_expires) < new Date(row.hora_servidor)) {
+      return res.status(400).json({ error: "El token ya expiró." });
+  }
+
+  // Si llega aquí, actualizamos
+  const hash = await bcrypt.hash(newPassword, 10);
+  await pool.query("UPDATE users SET password_hash = $1, reset_token = NULL WHERE id = $2", [hash, row.id]);
+  
+  res.json({ message: "Contraseña actualizada" });
+});
 
 /* ── Init ────────────────────────────────────────────────── */
 initializeDatabase();

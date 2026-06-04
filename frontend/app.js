@@ -6,10 +6,21 @@
 
 /* ── Estado global ───────────────────────────────────── */
 const S = {
-  id:null, name:null, roomId:null, roomCode:null,
-  match:null, myTurn:false, entered:false,
+  id:null,
+  userId:null,
+  logged:false,
+
+  name:null,
+  roomId:null,
+  roomCode:null,
+
+  match:null,
+  myTurn:false,
+  entered:false,
+
   ws:null,
-  joiningRoom:false, isOwner:false
+  joiningRoom:false,
+  isOwner:false
 };
 let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
@@ -43,7 +54,7 @@ window.addEventListener('appinstalled', () => {
 
 /* ── Persistencia de sesión ──────────────────────────── */
 const SESSION_KEY = 'macko_session';
-
+const AUTH_KEY = 'macko_auth';
 function saveSession() {
   if (!S.id) return;
   localStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -69,7 +80,30 @@ function loadSession() {
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
+function saveAuth(user, token) {
+  localStorage.setItem(AUTH_KEY, JSON.stringify({
+    id: user.id,
+    username: user.alias || user.username
+  }));
+  localStorage.setItem('gameToken', token); // ¡Guardamos la llave VIP!
+}
 
+function isLogged() {
+  return !!localStorage.getItem('gameToken');
+}
+
+function loadAuth() {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function clearAuth() {
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem('gameToken');
+}
 /* ── SVG dados realistas ─────────────────────────────── */
 const DOT_POSITIONS = {
   1: [[25,25]],
@@ -334,6 +368,27 @@ function toast(msg, ms=2800) {
   _toastT=setTimeout(()=>el.classList.add('hidden'), ms);
 }
 
+/* ── Panel de Usuario (Lobby) ────────────────────────── */
+function updateUserPanel(name, coins) {
+  const topBar = $('user-top-bar');
+  if (!topBar) return;
+  
+  if (isLogged() && name) {
+    topBar.classList.remove('hidden');
+    $('lobby-username').textContent = name;
+    $('lobby-avatar').textContent = name.charAt(0).toUpperCase();
+    $('lobby-coins').textContent = coins || 0;
+    
+    $('guest-name-field').classList.add('hidden');
+    $('btn-logout').classList.remove('hidden');
+  } else {
+    // Si no está logueado, ocultamos la barra de usuario y mostramos el campo para nombre
+    topBar.classList.add('hidden');
+    $('btn-logout').classList.add('hidden');
+    $('guest-name-field').classList.remove('hidden');
+  }
+}
+
 /* ── Flash puntos ────────────────────────────────────── */
 function flashTurnPoints() {
   const el = $('turn-points');
@@ -379,7 +434,11 @@ function goLobby(msg) {
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
   if (msg) toast(msg, 2500);
-  showScreen('screen-lobby');
+  if(isLogged()){
+   showScreen('screen-lobby');
+}else{
+   showScreen('screen-auth');
+}
 }
 
 /* ── Ir a sala de revancha ───────────────────────────── */
@@ -441,8 +500,13 @@ function connect(cb) {
     return;
   }
 
-  const proto = location.protocol==='https:' ? 'wss' : 'ws';
-  S.ws = new WebSocket(`${proto}://${location.host}`);
+// Protocolo dinámico (si es http pasa a ws, si es https pasa a wss)
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  
+  // location.host toma automáticamente el dominio y puerto (ej: '10mildemacko.onrender.com' o 'localhost:3000')
+  const host = window.location.host; 
+
+  S.ws = new WebSocket(`${protocol}//${host}`);
 
   S.ws.onopen = () => {
     console.log('WS conectado');
@@ -1005,6 +1069,54 @@ function initUI() {
     $('pwa-install-bar').classList.add('hidden');
   };
 
+  /* ── Tienda ─────────────────────────────────────────── */
+  $('btn-open-shop').onclick = () => $('modal-shop').classList.remove('hidden');
+  $('btn-close-shop').onclick = () => $('modal-shop').classList.add('hidden');
+
+  // Lógica de compra
+  document.querySelectorAll('.btn-buy').forEach(btn => {
+    btn.onclick = async (e) => {
+      const itemId = e.target.getAttribute('data-id');
+      const token = localStorage.getItem('gameToken');
+      
+      if (!token) {
+        toast('Debes iniciar sesión para comprar');
+        return;
+      }
+
+      const originalText = e.target.textContent;
+      e.target.textContent = '⏳';
+      e.target.disabled = true;
+
+      try {
+        const res = await fetch('/api/shop/buy', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ itemId })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        toast('¡Compra exitosa! 🎉');
+        // Actualizar las monedas en la pantalla
+        $('lobby-coins').textContent = data.newBalance;
+        
+        // Cambiar el botón a "Comprado"
+        e.target.textContent = '✔ Tuyo';
+        e.target.classList.remove('btn-gold');
+        e.target.classList.add('btn-ghost');
+      } catch (err) {
+        toast('⚠ ' + err.message);
+        e.target.textContent = originalText;
+        e.target.disabled = false;
+      }
+    };
+  });
+
   /* Lobby */
   $('btn-create').onclick = () => {
     const name = $('input-name').value.trim();
@@ -1022,18 +1134,171 @@ function initUI() {
     showScreen('screen-join');
   };
 
-  $('btn-ranking').onclick = () => {
-    showScreen('screen-ranking');
-    if (!S.ws || S.ws.readyState !== WebSocket.OPEN) {
-      S.name = S.name||'Visitante'; S.id = S.id||uid();
-      connect(() => setTimeout(() => wsSend('GET_RANKING'), 300));
+  $('btn-ranking').onclick = async () => {
+    if (!isLogged()) {
+      toast('🔒 Debes iniciar sesión para ver el ranking');
+      return;
+    }
+    
+    const token = localStorage.getItem('gameToken');
+    
+    try {
+      const response = await fetch('/ranking', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.status === 401 || response.status === 403) {
+        clearAuth();
+        showScreen('screen-auth');
+        toast('Sesión expirada. Volvé a ingresar.');
+        return;
+      }
+      
+      const rankingData = await response.json();
+      renderRanking(rankingData);
+      showScreen('screen-ranking');
+    } catch (err) {
+      toast('⚠ Error cargando el ranking');
+    }
+  };
+
+/* Logout */
+  $('btn-logout').onclick = () => {
+    clearAuth();
+    clearSession();
+    
+    // RESET TOTAL DEL ESTADO
+    S.logged = false;
+    S.userId = null;
+    S.id = null;
+    S.name = null; // IMPORTANTE: Borramos el nombre guardado
+    
+    // Limpiar campos visuales
+    $('input-name').value = ''; 
+    
+    showScreen('screen-auth');
+    toast('Sesión cerrada');
+  };
+
+  /* Entrar como Invitado */
+  $('btn-guest').onclick = () => {
+    // Limpiamos todo antes de empezar como invitado
+    clearAuth(); 
+    clearSession();
+    
+    S.logged = false;
+    S.userId = null;
+    S.id = uid(); // Generamos un ID nuevo para este invitado
+    S.name = null; // El nombre debe estar vacío para que el usuario lo escriba
+    
+    $('input-name').value = ''; // Limpiamos el input del lobby
+    
+    showScreen('screen-lobby');
+    updateUserPanel(null, 0); // Panel vacío
+  };
+
+/* Alternar entre Login y Registro */
+  $('auth-mode-btn').onclick = () => {
+    const isRegistering = !$('login-email').classList.contains('hidden');
+    if (isRegistering) {
+      // Pasar a modo Login
+      $('login-email').classList.add('hidden');
+      $('btn-login').classList.remove('hidden');
+      $('btn-register').classList.add('hidden');
+      $('auth-mode-btn').textContent = '¿No tenés cuenta? Registrate';
     } else {
-      wsSend('GET_RANKING');
+      // Pasar a modo Registro
+      $('login-email').classList.remove('hidden');
+      $('btn-login').classList.add('hidden');
+      $('btn-register').classList.remove('hidden');
+      $('auth-mode-btn').textContent = '¿Ya tenés cuenta? Iniciá sesión';
+    }
+  };
+
+  /* Registro HTTP */
+  $('btn-register').onclick = async () => {
+    const email = $('login-email').value.trim();
+    const username = $('login-user').value.trim();
+    const password = $('login-pass').value.trim();
+
+    if (!email || !username || !password) {
+      toast('Completá email, usuario y contraseña');
+      return;
+    }
+
+    $('btn-register').disabled = true;
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username, password })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      toast('¡Registro exitoso! Ahora iniciá sesión.');
+      $('login-pass').value = ''; 
+      $('auth-mode-btn').click(); // Volver a la vista de login automáticamente
+    } catch (err) {
+      toast('⚠ ' + err.message);
+    } finally {
+      $('btn-register').disabled = false;
+    }
+  };
+
+  /* Login HTTP */
+  $('btn-login').onclick = async () => {
+    const identifier = $('login-user').value.trim();
+    const password = $('login-pass').value.trim();
+
+    if (!identifier || !password) {
+      toast('Completá usuario y contraseña');
+      return;
+    }
+
+    $('btn-login').disabled = true;
+    $('btn-login').textContent = 'Entrando...';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Guardar sesión y token JWT
+      saveAuth(data.player, data.token);
+      
+      S.logged = true;
+      S.userId = data.player.id;
+      S.name = data.player.alias;
+      S.id = data.player.id; // Clave para que los sockets del juego sigan usando este ID
+      
+      updateUserPanel(data.player.alias, data.player.coins);
+      
+      const inp = $('input-name');
+      if (inp) inp.value = S.name;
+
+      $('btn-login').textContent = 'Ingresar';
+      showScreen('screen-lobby');
+      toast('¡Bienvenido, ' + S.name + '!');
+      
+    } catch (err) {
+      toast('⚠ ' + err.message);
+      $('btn-login').textContent = 'Ingresar';
+    } finally {
+      $('btn-login').disabled = false;
     }
   };
 
   /* Unirse */
-  $('btn-back-join').onclick = () => showScreen('screen-lobby');
+  /* Unirse */
+  $('btn-back-join').onclick = navigateToLobbyOrAuth;
+
   $('input-code').oninput = function() { this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6); };
 
   $('btn-join-confirm').onclick = () => {
@@ -1116,7 +1381,8 @@ function initUI() {
   $('chat-input').onkeydown = e => { if (e.key==='Enter') sendChat(); };
 
   /* Ranking */
-  $('btn-back-ranking').onclick = () => showScreen('screen-lobby');
+/* Ranking */
+  $('btn-back-ranking').onclick = navigateToLobbyOrAuth;
 
   /* Modal victoria */
   $('btn-play-again').onclick = () => {
@@ -1138,19 +1404,53 @@ function initUI() {
   $('input-code').onkeydown = e => { if (e.key==='Enter') $('btn-join-confirm').click(); };
 }
 
+/* ── Cargar saldo real del usuario ───────────────────── */
+async function loadUserBalance() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  
+  try {
+    const res = await fetch('/api/user/balance', { 
+      headers: { 'Authorization': `Bearer ${token}` } 
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // Actualizamos el panel con el nombre del usuario y sus monedas
+      updateUserPanel(S.name, data.coins);
+    }
+  } catch (err) {
+    console.error("Error al cargar saldo:", err);
+  }
+}
+
 /* ── Arranque ────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initUI();
 
+  const auth = loadAuth();
+
+  if(isLogged()){
+    S.logged = true;
+    S.userId = auth.id;
+    S.name = auth.username;
+    // LLAMADA CLAVE: Al cargar, pedimos el saldo al backend
+    loadUserBalance(); 
+  }
+
   const session = loadSession();
   if (session?.id && session?.roomId) {
-    S.id       = session.id;
-    S.name     = session.name;
-    S.roomId   = session.roomId;
+    S.id     = session.id;
+    S.name   = session.name;
+    S.roomId = session.roomId;
     S.roomCode = session.roomCode;
     const inp  = $('input-name');
     if (inp) inp.value = session.name || '';
-    showScreen('screen-lobby');
+    
+    if(isLogged()){
+      showScreen('screen-lobby');
+    } else {
+      showScreen('screen-auth');
+    }
     toast('🔄 Restaurando sesión...', 2000);
     connect();
   } else if (session?.id) {
@@ -1160,3 +1460,81 @@ document.addEventListener('DOMContentLoaded', () => {
     if (inp) inp.value = session.name || '';
   }
 });
+
+/* ── Navegación Maestra ────────────────────────────── */
+/* ── Navegación Maestra ────────────────────────────── */
+function navigateToLobbyOrAuth() {
+  if (isLogged()) {
+    showScreen('screen-lobby');
+  } else {
+    clearAuth();
+    clearSession(); // Limpiamos sesión de invitado también
+    showScreen('screen-auth');
+  }
+}
+
+$('btn-back-to-auth').onclick = () => {
+  clearSession(); 
+  showScreen('screen-auth');
+};
+
+// Abrir el modal en lugar del prompt feo
+document.getElementById('btn-forgot').onclick = () => {
+    $('modal-forgot').classList.remove('hidden');
+};
+
+async function sendRecoveryEmail() {
+    const email = $('forgot-email').value;
+    const res = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+    });
+    
+    if (res.ok) {
+        toast("✅ Instrucciones enviadas a tu correo.");
+        $('modal-forgot').classList.add('hidden');
+    } else {
+        toast("❌ Error al enviar el correo.");
+    }
+}
+
+// Agrega esto dentro de tu función initUI() en app.js
+$('btn-forgot').onclick = () => {
+    $('modal-forgot').classList.remove('hidden');
+};
+
+// Esta es la función que procesa el envío
+async function sendRecoveryEmail() {
+    const email = $('forgot-email').value;
+    if (!email) {
+        toast("Ingresa un correo válido");
+        return;
+    }
+    
+    // Mostramos estado de carga
+    const btn = event.target;
+    btn.textContent = "Enviando...";
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        
+        if (res.ok) {
+            toast("✅ Instrucciones enviadas a tu correo.");
+            $('modal-forgot').classList.add('hidden');
+        } else {
+            const data = await res.json();
+            toast("❌ " + (data.error || "Error al enviar"));
+        }
+    } catch (e) {
+        toast("❌ Error de conexión");
+    } finally {
+        btn.textContent = "Enviar instrucciones";
+        btn.disabled = false;
+    }
+}

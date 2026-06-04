@@ -12,7 +12,8 @@
 const { Pool } = require("pg");
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  // Si process.env falla, usa el string directamente
+  connectionString: process.env.DATABASE_URL || "postgresql://neondb_owner:npg_v3h9YpQkJFda@ep-ancient-night-acgxrokq.sa-east-1.aws.neon.tech/neondb?sslmode=require",
   ssl: {
     rejectUnauthorized: false
   }
@@ -105,10 +106,143 @@ async function getRanking() {
   return result.rows;
 }
 
+const crypto = require("crypto"); // Nativo de Node.js, para generar UUIDs
+
+// --- NUEVAS FUNCIONES DE AUTENTICACIÓN ---
+
+async function createUserTransaction(email, username, passwordHash) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const userId = crypto.randomUUID();
+    const createdAt = Date.now();
+
+    // 1. Crear el usuario
+    await client.query(
+      `INSERT INTO users (id, email, username, password_hash, created_at) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, email, username, passwordHash, createdAt]
+    );
+
+    // 2. Crear el perfil de jugador vinculado
+    // Usamos el username como ID del jugador para mantener compatibilidad con tu juego
+    await client.query(
+      `INSERT INTO players (id, alias, name, created_at, user_id) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [username, username, username, createdAt, userId]
+    );
+
+    await client.query("COMMIT");
+    return { userId, playerId: username };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function getUserByEmailOrUsername(identifier) {
+  const result = await pool.query(
+    `SELECT * FROM users WHERE email = $1 OR username = $1`,
+    [identifier]
+  );
+  return result.rows[0];
+}
+
+async function getPlayerByUserId(userId) {
+  const result = await pool.query(
+    `SELECT * FROM players WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows[0];
+}
+
+// --- LÓGICA DE TIENDA ---
+// --- SISTEMA DE RECOMPENSAS ---
+async function rewardWinner(playerId, coinsAmount) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    // Sumar las monedas al jugador
+    await client.query(
+      `UPDATE players SET coins = coins + $1 WHERE id = $2`,
+      [coinsAmount, playerId]
+    );
+
+    // Guardar en el historial de transacciones
+    await client.query(
+      `INSERT INTO transactions (player_id, amount, reason, created_at) 
+       VALUES ($1, $2, $3, $4)`,
+      [playerId, coinsAmount, 'Victoria en partida', Date.now()]
+    );
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Error al entregar recompensa:", err);
+  } finally {
+    client.release();
+  }
+}
+
+async function buyShopItem(userId, itemId) {
+  const client = await pool.connect();
+  
+  // Precios hardcodeados por ahora (1: Neón, 2: Fuego, 3: Emotes)
+  const prices = { "1": 500, "2": 1500, "3": 800 };
+  const cost = prices[itemId];
+
+  if (!cost) throw new Error("Ítem no válido");
+
+  try {
+    await client.query("BEGIN");
+
+    // 1. Obtener el jugador y bloquear la fila para evitar compras duplicadas simultáneas
+    const playerRes = await client.query(
+      `SELECT id, coins FROM players WHERE user_id = $1 FOR UPDATE`,
+      [userId]
+    );
+
+    const player = playerRes.rows[0];
+    if (!player) throw new Error("Jugador no encontrado");
+    if (player.coins < cost) throw new Error("No tienes suficientes monedas 🪙");
+
+    // 2. Restar las monedas
+    const newBalance = player.coins - cost;
+    await client.query(
+      `UPDATE players SET coins = $1 WHERE user_id = $2`,
+      [newBalance, userId]
+    );
+
+    // 3. Registrar la compra en redemptions
+    await client.query(
+      `INSERT INTO redemptions (player_id, reward_id, status, created_at) 
+       VALUES ($1, $2, $3, $4)`,
+      [player.id, parseInt(itemId), 'completed', Date.now()]
+    );
+
+    await client.query("COMMIT");
+    return { success: true, newBalance };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   initializeDatabase,
   createPlayer,
   getPlayer,
   updatePlayer,
-  getRanking
+  getRanking,
+  createUserTransaction,
+  getUserByEmailOrUsername,
+  getPlayerByUserId,
+  buyShopItem,
+  pool
 };

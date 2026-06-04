@@ -4,56 +4,87 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Los 10.000 de Macko</title>
-
-<!-- PWA meta tags -->
-<meta name="theme-color" content="#D4AF37">
+<meta name="theme-color" content="#C8961E">
 <meta name="description" content="Juego de dados familiar — 10.000 puntos para ganar">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="10.000 Macko">
-
-<!-- Iconos -->
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-
-<!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
+<!-- ══ AUTH ══ -->
+<div id="screen-auth" class="screen active auth-bg">
+  <div class="auth-box">
+    <div class="auth-logo">🎲</div>
+    <h1 class="auth-title">Los 10.000<br><em>de Macko</em></h1>
+    <p class="auth-sub">Juego de dados · 2 a 10 jugadores</p>
+    <p class="auth-sub">V 2.0.0</p>
+
+    <div class="glass-panel" style="margin-top:8px;display:flex;flex-direction:column;gap:11px">
+      <input id="login-email" type="email" placeholder="Correo electrónico" class="glass-input hidden">
+      <input id="login-user" type="text" placeholder="Usuario" class="glass-input" autocomplete="username">
+      <input id="login-pass" type="password" placeholder="Contraseña" class="glass-input" autocomplete="current-password">
+      <button id="btn-login" class="btn btn-gold glow-btn">Ingresar</button>
+      <!-- Debajo de tu botón de Login -->
+<button id="btn-forgot" class="btn btn-link">¿Olvidaste tu contraseña?</button>
+      <button id="btn-register" class="btn btn-gold glow-btn hidden">Crear cuenta</button>
+      <div class="auth-divider"></div>
+      <button id="auth-mode-btn" class="btn btn-link">¿No tenés cuenta? Registrate</button>
+      <button id="btn-guest" class="btn btn-ghost">Entrar como invitado</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ LOBBY ══ -->
-<div id="screen-lobby" class="screen active">
+<div id="screen-lobby" class="screen">
   <canvas id="bg-canvas" class="bg-canvas"></canvas>
+
+  <div id="user-top-bar" class="user-top-bar hidden">
+    <div class="user-profile">
+      <div class="user-avatar" id="lobby-avatar">M</div>
+      <span class="user-name" id="lobby-username">Jugador</span>
+    </div>
+    <div class="user-wallet">
+      <span class="coin-icon">🪙</span>
+      <span id="lobby-coins">0</span>
+      <button id="btn-open-shop" class="btn-shop">Tienda</button>
+    </div>
+  </div>
+
   <div class="lobby-content">
     <div class="logo-block">
-      <div class="logo-dice-wrap">
-        <div class="logo-die">🎲</div>
-      </div>
+      <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
+      <p class="app-version">v2.0.0</p>
     </div>
-    <div class="lobby-form">
-      <div class="field">
+
+    <div class="glass-panel lobby-form">
+      <div class="field" id="guest-name-field">
         <label>Tu nombre</label>
-        <input id="input-name" type="text" placeholder="Ej: Macko" maxlength="20" autocomplete="off">
+        <input id="input-name" type="text" placeholder="Ej: Macko" maxlength="20" autocomplete="off" class="glass-input">
       </div>
       <div class="row-2">
-        <button class="btn btn-gold" id="btn-create">+ Crear sala</button>
+        <button class="btn btn-gold glow-btn" id="btn-create">+ Crear sala</button>
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
       </div>
       <button class="btn btn-link" id="btn-ranking">🏆 Ranking global</button>
+      <button id="btn-logout" class="btn btn-danger-link hidden">Cerrar sesión</button>
+      <button id="btn-back-to-auth" class="btn btn-link">← Volver al login</button>
     </div>
 
-    <!-- Banner de instalación PWA -->
     <div id="pwa-install-bar" class="pwa-install-bar hidden">
-      <span class="pwa-install-text">📲 Instalá el juego como app</span>
+      <span class="pwa-install-text">📲 Instalá como app</span>
       <button id="pwa-install-btn" class="pwa-install-btn">Instalar</button>
       <button id="pwa-install-close" class="pwa-install-close">✕</button>
+      
     </div>
   </div>
 </div>
@@ -84,7 +115,7 @@
     </div>
   </div>
   <div class="page-body">
-    <p class="hint">Compartí el código · la partida arranca cuando todos estén listos</p>
+    <p class="hint">Compartí el código · arranca cuando todos estén listos</p>
     <div id="players-list" class="players-list"></div>
     <button class="btn btn-gold" id="btn-ready">Estoy listo ✓</button>
     <button class="btn btn-ghost" id="btn-leave-room">← Salir de la sala</button>
@@ -94,22 +125,18 @@
 
 <!-- ══ JUEGO ══ -->
 <div id="screen-game" class="screen">
-
-  <!-- Barra superior: código + botón salir -->
   <div class="game-topbar">
     <div class="game-room-code">
       <span class="game-room-label">Sala</span>
       <span id="game-room-code" class="game-room-value">—</span>
-      <button id="btn-copy-game-code" class="btn-copy-code-inline" title="Copiar código">📋</button>
+      <button id="btn-copy-game-code" class="btn-copy-code-inline" title="Copiar">📋</button>
     </div>
-    <button id="btn-leave-game" class="btn-leave-game" title="Salir de la partida">✕ Salir</button>
+    <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
   </div>
 
   <div id="scoreboard" class="scoreboard"></div>
 
   <div class="game-table">
-
-    <!-- Banner turno + timer -->
     <div class="turn-header">
       <div id="turn-banner" class="turn-banner"></div>
       <div id="turn-timer" class="turn-timer hidden">
@@ -121,7 +148,6 @@
       </div>
     </div>
 
-    <!-- Área de dados -->
     <div class="dice-zone">
       <div id="dice-tray" class="dice-tray">
         <div id="dice-row" class="dice-row"></div>
@@ -129,7 +155,6 @@
       <div id="roll-msg" class="roll-msg"></div>
     </div>
 
-    <!-- Stats del turno -->
     <div class="stats-row">
       <div class="stat-box">
         <span class="stat-label">Turno</span>
@@ -145,7 +170,6 @@
       </div>
     </div>
 
-    <!-- Botones -->
     <div id="action-zone" class="action-zone hidden">
       <button id="btn-roll" class="btn-roll">
         <span class="btn-roll-icon">🎲</span>
@@ -162,7 +186,6 @@
     </div>
   </div>
 
-  <!-- Chat fijo abajo -->
   <div id="chat-bar" class="chat-bar">
     <div id="chat-msgs" class="chat-msgs"></div>
     <div class="chat-foot">
@@ -196,7 +219,44 @@
       <button class="btn btn-gold" id="btn-play-again">🎲 Revancha</button>
       <button class="btn btn-ghost" id="btn-new-game">← Salir</button>
     </div>
-    <p id="play-again-hint" class="play-again-hint hidden">Volviendo a la sala en <span id="play-again-countdown">4</span>s...</p>
+    <p id="play-again-hint" class="play-again-hint hidden">
+      Volviendo a la sala en <span id="play-again-countdown">4</span>s...
+    </p>
+  </div>
+</div>
+
+<!-- ══ MODAL TIENDA ══ -->
+<div id="modal-shop" class="modal hidden">
+  <div class="modal-box shop-box glass-panel">
+    <button id="btn-close-shop" class="close-modal-btn">✕</button>
+    <h2 style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:6px">🛒 Tienda</h2>
+    <p class="shop-desc">Personalizá tus dados y desbloqueá extras</p>
+    <div class="shop-grid">
+      <div class="shop-item">
+        <div class="shop-item-preview">🎲</div>
+        <h3>Dados de Neón</h3>
+        <button class="btn btn-gold btn-buy" data-id="1">🪙 500</button>
+      </div>
+      <div class="shop-item">
+        <div class="shop-item-preview">🔥</div>
+        <h3>Dados de Fuego</h3>
+        <button class="btn btn-gold btn-buy" data-id="2">🪙 1500</button>
+      </div>
+      <div class="shop-item">
+        <div class="shop-item-preview">😂🤬😎</div>
+        <h3>Pack Emotes VIP</h3>
+        <button class="btn btn-gold btn-buy" data-id="3">🪙 800</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-forgot" class="modal hidden">
+  <div class="modal-box">
+    <h3>Recuperar cuenta</h3>
+    <input id="forgot-email" type="email" placeholder="Tu correo" class="glass-input" style="margin: 15px 0;">
+    <button onclick="sendRecoveryEmail()" class="btn btn-gold">Enviar instrucciones</button>
+    <button onclick="$('modal-forgot').classList.add('hidden')" class="btn btn-ghost">Cancelar</button>
   </div>
 </div>
 
@@ -204,5 +264,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="app.js"></script>
+
+
 </body>
 </html>
