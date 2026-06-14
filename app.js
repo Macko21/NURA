@@ -1,10 +1,14 @@
-// ===== NURA APP.JS — Firebase Realtime Database =====
+// ===== NURA APP.JS — Supabase =====
 'use strict';
 
-// ── Firebase refs ─────────────────────────────────────────────────────────────
-const { db, ref, set, onValue, remove } = window._FB;
-const r = path => ref(db, 'nura/' + path);
+// ── Supabase client ───────────────────────────────────────────────────────────
+// _supabase se inicializa en env.js antes de que este script cargue
+const _sb = () => window._supabase;
+const COLS_LIST = ['productos','clientes','ventas','compras','combos','usuarios'];
 const DB = { productos:[], clientes:[], ventas:[], compras:[], combos:[], usuarios:[] };
+
+// ── Canal realtime (se abre en suscribirColecciones) ─────────────────────────
+let _realtimeChannel = null;
 
 // ── Sesión ─────────────────────────────────────────────────────────────
 const Sesion = {
@@ -56,24 +60,46 @@ function syncUI(s) {
   if (s==='off')    { dot.style.background='#f43f5e'; txt.textContent='Sin conexión'; }
 }
 
-async function fbSet(path, data) {
+// ── CRUD Supabase (misma firma que Firebase para no cambiar nada más) ─────────
+async function fbSet(col_slash_id, data) {
+  // col_slash_id puede ser "productos/abc123" o "usuarios/abc"
+  const parts = col_slash_id.split('/');
+  const col = parts[0];
+  const id  = parts.slice(1).join('/') || data?.id;
   _writes++; syncUI('saving');
-  try   { await set(r(path), data); }
-  catch (e) { console.error('fbSet', path, e); toast('Error al guardar', 'error'); }
-  finally   { if (--_writes <= 0) { _writes=0; syncUI('ok'); } }
+  try {
+    const { error } = await _sb().from('nura_' + col)
+      .upsert({ id, datos: data }, { onConflict: 'id' });
+    if (error) { console.error('fbSet', col, error.message); toast('Error al guardar', 'error'); }
+  } catch(e) { console.error('fbSet', col, e); toast('Error al guardar', 'error'); }
+  finally { if (--_writes <= 0) { _writes=0; syncUI('ok'); } }
 }
-async function fbDel(path) {
-  _writes++; syncUI('saving');
-  try   { await remove(r(path)); }
-  catch (e) { console.error('fbDel', path, e); }
-  finally   { if (--_writes <= 0) { _writes=0; syncUI('ok'); } }
-}
-async function fbSave(col, item)     { await fbSet(`${col}/${item.id}`, item); }
-async function fbRemove(col, id)     { await fbDel(`${col}/${id}`); }
-async function fbSaveMany(col, items){ const obj={}; items.forEach(it=>{ obj[it.id]=it; }); await fbSet(col, obj); }
 
-// // ── Suscribir colecciones en tiempo real ──────────────────────────────────────
-const COLS = ['productos','clientes','ventas','compras','combos','usuarios'];
+async function fbDel(col_slash_id) {
+  const parts = col_slash_id.split('/');
+  const col = parts[0];
+  const id  = parts.slice(1).join('/');
+  _writes++; syncUI('saving');
+  try {
+    const { error } = await _sb().from('nura_' + col).delete().eq('id', id);
+    if (error) console.error('fbDel', col, error.message);
+  } catch(e) { console.error('fbDel', col, e); }
+  finally { if (--_writes <= 0) { _writes=0; syncUI('ok'); } }
+}
+
+async function fbSave(col, item)      { await fbSet(`${col}/${item.id}`, item); }
+async function fbRemove(col, id)      { await fbDel(`${col}/${id}`); }
+async function fbSaveMany(col, items) {
+  _writes++; syncUI('saving');
+  try {
+    const rows = items.map(it => ({ id: it.id, datos: it }));
+    const { error } = await _sb().from('nura_' + col).upsert(rows, { onConflict: 'id' });
+    if (error) { console.error('fbSaveMany', col, error.message); toast('Error al guardar', 'error'); }
+  } catch(e) { console.error('fbSaveMany', col, e); }
+  finally { if (--_writes <= 0) { _writes=0; syncUI('ok'); } }
+}
+
+// ── Suscribir colecciones: carga inicial + realtime ───────────────────────────
 const RELOAD_PAGES = {
   productos: ['catalogo','stock','dashboard','reportes','misreportes'],
   clientes:  ['clientes','dashboard','ventas','deudas'],
@@ -83,6 +109,15 @@ const RELOAD_PAGES = {
   usuarios:  ['usuarios']
 };
 
+// Carga inicial de todas las colecciones desde Supabase
+async function cargarColeccion(col) {
+  try {
+    const { data, error } = await _sb().from('nura_' + col).select('id, datos');
+    if (error) { console.error('cargar', col, error.message); syncUI('off'); return; }
+    DB[col] = (data || []).map(row => ({ ...row.datos, id: row.id }));
+  } catch(e) { console.error('cargar', col, e); syncUI('off'); }
+}
+
 let _splashOk = false;
 function hideSplash() {
   if (_splashOk) return; _splashOk = true;
@@ -91,16 +126,33 @@ function hideSplash() {
   if (s) { s.style.opacity='0'; setTimeout(()=>s.remove(), 420); }
   syncUI('ok');
 }
-setTimeout(hideSplash, 5000);
+setTimeout(hideSplash, 6000);
 
-COLS.forEach(col => {
-  onValue(r(col), snap => {
-    const val = snap.val();
-    DB[col] = val ? Object.values(val) : [];
-    hideSplash();
-    if (RELOAD_PAGES[col]?.includes(currentPage)) renderPage(currentPage);
-  }, () => syncUI('off'));
-});
+async function suscribirColecciones() {
+  // 1. Carga inicial paralela
+  await Promise.all(COLS_LIST.map(cargarColeccion));
+  hideSplash();
+
+  // 2. Realtime: escuchar cambios en todas las tablas
+  _realtimeChannel = _sb().channel('nura-changes');
+  COLS_LIST.forEach(col => {
+    _realtimeChannel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'nura_' + col },
+        async () => {
+          await cargarColeccion(col);
+          if (RELOAD_PAGES[col]?.includes(currentPage)) renderPage(currentPage);
+        }
+      );
+  });
+  _realtimeChannel.subscribe(status => {
+    if (status === 'SUBSCRIBED') syncUI('ok');
+    else if (status === 'CHANNEL_ERROR') syncUI('off');
+  });
+}
+
+// Arrancar suscripción cuando el DOM esté listo
+// (se llama desde el script inline de index.html al final, después de cargar este archivo)
+window._nuraInit = suscribirColecciones;
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function genId()    { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -235,7 +287,7 @@ function renderDashboard() {
   for(let i=5;i>=0;i--){const d=new Date();d.setMonth(d.getMonth()-i);meses.push({label:d.toLocaleString('es-AR',{month:'short'}),year:d.getFullYear(),month:d.getMonth()});}
   const vm=meses.map(m=>({label:m.label,val:DB.ventas.filter(v=>{const d=new Date(v.fecha);return d.getMonth()===m.month&&d.getFullYear()===m.year;}).reduce((s,v)=>s+v.total,0)}));
   const maxV=Math.max(...vm.map(m=>m.val),1);
-  const ult=[...DB.ventas].sort((a,b)=>b.fecha-a.fecha).slice(0,5);
+  const ult=[...DB.ventas].sort((a,b)=>a.fecha-b.fecha).map((v,i)=>({...v,num:i+1})).sort((a,b)=>b.fecha-a.fecha).slice(0,5);
   el.innerHTML=`
     <div class="grid-4 mb-16">
       <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ventas totales</div><div class="stat-value">${fmt(tv)}</div><div class="stat-sub">${DB.ventas.length} transacc.</div></div></div>
@@ -262,13 +314,13 @@ function renderDashboard() {
 }
 
 function dashVentas(items) {
-  const tbl=`<div class="table-wrap hide-mobile" style="margin-top:10px;"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead><tbody>
-    ${items.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<tr><td>${fmtDate(v.fecha)}</td><td>${cl?cl.nombre:v.clienteNombre||'—'}</td><td class="fw-700">${fmt(v.total)}</td><td><span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></td></tr>`;}).join('')}
-    </tbody></table></div>`;
-  const cards=`<div class="mobile-card-list" style="margin-top:10px;">
-    ${items.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title">${cl?cl.nombre:v.clienteNombre||'Sin cliente'}</div><div class="m-card-subtitle">${fmtDate(v.fecha)}</div></div><span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></div><div style="font-family:var(--font-display);font-size:20px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div></div>`;}).join('')}
-  </div>`;
-  return tbl+cards;
+  const tbl=`<div class="table-wrap hide-mobile" style="margin-top:10px;"><table><thead><tr><th>Trans.</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead><tbody>
+    ${items.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<tr><td><span class="badge badge-blue">#${v.num}</span></td><td>${fmtDate(v.fecha)}</td><td>${cl?cl.nombre:v.clienteNombre||'—'}</td><td class="fw-700">${fmt(v.total)}</td><td><span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></td></tr>`;}).join('')}
+    </tbody></table></div>`;
+  const cards=`<div class="mobile-card-list" style="margin-top:10px;">
+    ${items.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title"><span class="badge badge-blue" style="margin-right:6px;">#${v.num}</span> ${cl?cl.nombre:v.clienteNombre||'Sin cliente'}</div><div class="m-card-subtitle">${fmtDate(v.fecha)}</div></div><span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></div><div style="font-family:var(--font-display);font-size:20px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div></div>`;}).join('')}
+  </div>`;
+  return tbl+cards;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1595,57 +1647,60 @@ function renderVentas(){
     ${Sesion.esAdmin() ? `<button class="btn btn-outline btn-sm" onclick="resumenPendientesModal()">📋 Pendientes</button>` : ''}
     <button class="btn btn-primary" onclick="formVenta()">+ Venta</button>`;
 
-  const ventas = [...DB.ventas]
-    .filter(v => Sesion.esAdmin() || v.vendedorId === Sesion.user.id)   // Filtro según rol
-    .sort((a,b) => b.fecha - a.fecha);
+const ventas = [...DB.ventas]
+    .sort((a, b) => a.fecha - b.fecha)
+    .map((v, i) => ({ ...v, num: i + 1 }))
+    .filter(v => Sesion.esAdmin() || v.vendedorId === Sesion.user.id)
+    .sort((a,b) => b.fecha - a.fecha);
 
-  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
-    <th>Fecha</th><th>Cliente</th>${Sesion.esAdmin() ? '<th>Vendedor</th>' : ''}<th>Items</th><th>Total</th><th>Estado</th><th>Acciones</th>
-  </tr></thead><tbody>${ventas.length === 0
-    ? `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div></td></tr>`
-    : ventas.map(v => {
-        const cl = DB.clientes.find(c => c.id === v.clienteId);
-        const gananciaVendedor = Sesion.esVendedor()
-          ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
-          : null;
-        return `<tr>
-          <td>${fmtDate(v.fecha)}</td>
-          <td>${cl ? cl.nombre : v.clienteNombre || '—'} ${cl?.esMayorista ? '<span class="badge badge-violet" style="font-size:10px;">Mayor.</span>' : ''}</td>
-          ${Sesion.esAdmin() ? `<td>${v.vendedorNombre || '—'}</td>` : ''}
-          <td>${v.items.length}</td>
-          <td class="fw-700">${fmt(v.total)}</td>
-          <td>${estadoSelect(v)}</td>
-          <td><div class="table-actions">
-            <button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button>
-            <button class="btn btn-wsp-sm btn-sm" onclick="wspVenta('${v.id}')">📲</button>
-            ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
-          </div></td>
-        </tr>`;
-      }).join('')
-  }</tbody></table></div>`;
+  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
+    <th>Trans.</th><th>Fecha</th><th>Cliente</th>${Sesion.esAdmin() ? '<th>Vendedor</th>' : ''}<th>Items</th><th>Total</th><th>Estado</th><th>Acciones</th>
+  </tr></thead><tbody>${ventas.length === 0
+    ? `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div></td></tr>`
+    : ventas.map(v => {
+        const cl = DB.clientes.find(c => c.id === v.clienteId);
+        const gananciaVendedor = Sesion.esVendedor()
+          ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
+          : null;
+        return `<tr>
+          <td><span class="badge badge-blue">#${v.num}</span></td>
+          <td>${fmtDate(v.fecha)}</td>
+          <td>${cl ? cl.nombre : v.clienteNombre || '—'} ${cl?.esMayorista ? '<span class="badge badge-violet" style="font-size:10px;">Mayor.</span>' : ''}</td>
+          ${Sesion.esAdmin() ? `<td>${v.vendedorNombre || '—'}</td>` : ''}
+          <td>${v.items.length}</td>
+          <td class="fw-700">${fmt(v.total)}</td>
+          <td>${estadoSelect(v)}</td>
+          <td><div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button>
+            <button class="btn btn-wsp-sm btn-sm" onclick="wspVenta('${v.id}')">📲</button>
+            ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
+          </div></td>
+        </tr>`;
+      }).join('')
+  }</tbody></table></div>`;
 
-  const cards = `<div class="mobile-card-list">${ventas.map(v => {
-    const cl = DB.clientes.find(c => c.id === v.clienteId);
-    const gananciaVendedor = Sesion.esVendedor()
-      ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
-      : null;
-    return `<div class="m-card">
-      <div class="m-card-header">
-        <div>
-          <div class="m-card-title">${cl ? cl.nombre : v.clienteNombre || 'Sin cliente'}${cl?.esMayorista ? ' <span class="badge badge-violet" style="font-size:10px;">Mayorista</span>' : ''}</div>
-          <div class="m-card-subtitle">${fmtDate(v.fecha)} · ${v.items.length} ítem(s)</div>
-        </div>
-        ${estadoSelect(v)}
-      </div>
-      <div style="font-family:var(--font-display);font-size:22px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div>
-      ${gananciaVendedor !== null ? `<div style="font-size:12px;color:var(--violet-dark);margin-top:4px;">Ganancia: ${fmt(gananciaVendedor)}</div>` : ''}
-      <div class="m-card-footer mt-8">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="verVenta('${v.id}')">👁 Ver</button>
-        <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspVenta('${v.id}')">📲</button>
-        ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
-      </div>
-    </div>`;
-  }).join('')}</div>`;
+  const cards = `<div class="mobile-card-list">${ventas.map(v => {
+    const cl = DB.clientes.find(c => c.id === v.clienteId);
+    const gananciaVendedor = Sesion.esVendedor()
+      ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
+      : null;
+    return `<div class="m-card">
+      <div class="m-card-header">
+        <div>
+          <div class="m-card-title"><span class="badge badge-blue" style="margin-right:6px;">#${v.num}</span> ${cl ? cl.nombre : v.clienteNombre || 'Sin cliente'}${cl?.esMayorista ? ' <span class="badge badge-violet" style="font-size:10px;">Mayorista</span>' : ''}</div>
+          <div class="m-card-subtitle">${fmtDate(v.fecha)} · ${v.items.length} ítem(s)</div>
+        </div>
+        ${estadoSelect(v)}
+      </div>
+      <div style="font-family:var(--font-display);font-size:22px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div>
+      ${gananciaVendedor !== null ? `<div style="font-size:12px;color:var(--violet-dark);margin-top:4px;">Ganancia: ${fmt(gananciaVendedor)}</div>` : ''}
+      <div class="m-card-footer mt-8">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="verVenta('${v.id}')">👁 Ver</button>
+        <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspVenta('${v.id}')">📲</button>
+        ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 
   el.innerHTML = ventas.length === 0
     ? `<div class="empty-state"><div class="empty-icon">🛒</div><p>No hay ventas registradas</p></div>`
@@ -1782,7 +1837,7 @@ window.cambiarEstadoVenta = async function(id, estado) {
     // Si tienes pagos parciales, esto los mantiene; si no, podrías setear v.pagos = ...
   }
 
-  // 3. Guardar en Firebase
+  // 3. Guardar en Supabase
   await fbSave('ventas', v);
   toast('Estado actualizado');
 
@@ -2066,8 +2121,8 @@ async function guardarVenta(){
   swalSuccess('¡Venta registrada!', `Total: <strong>${fmt(total)}</strong>${esMay ? ' <span class="badge badge-violet">Precio mayorista</span>' : ''}`);
 }
 
-function verVenta(id){const v=DB.ventas.find(x=>x.id===id);if(!v)return;const cl=DB.clientes.find(c=>c.id===v.clienteId);openModal('Detalle de Venta',`<p class="mb-8"><strong>Fecha:</strong> ${fmtDate(v.fecha)}</p><p class="mb-8"><strong>Cliente:</strong> ${cl?cl.nombre:v.clienteNombre||'—'}${v.esMayorista?' <span class="badge badge-violet">Mayorista</span>':''}</p>${v.obs?`<p class="mb-12"><strong>Obs:</strong> ${v.obs}</p>`:''}<p class="mb-12"><strong>Estado:</strong> <span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></p><div class="table-wrap mb-12"><table class="cart-table"><thead><tr><th>Producto</th><th>Pres.</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody>${v.items.map(i=>`<tr><td class="fw-600">${i.nombre}</td><td><span class="badge badge-violet">${i.detalle}</span></td><td>${i.cantidad}</td><td>${fmt(i.precioAplicado||i.precio)}</td><td class="fw-700">${fmt(i.subtotal)}</td></tr>`).join('')}</tbody></table></div><div class="cost-calc-box"><div class="cost-row"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div><div class="cost-row"><span>Descuento</span><span style="color:var(--danger)">-${fmt(v.descuento||0)}</span></div><div class="cost-row total"><span>Total</span><span>${fmt(v.total)}</span></div></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button class="btn btn-wsp-sm" onclick="wspVenta('${v.id}')">📲 WhatsApp</button></div>`,null,true);}
-function wspVenta(id){const v=DB.ventas.find(x=>x.id===id);if(!v)return;const cl=DB.clientes.find(c=>c.id===v.clienteId);let msg=`*🧾 NURA — Comprobante*\n📅 ${fmtDate(v.fecha)}\n`;if(cl)msg+=`👤 ${cl.nombre}${v.esMayorista?' (Mayorista)':''}\n`;msg+=`\n`;v.items.forEach(i=>msg+=`• ${i.nombre} x${i.cantidad} = ${fmt(i.subtotal)}\n`);if(v.descuento)msg+=`\n🔖 Descuento: -${fmt(v.descuento)}`;msg+=`\n\n💰 *Total: ${fmt(v.total)}*\n\nGracias por elegirnos! 🌿`;const tel=cl?.telefono?.replace(/\D/g,'');window.open(`https://wa.me/${tel||''}?text=${encodeURIComponent(msg)}`,'_blank');}
+function verVenta(id){const num=[...DB.ventas].sort((a,b)=>a.fecha-b.fecha).findIndex(x=>x.id===id)+1;const v=DB.ventas.find(x=>x.id===id);if(!v)return;const cl=DB.clientes.find(c=>c.id===v.clienteId);openModal(`Detalle de Venta #${num}`,`<p class="mb-8"><strong>Fecha:</strong> ${fmtDate(v.fecha)}</p><p class="mb-8"><strong>Cliente:</strong> ${cl?cl.nombre:v.clienteNombre||'—'}${v.esMayorista?' <span class="badge badge-violet">Mayorista</span>':''}</p>${v.obs?`<p class="mb-12"><strong>Obs:</strong> ${v.obs}</p>`:''}<p class="mb-12"><strong>Estado:</strong> <span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></p><div class="table-wrap mb-12"><table class="cart-table"><thead><tr><th>Producto</th><th>Pres.</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody>${v.items.map(i=>`<tr><td class="fw-600">${i.nombre}</td><td><span class="badge badge-violet">${i.detalle}</span></td><td>${i.cantidad}</td><td>${fmt(i.precioAplicado||i.precio)}</td><td class="fw-700">${fmt(i.subtotal)}</td></tr>`).join('')}</tbody></table></div><div class="cost-calc-box"><div class="cost-row"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div><div class="cost-row"><span>Descuento</span><span style="color:var(--danger)">-${fmt(v.descuento||0)}</span></div><div class="cost-row total"><span>Total</span><span>${fmt(v.total)}</span></div></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button class="btn btn-wsp-sm" onclick="wspVenta('${v.id}')">📲 WhatsApp</button></div>`,null,true);}
+function wspVenta(id){const num=[...DB.ventas].sort((a,b)=>a.fecha-b.fecha).findIndex(x=>x.id===id)+1;const v=DB.ventas.find(x=>x.id===id);if(!v)return;const cl=DB.clientes.find(c=>c.id===v.clienteId);let msg=`*🧾 NURA — Comprobante #${num}*\n📅 ${fmtDate(v.fecha)}\n`;if(cl)msg+=`👤 ${cl.nombre}${v.esMayorista?' (Mayorista)':''}\n`;msg+=`\n`;v.items.forEach(i=>msg+=`• ${i.nombre} x${i.cantidad} = ${fmt(i.subtotal)}\n`);if(v.descuento)msg+=`\n🔖 Descuento: -${fmt(v.descuento)}`;msg+=`\n\n💰 *Total: ${fmt(v.total)}*\n\nGracias por elegirnos! 🌿`;const tel=cl?.telefono?.replace(/\D/g,'');window.open(`https://wa.me/${tel||''}?text=${encodeURIComponent(msg)}`,'_blank');}
 async function eliminarVenta(id){const res=await swalConfirm('¿Eliminar venta?','No se puede deshacer.');if(!res.isConfirmed)return;await fbRemove('ventas',id);toast('Venta eliminada');}
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2076,9 +2131,9 @@ async function eliminarVenta(id){const res=await swalConfirm('¿Eliminar venta?'
 function renderCompras(){
   const el=document.getElementById('page-compras');
   document.getElementById('topbarActions').innerHTML=`<button class="btn btn-primary" onclick="formCompra()">+ Compra</button>`;
-  const compras=[...DB.compras].sort((a,b)=>b.fecha-a.fecha);
-  const tbl=`<div class="table-wrap hide-mobile"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Proveedor</th><th>Cantidad</th><th>Costo unit.</th><th>Total</th><th></th></tr></thead><tbody>${compras.length===0?`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🚚</div><p>Sin compras</p></div></td></tr>`:compras.map(c=>`<tr><td>${fmtDate(c.fecha)}</td><td class="fw-700">${c.productoNombre}</td><td>${c.proveedor||'—'}</td><td>${c.tipo==='accesorio'?c.cantidad+' un':fmtL(c.cantidad)+' L'}</td><td>${fmt(c.precioUnit)}/${c.tipo==='accesorio'?'un':'L'}</td><td class="fw-700">${fmt(c.total)}</td><td><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCompra('${c.id}')">🗑</button></td></tr>`).join('')}</tbody></table></div>`;
-  const cards=`<div class="mobile-card-list">${compras.map(c=>`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title">${c.productoNombre}</div><div class="m-card-subtitle">${fmtDate(c.fecha)}${c.proveedor?' · '+c.proveedor:''}</div></div><span class="fw-700 text-gradient" style="font-family:var(--font-display);font-size:18px;">${fmt(c.total)}</span></div><div class="m-card-body"><div class="m-card-row"><span class="m-card-row-label">Cantidad</span><span class="m-card-row-value">${c.tipo==='accesorio'?c.cantidad+' un':fmtL(c.cantidad)+' L'}</span></div><div class="m-card-row"><span class="m-card-row-label">Costo/unit.</span><span class="m-card-row-value">${fmt(c.precioUnit)}</span></div></div><div class="m-card-footer"><button class="btn btn-danger btn-sm" onclick="eliminarCompra('${c.id}')">🗑 Eliminar</button></div></div>`).join('')}</div>`;
+  const compras=[...DB.compras].sort((a,b)=>a.fecha-b.fecha).map((c,i)=>({...c,num:i+1})).sort((a,b)=>b.fecha-a.fecha);
+  const tbl=`<div class="table-wrap hide-mobile"><table><thead><tr><th>Trans.</th><th>Fecha</th><th>Producto</th><th>Proveedor</th><th>Cantidad</th><th>Costo unit.</th><th>Total</th><th></th></tr></thead><tbody>${compras.length===0?`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🚚</div><p>Sin compras</p></div></td></tr>`:compras.map(c=>`<tr><td><span class="badge badge-green">#${c.num}</span></td><td>${fmtDate(c.fecha)}</td><td class="fw-700">${c.productoNombre}</td><td>${c.proveedor||'—'}</td><td>${c.tipo==='accesorio'?c.cantidad+' un':fmtL(c.cantidad)+' L'}</td><td>${fmt(c.precioUnit)}/${c.tipo==='accesorio'?'un':'L'}</td><td class="fw-700">${fmt(c.total)}</td><td><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCompra('${c.id}')">🗑</button></td></tr>`).join('')}</tbody></table></div>`;
+  const cards=`<div class="mobile-card-list">${compras.map(c=>`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title"><span class="badge badge-green" style="margin-right:6px;">#${c.num}</span> ${c.productoNombre}</div><div class="m-card-subtitle">${fmtDate(c.fecha)}${c.proveedor?' · '+c.proveedor:''}</div></div><span class="fw-700 text-gradient" style="font-family:var(--font-display);font-size:18px;">${fmt(c.total)}</span></div><div class="m-card-body"><div class="m-card-row"><span class="m-card-row-label">Cantidad</span><span class="m-card-row-value">${c.tipo==='accesorio'?c.cantidad+' un':fmtL(c.cantidad)+' L'}</span></div><div class="m-card-row"><span class="m-card-row-label">Costo/unit.</span><span class="m-card-row-value">${fmt(c.precioUnit)}</span></div></div><div class="m-card-footer"><button class="btn btn-danger btn-sm" onclick="eliminarCompra('${c.id}')">🗑 Eliminar</button></div></div>`).join('')}</div>`;
   el.innerHTML=compras.length===0?`<div class="empty-state"><div class="empty-icon">🚚</div><p>No hay compras registradas</p></div>`:tbl+cards;
 }
 function formCompra(){
@@ -2596,10 +2651,10 @@ console.log('🌿 NURA — Realtime Database + PWA + Combos + Mayorista');
 // ── Login ────────────────────────────────────────────────────────────
 (async function setupLogin() {
   console.log('DB.usuarios al iniciar:', DB.usuarios);
-  // Esperar a que Firebase esté listo y DB.usuarios cargado
+  // Esperar a que Supabase esté listo y DB.usuarios cargado
    await new Promise(resolve => {
     const check = () => {
-      if (window._FB_READY && DB.usuarios !== undefined) { // ← cambiado
+      if (window._supabase && DB.usuarios !== undefined) { // Supabase ready
         resolve();
       } else {
         setTimeout(check, 100);
