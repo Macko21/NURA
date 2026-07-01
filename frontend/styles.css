@@ -351,7 +351,14 @@ html,body{
 }
 .sc-chip.in{border-color:rgba(42,154,108,.35)}
 .sc-chip.me{border-color:var(--green);background:rgba(42,154,108,.08)}
-.sc-top{display:flex;align-items:center;gap:4px;justify-content:center}
+.sc-top{display:flex;align-items:center;gap:3px;justify-content:center}
+.sc-av{
+  width:16px;height:16px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold2),var(--gold-dk));
+  color:#1A1200;font-size:8px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
 .sc-nm{font-size:9px;color:var(--text2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center}
 .sc-sc{font-family:'Cinzel',serif;font-size:14px;color:var(--gold);font-weight:700}
 .sc-sb{font-size:8px;color:var(--text3);margin-top:1px;text-align:center}
@@ -917,6 +924,93 @@ html,body{
 .shop-section-title span{color:var(--gold)}
 
 /* ══════════════════════════════════════
+   PERFIL
+   ══════════════════════════════════════ */
+.profile-body{padding:20px 16px;gap:16px}
+.profile-header{
+  display:flex;align-items:center;gap:16px;
+  background:var(--bg-card);backdrop-filter:blur(12px);
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:20px;box-shadow:var(--sh-sm);
+}
+.profile-avatar{
+  width:64px;height:64px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold2),var(--gold-dk));
+  color:#1A1200;font-size:28px;font-weight:800;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 24px rgba(212,175,55,.3);
+  cursor:pointer;transition:transform .2s;
+}
+.profile-avatar:hover{transform:scale(1.05)}
+.profile-info{display:flex;flex-direction:column;gap:4px;min-width:0}
+.profile-name{font-family:'Cinzel',serif;font-size:20px;font-weight:700;color:var(--gold)}
+.profile-email{font-size:12px;color:var(--text3);word-break:break-all}
+.profile-rank{font-size:13px;color:var(--text2)}
+
+.profile-level-box{
+  background:var(--bg-card);backdrop-filter:blur(12px);
+  border:1px solid var(--border2);border-radius:var(--r);
+  padding:14px 16px;
+}
+.level-header{display:flex;justify-content:space-between;margin-bottom:8px}
+.level-label{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);font-weight:600}
+.xp-label{font-size:12px;color:var(--text2)}
+.xp-bar-bg{
+  height:8px;background:var(--bg-input);border-radius:4px;
+  overflow:hidden;
+}
+.xp-bar-fill{
+  height:100%;border-radius:4px;
+  background:linear-gradient(90deg,var(--gold-dk),var(--gold),var(--gold2));
+  transition:width .6s ease;
+}
+
+.profile-stats-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+}
+.profile-stat{
+  background:var(--bg-card);backdrop-filter:blur(8px);
+  border:1px solid var(--border2);border-radius:var(--r-sm);
+  padding:14px 8px;text-align:center;
+  display:flex;flex-direction:column;gap:4px;
+  transition:border-color .2s;
+}
+.profile-stat:hover{border-color:var(--border)}
+.ps-val{font-family:'Cinzel',serif;font-size:18px;color:var(--text);font-weight:700}
+.ps-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+
+/* ══════════════════════════════════════
+   MISIONES
+   ══════════════════════════════════════ */
+.missions-section{margin-bottom:16px}
+.mission-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--bg-card2);backdrop-filter:blur(8px);
+  border:1px solid var(--border2);border-radius:var(--r-sm);
+  padding:12px;margin-bottom:8px;
+  transition:all .2s;
+}
+.mission-item.completed{border-color:var(--green);background:rgba(42,154,108,.06)}
+.mission-item.claimed{opacity:.6}
+.mission-info{flex:1;min-width:0}
+.mission-name{display:block;font-size:13px;color:var(--text);font-weight:600}
+.mission-desc{display:block;font-size:10px;color:var(--text3);margin-top:2px}
+.mission-progress-wrap{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.mission-bar-bg{
+  width:80px;height:6px;background:var(--bg-input);
+  border-radius:3px;overflow:hidden;
+}
+.mission-bar-fill{
+  height:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--gold-dk),var(--gold));
+  transition:width .4s ease;
+}
+.mission-item.completed .mission-bar-fill{background:linear-gradient(90deg,var(--green),var(--green-lt))}
+.mission-pct{font-size:10px;color:var(--text3);min-width:32px;text-align:right}
+.mission-reward{flex-shrink:0;font-size:12px;color:var(--gold);font-weight:600;min-width:40px;text-align:center}
+.btn-claim{white-space:nowrap}
+
+/* ══════════════════════════════════════
    STRIPE / PAGO
    ══════════════════════════════════════ */
 .stripe-form{
@@ -958,6 +1052,9 @@ input[type=number]{-moz-appearance:textfield}
   .lobby-content{gap:14px;padding:12px}
   .scoreboard{gap:3px;padding:4px}
   .sc-sc{font-size:11px}
+  .profile-stats-grid{grid-template-columns:repeat(2,1fr)}
+  .mission-bar-bg{width:60px}
+  .profile-avatar{width:48px;height:48px;font-size:20px}
   .shop-box{width:96% !important;padding:24px 14px !important}
   .shop-grid{grid-template-columns:repeat(2,1fr)}
   .shop-item{padding:12px 8px}

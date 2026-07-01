@@ -878,6 +878,8 @@ function handle(type, data) {
       S.banking = false;
       stopTimer();
       updateGameCoins();
+      // Verificar misiones completadas
+      checkPendingMissions();
       showWin(
         data.winner?.alias||data.winner?.name||'?',
         `Ganó la partida con ${data.winner?.score} puntos`,
@@ -946,7 +948,8 @@ function renderRoom(room) {
   room.players.forEach(p => {
     const d = document.createElement('div');
     d.className = 'p-item';
-    d.innerHTML = `<div class="p-av">${esc(p.name.slice(0,2).toUpperCase())}</div>
+    const avInitial = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
+    d.innerHTML = `<div class="p-av">${avInitial}</div>
       <span class="p-name">${esc(p.name)}</span>
       <span class="p-tag ${p.ready?'tag-ready':'tag-wait'}">${p.ready?'Listo ✓':'Esperando'}</span>`;
     list.appendChild(d);
@@ -980,8 +983,9 @@ function renderSB(match) {
       sub = '✅ en juego';
     }
     const yoTag = isMe ? '<span class="sc-yo">YO</span>' : '';
+    const avInitial = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
     chip.innerHTML = `
-      <div class="sc-top">${yoTag}<span class="sc-nm">${esc(p.name)}</span></div>
+      <div class="sc-top">${yoTag}<span class="sc-av">${avInitial}</span><span class="sc-nm">${esc(p.name)}</span></div>
       <span class="sc-sc">${p.score}</span>
       <span class="sc-sb">${sub}</span>`;
     sb.appendChild(chip);
@@ -1291,8 +1295,18 @@ function initUI() {
       if (content) content.style.display = 'block';
       if (tab.dataset.tab === 'coins') loadCoinPacks();
       if (tab.dataset.tab === 'items') loadShopCatalog();
+      if (tab.dataset.tab === 'missions') loadMissions();
     };
   });
+
+  /* ── Perfil ─────────────────────────────────────────── */
+  $('btn-back-profile').onclick = navigateToLobbyOrAuth;
+  $('lobby-avatar').onclick = () => {
+    if (isLogged()) loadProfile();
+  };
+  $('lobby-username').onclick = () => {
+    if (isLogged()) loadProfile();
+  };
 
   /* Lobby */
   $('btn-create').onclick = () => {
@@ -1461,6 +1475,9 @@ function initUI() {
       if (inp) inp.value = S.name;
 
       $('btn-login').textContent = 'Ingresar';
+      
+      // Comprobar misiones completadas
+      setTimeout(checkPendingMissions, 2000);
       showScreen('screen-lobby');
       toast('¡Bienvenido, ' + S.name + '!');
       
@@ -1588,6 +1605,185 @@ function initUI() {
   /* Enter en inputs */
   $('input-name').onkeydown = e => { if (e.key==='Enter') $('btn-create').click(); };
   $('input-code').onkeydown = e => { if (e.key==='Enter') $('btn-join-confirm').click(); };
+}
+
+/* ── Cargar perfil del usuario ──────────────────────── */
+async function loadProfile() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) { toast('Debes iniciar sesión'); return; }
+  
+  $('profile-loading').classList.remove('hidden');
+  $('profile-content').classList.add('hidden');
+  showScreen('screen-profile');
+
+  try {
+    const res = await fetch('/api/user/profile', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Error al cargar perfil');
+    const p = await res.json();
+
+    // Avatar y header
+    $('profile-avatar').textContent = (p.alias || '?').charAt(0).toUpperCase();
+    $('profile-name').textContent = p.alias || '—';
+    $('profile-email').textContent = p.email || '—';
+    $('profile-rank').textContent = (p.rankIcon || '🌱') + ' ' + (p.rank || 'Rookie');
+
+    // Nivel y XP
+    $('profile-level').textContent = p.level || 1;
+    const xp = p.xp || 0;
+    const xpNext = p.xpForNext || 200;
+    const xpThisLevel = xp - ((p.level - 1) * 200);
+    const xpNeeded = xpNext;
+    const pct = Math.min(100, Math.round((xpThisLevel / Math.max(xpNeeded, 1)) * 100));
+    $('profile-xp').textContent = `${xp} XP`;
+    const bar = $('xp-bar-fill');
+    if (bar) bar.style.width = pct + '%';
+
+    // Stats
+    $('ps-coins').textContent = (p.coins || 0).toLocaleString();
+    $('ps-wins').textContent = p.gamesWon || 0;
+    $('ps-games').textContent = p.gamesPlayed || 0;
+    $('ps-streak').textContent = p.winStreak || 0;
+    $('ps-total').textContent = (p.totalScore || 0).toLocaleString();
+    $('ps-highest').textContent = (p.highestScore || 0).toLocaleString();
+
+    $('profile-loading').classList.add('hidden');
+    $('profile-content').classList.remove('hidden');
+  } catch (err) {
+    toast('⚠ ' + err.message);
+    $('profile-loading').textContent = 'Error al cargar perfil';
+    navigateToLobbyOrAuth();
+  }
+}
+
+/* ── Cargar misiones ───────────────────────────────── */
+async function loadMissions() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+
+  const container = $('missions-container');
+  if (!container) return;
+  container.innerHTML = '<p style="color:var(--text3);text-align:center;padding:20px">Cargando misiones...</p>';
+
+  try {
+    const res = await fetch('/api/user/missions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { container.innerHTML = '<p style="color:var(--text3)">Error al cargar</p>'; return; }
+    const { missions } = await res.json();
+    if (!missions?.length) { container.innerHTML = '<p style="color:var(--text3)">Sin misiones disponibles</p>'; return; }
+
+    container.innerHTML = '';
+
+    // Agrupar por tipo
+    const groups = { daily: [], weekly: [], achievement: [] };
+    missions.forEach(m => {
+      if (groups[m.type]) groups[m.type].push(m);
+    });
+
+    const typeLabels = { daily: 'Diarias', weekly: 'Semanales', achievement: 'Logros' };
+    const typeIcons = { daily: '📅', weekly: '📆', achievement: '🏆' };
+
+    for (const [typeKey, items] of Object.entries(groups)) {
+      if (!items.length) continue;
+      
+      const section = document.createElement('div');
+      section.className = 'missions-section';
+      section.innerHTML = `<p class="shop-section-title">${typeIcons[typeKey]} <span>${typeLabels[typeKey]}</span></p>`;
+      
+      items.forEach(m => {
+        const pct = m.req > 0 ? Math.round((m.progress / m.req) * 100) : 0;
+        const isComplete = m.completed === 1;
+        const isClaimed = m.claimed === 1;
+        const div = document.createElement('div');
+        div.className = 'mission-item' + (isComplete ? ' completed' : '') + (isClaimed ? ' claimed' : '');
+        div.innerHTML = `
+          <div class="mission-info">
+            <span class="mission-name">${m.name}</span>
+            <span class="mission-desc">${m.desc}</span>
+          </div>
+          <div class="mission-progress-wrap">
+            <div class="mission-bar-bg"><div class="mission-bar-fill" style="width:${Math.min(pct, 100)}%"></div></div>
+            <span class="mission-pct">${m.progress}/${m.req}</span>
+          </div>
+          <div class="mission-reward">
+            ${isClaimed ? '✅' : isComplete ? `<button class="btn btn-gold btn-claim" data-mid="${m.id}" style="padding:5px 12px;font-size:11px">🪙 Cobrar</button>` : `🪙 ${m.coins}`}
+          </div>
+        `;
+        section.appendChild(div);
+      });
+      
+      container.appendChild(section);
+    }
+
+    // Handlers de cobro
+    container.querySelectorAll('.btn-claim').forEach(btn => {
+      btn.onclick = async (e) => {
+        const mid = e.target.dataset.mid;
+        e.target.textContent = '⏳';
+        e.target.disabled = true;
+        try {
+          const r = await fetch('/api/user/missions/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ missionId: mid })
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error);
+          toast(`🎉 ${d.missionName}: +${d.coins}🪙 ${d.xp > 0 ? '+'+d.xp+'XP' : ''}`);
+          loadMissions(); // Recargar para reflejar cambios
+          loadUserBalance(); // Actualizar monedas
+        } catch (err) {
+          toast('⚠ ' + err.message);
+        }
+      };
+    });
+  } catch (err) {
+    container.innerHTML = '<p style="color:var(--text3)">Error al cargar</p>';
+  }
+}
+
+/* ── Verificar misiones completadas ─────────────────── */
+async function checkPendingMissions() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/user/missions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const { missions } = await res.json();
+    const completed = missions.filter(m => m.completed === 1 && m.claimed === 0);
+    completed.forEach(m => {
+      // Mostrar notificación de misión completada
+      showMissionComplete(m);
+    });
+  } catch (e) {}
+}
+
+/* ── Notificación de misión ─────────────────────────── */
+function showMissionComplete(mission) {
+  const overlay = document.createElement('div');
+  overlay.className = 'entry-banner-overlay';
+  overlay.style.zIndex = '700';
+  overlay.style.pointerEvents = 'auto';
+  overlay.innerHTML = `
+    <div class="entry-banner-box" style="border-color:var(--gold)">
+      <div class="entry-banner-icon" style="font-size:40px">🎯</div>
+      <div class="entry-banner-title" style="color:var(--gold);font-size:16px">¡Misión completada!</div>
+      <div class="entry-banner-sub">
+        <strong>${mission.name}</strong><br>
+        🪙 +${mission.coins} monedas ${mission.xp > 0 ? '· ⚡ +'+mission.xp+'XP' : ''}
+      </div>
+      <button class="btn btn-gold" style="margin-top:12px;padding:8px 16px;font-size:12px" onclick="this.closest('.entry-banner-overlay').remove()">🎉 Reclamar</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => {
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.remove(), 600);
+  }, 5000);
 }
 
 /* ── Cargar saldo real del usuario ───────────────────── */

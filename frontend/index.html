@@ -205,6 +205,50 @@
   </div>
 </div>
 
+<!-- ══ PERFIL ══ -->
+<div id="screen-profile" class="screen">
+  <div class="top-bar">
+    <button class="back-btn" id="btn-back-profile">‹ Volver</button>
+    <h2>👤 Mi Perfil</h2>
+    <span></span>
+  </div>
+  <div class="page-body profile-body">
+    <div id="profile-loading" style="text-align:center;padding:40px 0;color:var(--text3)">Cargando...</div>
+    <div id="profile-content" class="hidden">
+      <!-- Header con avatar y rango -->
+      <div class="profile-header">
+        <div class="profile-avatar" id="profile-avatar">M</div>
+        <div class="profile-info">
+          <span class="profile-name" id="profile-name">—</span>
+          <span class="profile-email" id="profile-email">—</span>
+          <span class="profile-rank" id="profile-rank">🌱 Rookie</span>
+        </div>
+      </div>
+
+      <!-- Barra de nivel y XP -->
+      <div class="profile-level-box">
+        <div class="level-header">
+          <span class="level-label">Nivel <span id="profile-level">1</span></span>
+          <span class="xp-label" id="profile-xp">0 XP</span>
+        </div>
+        <div class="xp-bar-bg">
+          <div class="xp-bar-fill" id="xp-bar-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="profile-stats-grid">
+        <div class="profile-stat"><span class="ps-val" id="ps-coins">0</span><span class="ps-label">🪙 Monedas</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-wins">0</span><span class="ps-label">🏆 Victorias</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-games">0</span><span class="ps-label">🎲 Partidas</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-streak">0</span><span class="ps-label">🔥 Racha</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-total">0</span><span class="ps-label">📊 Puntos totales</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-highest">0</span><span class="ps-label">💥 Récord</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL VICTORIA ══ -->
 <div id="modal-win" class="modal hidden">
   <div class="modal-box">
@@ -232,6 +276,7 @@
     
     <div class="shop-tabs">
       <button class="shop-tab active" data-tab="items">🎨 Skins</button>
+      <button class="shop-tab" data-tab="missions">🎯 Misiones</button>
       <button class="shop-tab" data-tab="coins">🪙 Monedas</button>
     </div>
     
@@ -240,6 +285,12 @@
       <div id="shop-items-container"></div>
     </div>
     
+    <!-- TAB: Misiones -->
+    <div id="shop-tab-missions" class="shop-tab-content" style="display:none">
+      <p class="shop-section-title">🎯 <span>Misiones</span></p>
+      <div id="missions-container"></div>
+    </div>
+
     <!-- TAB: Comprar monedas -->
     <div id="shop-tab-coins" class="shop-tab-content" style="display:none">
       <p class="shop-section-title">🪙 <span>Comprar monedas</span></p>
