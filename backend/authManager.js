@@ -133,26 +133,30 @@ async function requestPasswordReset(req, res) {
   const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
   
   try {
-    await transporter.sendMail({
-      from: '"Macko Juegos" <matiasoyarzo7@gmail.com>',
-      to: email,
-      subject: "Recuperación de cuenta - Los 10.000",
-      html: `
-        <div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <h2 style="color: #C8961E; text-align: center;">Los 10.000 de Macko</h2>
-          <p>Hola, recibimos una solicitud para recuperar tu contraseña.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetLink}" style="background-color: #C8961E; color: #fff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-              Cambiar contraseña
-            </a>
+    // Timeout de 10s para que no se cuelgue si Gmail falla
+    await Promise.race([
+      transporter.sendMail({
+        from: '"Macko Juegos" <matiasoyarzo7@gmail.com>',
+        to: email,
+        subject: "Recuperación de cuenta - Los 10.000",
+        html: `
+          <div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+            <h2 style="color: #C8961E; text-align: center;">Los 10.000 de Macko</h2>
+            <p>Hola, recibimos una solicitud para recuperar tu contraseña.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" style="background-color: #C8961E; color: #fff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Cambiar contraseña
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #888;">Si no solicitaste esto, ignora este correo. El enlace caduca en 1 hora.</p>
           </div>
-          <p style="font-size: 12px; color: #888;">Si no solicitaste esto, ignora este correo. El enlace caduca en 1 hora.</p>
-        </div>
-      `
-    });
+        `
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout email 10s")), 10000))
+    ]);
   } catch (err) {
     console.error("Error al enviar email:", err);
-    return res.status(500).json({ error: "Error al enviar el correo de recuperación" });
+    // No devolvemos error al cliente por seguridad (no revelar si el email existe)
   }
 
   res.json({ message: "Si el correo está registrado, recibirás instrucciones" });

@@ -1,6 +1,11 @@
 node_modules/
+<<<<<<< HEAD
 .env
 database/*.db
 *.log
 .vscode/
 LOS10MILDEMACKO.zip
+=======
+database/players.json
+.env
+>>>>>>> f8b7f241c90c5f6a26b408e28357147ae53d3e28

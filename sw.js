@@ -6,21 +6,10 @@
 
 /* ── Estado global ───────────────────────────────────── */
 const S = {
-  id:null,
-  userId:null,
-  logged:false,
-
-  name:null,
-  roomId:null,
-  roomCode:null,
-
-  match:null,
-  myTurn:false,
-  entered:false,
-
-  ws:null,
-  joiningRoom:false,
-  isOwner:false
+  id:null, name:null, roomId:null, roomCode:null,
+  match:null, myTurn:false, entered:false,
+  ws:null, chatOpen:false, chatUnread:0,
+  joiningRoom:false, isOwner:false
 };
 let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
@@ -54,7 +43,7 @@ window.addEventListener('appinstalled', () => {
 
 /* ── Persistencia de sesión ──────────────────────────── */
 const SESSION_KEY = 'macko_session';
-const AUTH_KEY = 'macko_auth';
+
 function saveSession() {
   if (!S.id) return;
   localStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -80,30 +69,7 @@ function loadSession() {
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
-function saveAuth(user, token) {
-  localStorage.setItem(AUTH_KEY, JSON.stringify({
-    id: user.id,
-    username: user.alias || user.username
-  }));
-  localStorage.setItem('gameToken', token); // ¡Guardamos la llave VIP!
-}
 
-function isLogged() {
-  return !!localStorage.getItem('gameToken');
-}
-
-function loadAuth() {
-  try {
-    return JSON.parse(localStorage.getItem(AUTH_KEY));
-  } catch {
-    return null;
-  }
-}
-
-function clearAuth() {
-  localStorage.removeItem(AUTH_KEY);
-  localStorage.removeItem('gameToken');
-}
 /* ── SVG dados realistas ─────────────────────────────── */
 const DOT_POSITIONS = {
   1: [[25,25]],
@@ -114,9 +80,9 @@ const DOT_POSITIONS = {
   6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
 };
 
-function makeDieSVG(value, hot=false) {
+function makeDieSVG(value, scoring=false) {
   const dots = DOT_POSITIONS[value] || [];
-  const dotColor = hot ? '#6b3400' : '#1a1a2e';
+  const dotColor = scoring ? '#8B6914' : '#1a1a2e';
   const circles = dots.map(([cx,cy]) =>
     `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${dotColor}"/>`
   ).join('');
@@ -126,52 +92,20 @@ function makeDieSVG(value, hot=false) {
 function makeDie(value, state='normal') {
   const el = document.createElement('div');
   el.className = 'die rolling'
-    + (state === 'scoring' ? ' scoring' : '')  // verde individual
-    + (state === 'hot'     ? ' hot'     : '')  // dorado caliente
+    + (state === 'scoring' ? ' scoring' : '')
     + (state === 'dead'    ? ' dead'    : '');
-  el.innerHTML = makeDieSVG(value, state === 'hot');
+  el.innerHTML = makeDieSVG(value, state === 'scoring');
   el.dataset.val = value;
   return el;
-}
-
-/* Calcula cuáles dados puntúan individualmente (sin ser todos calientes) */
-function scoringIndices(dice) {
-  const counts = {};
-  dice.forEach(d => counts[d] = (counts[d]||0)+1);
-  const result = [];
-  dice.forEach((val, i) => {
-    const c = counts[val];
-    // Trio o más → todos los de ese valor puntúan
-    if (c >= 3) { result.push(i); return; }
-    // Sueltos: solo 1 y 5
-    if (val === 1 || val === 5) result.push(i);
-  });
-  return result;
 }
 
 function showDice(dice, mode) {
   const row = $('dice-row');
   row.innerHTML = '';
-
-  // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
-  let greenIdx = [];
-  if (mode === 'scored') {
-    // Verificar primero si es escalera (todos calientes)
-    const sorted = [...dice].sort((a,b)=>a-b).join('');
-    const isStr  = dice.length===5 && ['12345','23456','13456'].includes(sorted);
-    if (isStr) {
-      // Escalera = todos calientes → usar modo 'all' (dorado)
-      mode = 'all';
-    } else {
-      greenIdx = scoringIndices(dice);
-    }
-  }
-
   dice.forEach((val, i) => {
     let state = 'normal';
-    if (mode === 'all')    state = 'hot';     // todos calientes → dorado
-    if (mode === 'dead')   state = 'dead';
-    if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring'; // verdes individuales
+    if (mode === 'all')  state = 'scoring';
+    if (mode === 'dead') state = 'dead';
     const die = makeDie(val, state);
     die.style.animationDelay = (i * 55) + 'ms';
     row.appendChild(die);
@@ -368,27 +302,6 @@ function toast(msg, ms=2800) {
   _toastT=setTimeout(()=>el.classList.add('hidden'), ms);
 }
 
-/* ── Panel de Usuario (Lobby) ────────────────────────── */
-function updateUserPanel(name, coins) {
-  const topBar = $('user-top-bar');
-  if (!topBar) return;
-  
-  if (isLogged() && name) {
-    topBar.classList.remove('hidden');
-    $('lobby-username').textContent = name;
-    $('lobby-avatar').textContent = name.charAt(0).toUpperCase();
-    $('lobby-coins').textContent = coins || 0;
-    
-    $('guest-name-field').classList.add('hidden');
-    $('btn-logout').classList.remove('hidden');
-  } else {
-    // Si no está logueado, ocultamos la barra de usuario y mostramos el campo para nombre
-    topBar.classList.add('hidden');
-    $('btn-logout').classList.add('hidden');
-    $('guest-name-field').classList.remove('hidden');
-  }
-}
-
 /* ── Flash puntos ────────────────────────────────────── */
 function flashTurnPoints() {
   const el = $('turn-points');
@@ -408,12 +321,6 @@ function updateGameRoomCode() {
   if (el) el.textContent = S.roomCode || '—';
 }
 
-/* Resetear el botón de unirse a sala */
-function resetJoinBtn() {
-  const btn = $('btn-join-confirm');
-  if (btn) { btn.disabled = false; btn.textContent = 'Entrar →'; }
-}
-
 /* ── Volver al lobby limpio ──────────────────────────── */
 function goLobby(msg) {
   stopTimer();
@@ -428,17 +335,13 @@ function goLobby(msg) {
   S.isOwner  = false;
   $('btn-ready').disabled    = false;
   $('btn-ready').textContent = 'Estoy listo ✓';
-  const cm = $('chat-msgs'); if(cm) cm.innerHTML = '';
+  $('chat-msgs').innerHTML   = '';
   $('modal-win').classList.add('hidden');
   clearDice();
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
   if (msg) toast(msg, 2500);
-  if(isLogged()){
-   showScreen('screen-lobby');
-}else{
-   showScreen('screen-auth');
-}
+  showScreen('screen-lobby');
 }
 
 /* ── Ir a sala de revancha ───────────────────────────── */
@@ -456,7 +359,7 @@ function goToPlayAgain(room) {
   saveSession();
   $('btn-ready').disabled    = false;
   $('btn-ready').textContent = 'Estoy listo ✓';
-  const c2 = $('chat-msgs'); if(c2) c2.innerHTML = '';
+  $('chat-msgs').innerHTML   = '';
   clearDice();
   renderRoom(room);
   const amOwner = room.players[0]?.id === S.id;
@@ -486,55 +389,19 @@ function showConfirm(msg, onYes) {
 }
 
 /* ── WebSocket ───────────────────────────────────────── */
-let _reconnectTimer = null;
-let _pingTimer      = null;
-
 function connect(cb) {
-  // Cancelar cualquier reconexión pendiente
-  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
-  if (_pingTimer)      { clearInterval(_pingTimer);     _pingTimer      = null; }
-
-  // Si ya hay una conexión abierta o conectando, no abrir otra
-  if (S.ws && (S.ws.readyState === WebSocket.OPEN || S.ws.readyState === WebSocket.CONNECTING)) {
-    cb?.();
-    return;
-  }
-
-// Protocolo dinámico (si es http pasa a ws, si es https pasa a wss)
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  
-  // location.host toma automáticamente el dominio y puerto (ej: '10mildemacko.onrender.com' o 'localhost:3000')
-  const host = window.location.host; 
-
-  S.ws = new WebSocket(`${protocol}//${host}`);
-
+  const proto = location.protocol==='https:' ? 'wss' : 'ws';
+  S.ws = new WebSocket(`${proto}://${location.host}`);
   S.ws.onopen = () => {
-    console.log('WS conectado');
-    // Siempre mandar roomId para reconexión automática
     wsSend('IDENTIFY', { playerId:S.id, playerName:S.name, roomId:S.roomId });
     cb?.();
-
-    // Ping cada 25s para mantener viva la conexión
-    _pingTimer = setInterval(() => {
-      if (S.ws?.readyState === WebSocket.OPEN) {
-        try { S.ws.send(JSON.stringify({type:'PING'})); } catch(e){}
-      }
-    }, 25000);
   };
-
   S.ws.onmessage = e => {
-    try { const {type,data}=JSON.parse(e.data); if(type!=='PONG') handle(type,data); }
+    try { const {type,data}=JSON.parse(e.data); handle(type,data); }
     catch(x){ console.error(x); }
   };
-
-  S.ws.onclose = (ev) => {
-    console.log('WS cerrado, reconectando...');
-    if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
-    // Reconectar en 2s, siempre con el roomId guardado para restaurar sesión
-    _reconnectTimer = setTimeout(() => connect(), 2000);
-  };
-
-  S.ws.onerror = () => {};
+  S.ws.onclose = () => setTimeout(()=>connect(), 2500);
+  S.ws.onerror = ()=>{};
 }
 
 function wsSend(type, data={}) {
@@ -548,21 +415,13 @@ function wsSend(type, data={}) {
 function handle(type, data) {
   switch(type) {
 
-    case 'IDENTIFIED':
-      // Si había un joiningRoom pendiente, puede reintentar
-      if (S.joiningRoom) {
-        S.joiningRoom = false;
-        resetJoinBtn();
-      }
-      break;
+    case 'IDENTIFIED': break;
 
     /* ── Reconexión ─────────────────────────────────── */
     case 'RECONNECTED':
-      S.roomId      = data.match.roomId;
-      S.match       = data.match;
-      S.entered     = data.match.players.find(p=>p.id===S.id)?.entered || false;
-      S.joiningRoom = false;
-      resetJoinBtn();
+      S.roomId  = data.match.roomId;
+      S.match   = data.match;
+      S.entered = data.match.players.find(p=>p.id===S.id)?.entered || false;
       saveSession();
       showScreen('screen-game');
       renderSB(data.match);
@@ -573,10 +432,8 @@ function handle(type, data) {
       break;
 
     case 'RECONNECTED_LOBBY':
-      S.roomId      = data.room.id;
-      S.roomCode    = data.room.code;
-      S.joiningRoom = false;
-      resetJoinBtn();
+      S.roomId   = data.room.id;
+      S.roomCode = data.room.code;
       saveSession();
       renderRoom(data.room);
       showScreen('screen-room');
@@ -664,9 +521,6 @@ function handle(type, data) {
       S.match=data.match; S.entered=false;
       saveSession();
       showScreen('screen-game');
-      // Resetear botones al iniciar partida nueva
-      $('btn-roll').disabled = false;
-      $('btn-bank').disabled = true;
       renderSB(data.match);
       updateTurnUI(data.match);
       clearDice();
@@ -717,7 +571,7 @@ function handle(type, data) {
     case 'ROLL_RESULT':
       S.match=data.match;
       renderSB(data.match);
-      showDice(data.dice,'scored');
+      showDice(data.dice,'normal');
       setMsg(
         `Tiro ${data.rollCount}/3 — +${data.rollScore} pts` +
         (data.autoBank ? ' — Banco automático...' : ''),
@@ -790,8 +644,6 @@ function handle(type, data) {
     case 'TURN_START':
       S.match=data.match;
       renderSB(data.match);
-      // Siempre resetear el botón tirar al cambiar de turno
-      $('btn-roll').disabled = false;
       updateTurnUI(data.match);
       $('turn-points').textContent = '0';
       $('roll-count').textContent  = '— / 3';
@@ -995,6 +847,12 @@ function addChat(name, text) {
   d.innerHTML = `<span class="cn">${esc(name)}</span>: ${esc(text)}`;
   msgs.appendChild(d);
   msgs.scrollTop = msgs.scrollHeight;
+  if (!S.chatOpen) {
+    S.chatUnread++;
+    const b = $('chat-badge');
+    b.textContent = S.chatUnread;
+    b.classList.remove('hidden');
+  }
 }
 
 function sys(text) {
@@ -1044,7 +902,7 @@ function showWin(playerName, desc, dice) {
   (dice||[]).forEach(v => {
     const d = document.createElement('div');
     d.className = 'win-die';
-    d.innerHTML = makeDieSVG(v, true);
+    d.innerHTML = makeDieSVG(v, false);
     wr.appendChild(d);
   });
   $('modal-win').classList.remove('hidden');
@@ -1069,67 +927,6 @@ function initUI() {
     $('pwa-install-bar').classList.add('hidden');
   };
 
-  /* ── Tienda ─────────────────────────────────────────── */
-  $('btn-open-shop').onclick = () => {
-    $('modal-shop').classList.remove('hidden');
-    loadCoinPacks();
-  };
-  $('btn-close-shop').onclick = () => $('modal-shop').classList.add('hidden');
-
-  // Tabs de tienda
-  document.querySelectorAll('.shop-tab').forEach(tab => {
-    tab.onclick = () => {
-      document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      document.querySelectorAll('.shop-tab-content').forEach(c => c.style.display = 'none');
-      const content = $('shop-tab-' + tab.dataset.tab);
-      if (content) content.style.display = 'block';
-      if (tab.dataset.tab === 'coins') loadCoinPacks();
-    };
-  });
-
-  // Lógica de compra con monedas virtuales
-  document.querySelectorAll('.btn-buy').forEach(btn => {
-    btn.onclick = async (e) => {
-      const itemId = e.target.getAttribute('data-id');
-      const token = localStorage.getItem('gameToken');
-      
-      if (!token) {
-        toast('Debes iniciar sesión para comprar');
-        return;
-      }
-
-      const originalText = e.target.textContent;
-      e.target.textContent = '⏳';
-      e.target.disabled = true;
-
-      try {
-        const res = await fetch('/api/shop/buy', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ itemId })
-        });
-        
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        toast('¡Compra exitosa! 🎉');
-        $('lobby-coins').textContent = data.newBalance;
-        
-        e.target.textContent = '✔ Tuyo';
-        e.target.classList.remove('btn-gold');
-        e.target.classList.add('btn-ghost');
-      } catch (err) {
-        toast('⚠ ' + err.message);
-        e.target.textContent = originalText;
-        e.target.disabled = false;
-      }
-    };
-  });
-
   /* Lobby */
   $('btn-create').onclick = () => {
     const name = $('input-name').value.trim();
@@ -1147,176 +944,23 @@ function initUI() {
     showScreen('screen-join');
   };
 
-  $('btn-ranking').onclick = async () => {
-    if (!isLogged()) {
-      toast('🔒 Debes iniciar sesión para ver el ranking');
-      return;
-    }
-    
-    const token = localStorage.getItem('gameToken');
-    
-    try {
-      const response = await fetch('/ranking', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.status === 401 || response.status === 403) {
-        clearAuth();
-        showScreen('screen-auth');
-        toast('Sesión expirada. Volvé a ingresar.');
-        return;
-      }
-      
-      const rankingData = await response.json();
-      renderRanking(rankingData);
-      showScreen('screen-ranking');
-    } catch (err) {
-      toast('⚠ Error cargando el ranking');
-    }
-  };
-
-/* Logout */
-  $('btn-logout').onclick = () => {
-    clearAuth();
-    clearSession();
-    
-    // RESET TOTAL DEL ESTADO
-    S.logged = false;
-    S.userId = null;
-    S.id = null;
-    S.name = null; // IMPORTANTE: Borramos el nombre guardado
-    
-    // Limpiar campos visuales
-    $('input-name').value = ''; 
-    
-    showScreen('screen-auth');
-    toast('Sesión cerrada');
-  };
-
-  /* Entrar como Invitado */
-  $('btn-guest').onclick = () => {
-    // Limpiamos todo antes de empezar como invitado
-    clearAuth(); 
-    clearSession();
-    
-    S.logged = false;
-    S.userId = null;
-    S.id = uid(); // Generamos un ID nuevo para este invitado
-    S.name = null; // El nombre debe estar vacío para que el usuario lo escriba
-    
-    $('input-name').value = ''; // Limpiamos el input del lobby
-    
-    showScreen('screen-lobby');
-    updateUserPanel(null, 0); // Panel vacío
-  };
-
-/* Alternar entre Login y Registro */
-  $('auth-mode-btn').onclick = () => {
-    const isRegistering = !$('login-email').classList.contains('hidden');
-    if (isRegistering) {
-      // Pasar a modo Login
-      $('login-email').classList.add('hidden');
-      $('btn-login').classList.remove('hidden');
-      $('btn-register').classList.add('hidden');
-      $('auth-mode-btn').textContent = '¿No tenés cuenta? Registrate';
+  $('btn-ranking').onclick = () => {
+    showScreen('screen-ranking');
+    if (!S.ws || S.ws.readyState !== WebSocket.OPEN) {
+      S.name = S.name||'Visitante'; S.id = S.id||uid();
+      connect(() => setTimeout(() => wsSend('GET_RANKING'), 300));
     } else {
-      // Pasar a modo Registro
-      $('login-email').classList.remove('hidden');
-      $('btn-login').classList.add('hidden');
-      $('btn-register').classList.remove('hidden');
-      $('auth-mode-btn').textContent = '¿Ya tenés cuenta? Iniciá sesión';
-    }
-  };
-
-  /* Registro HTTP */
-  $('btn-register').onclick = async () => {
-    const email = $('login-email').value.trim();
-    const username = $('login-user').value.trim();
-    const password = $('login-pass').value.trim();
-
-    if (!email || !username || !password) {
-      toast('Completá email, usuario y contraseña');
-      return;
-    }
-
-    $('btn-register').disabled = true;
-    try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username, password })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      toast('¡Registro exitoso! Ahora iniciá sesión.');
-      $('login-pass').value = ''; 
-      $('auth-mode-btn').click(); // Volver a la vista de login automáticamente
-    } catch (err) {
-      toast('⚠ ' + err.message);
-    } finally {
-      $('btn-register').disabled = false;
-    }
-  };
-
-  /* Login HTTP */
-  $('btn-login').onclick = async () => {
-    const identifier = $('login-user').value.trim();
-    const password = $('login-pass').value.trim();
-
-    if (!identifier || !password) {
-      toast('Completá usuario y contraseña');
-      return;
-    }
-
-    $('btn-login').disabled = true;
-    $('btn-login').textContent = 'Entrando...';
-
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      // Guardar sesión y token JWT
-      saveAuth(data.player, data.token);
-      
-      S.logged = true;
-      S.userId = data.player.id;
-      S.name = data.player.alias;
-      S.id = data.player.id; // Clave para que los sockets del juego sigan usando este ID
-      
-      updateUserPanel(data.player.alias, data.player.coins);
-      
-      const inp = $('input-name');
-      if (inp) inp.value = S.name;
-
-      $('btn-login').textContent = 'Ingresar';
-      showScreen('screen-lobby');
-      toast('¡Bienvenido, ' + S.name + '!');
-      
-    } catch (err) {
-      toast('⚠ ' + err.message);
-      $('btn-login').textContent = 'Ingresar';
-    } finally {
-      $('btn-login').disabled = false;
+      wsSend('GET_RANKING');
     }
   };
 
   /* Unirse */
-  /* Unirse */
-  $('btn-back-join').onclick = navigateToLobbyOrAuth;
-
-  $('input-code').oninput = function() { this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6); };
+  $('btn-back-join').onclick = () => showScreen('screen-lobby');
+  $('input-code').oninput = function() { this.value = this.value.toUpperCase(); };
 
   $('btn-join-confirm').onclick = () => {
-    const code = $('input-code').value.trim().replace(/[^0-9]/g, '');
-    if (code.length < 4 || !/^[0-9]+$/.test(code)) { toast('Código inválido — solo números'); return; }
+    const code = $('input-code').value.trim().toUpperCase();
+    if (code.length < 4) { toast('Código inválido'); return; }
     if (S.joiningRoom)   { toast('Ya estás intentando entrar...'); return; }
     S.joiningRoom = true;
     $('btn-join-confirm').disabled    = true;
@@ -1367,12 +1011,6 @@ function initUI() {
     SFX.roll();
     $('btn-roll').disabled = true;
     wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
-    // Safety: si en 8s no llega respuesta del servidor, rehabilitar el botón
-    setTimeout(() => {
-      if (S.myTurn && $('btn-roll') && $('btn-roll').disabled) {
-        $('btn-roll').disabled = false;
-      }
-    }, 8000);
   };
 
   $('btn-bank').onclick = () => {
@@ -1389,13 +1027,23 @@ function initUI() {
     });
   };
 
-  /* Chat fijo */
+  /* Chat */
+  $('chat-toggle').onclick = () => {
+    const p = $('chat-panel');
+    S.chatOpen = p.classList.contains('hidden');
+    p.classList.toggle('hidden');
+    if (S.chatOpen) {
+      S.chatUnread = 0;
+      $('chat-badge').classList.add('hidden');
+      $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
+    }
+  };
+  $('chat-close').onclick   = () => { $('chat-panel').classList.add('hidden'); S.chatOpen = false; };
   $('chat-send').onclick    = sendChat;
   $('chat-input').onkeydown = e => { if (e.key==='Enter') sendChat(); };
 
   /* Ranking */
-/* Ranking */
-  $('btn-back-ranking').onclick = navigateToLobbyOrAuth;
+  $('btn-back-ranking').onclick = () => showScreen('screen-lobby');
 
   /* Modal victoria */
   $('btn-play-again').onclick = () => {
@@ -1417,114 +1065,19 @@ function initUI() {
   $('input-code').onkeydown = e => { if (e.key==='Enter') $('btn-join-confirm').click(); };
 }
 
-/* ── Cargar saldo real del usuario ───────────────────── */
-async function loadUserBalance() {
-  const token = localStorage.getItem('gameToken');
-  if (!token) return;
-  
-  try {
-    const res = await fetch('/api/user/balance', { 
-      headers: { 'Authorization': `Bearer ${token}` } 
-    });
-    if (res.ok) {
-      const data = await res.json();
-      updateUserPanel(S.name, data.coins);
-    }
-  } catch (err) {
-    console.error("Error al cargar saldo:", err);
-  }
-}
-
-/* ── Cargar paquetes de monedas (Mercado Pago) ─────── */
-async function loadCoinPacks() {
-  const token = localStorage.getItem('gameToken');
-  if (!token) return;
-  
-  try {
-    const res = await fetch('/api/mercadopago/packs', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) return;
-    const { packs } = await res.json();
-    const grid = $('coin-packs-grid');
-    if (!grid) return;
-    
-    grid.innerHTML = '';
-    for (const [id, pack] of Object.entries(packs)) {
-      const div = document.createElement('div');
-      div.className = 'coin-pack' + (id === 'large' || id === 'mega' ? ' premium' : '');
-      const icon = id === 'mega' ? '👑' : id === 'large' ? '💰' : id === 'medium' ? '🪙' : '💎';
-      div.innerHTML = `
-        <div class="coin-pack-icon">${icon}</div>
-        <div class="coin-pack-amount">${pack.coins.toLocaleString()}</div>
-        <div class="coin-pack-label">${pack.name}</div>
-        <div class="coin-pack-price">${pack.priceDisplay}</div>
-        <button class="btn btn-gold btn-buy-coins" data-pack="${id}" style="margin-top:4px">Comprar</button>
-      `;
-      grid.appendChild(div);
-    }
-    
-    // Handlers para comprar con Mercado Pago
-    document.querySelectorAll('.btn-buy-coins').forEach(btn => {
-      btn.onclick = async (e) => {
-        const packId = e.target.dataset.pack;
-        e.target.textContent = '⏳';
-        e.target.disabled = true;
-        
-        try {
-          const res = await fetch('/api/mercadopago/create-preference', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + token
-            },
-            body: JSON.stringify({ packId })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error);
-          
-          // Redirigir al checkout de Mercado Pago
-          window.location.href = data.redirectUrl;
-        } catch (err) {
-          toast('⚠ ' + err.message);
-          e.target.textContent = 'Comprar';
-          e.target.disabled = false;
-        }
-      };
-    });
-  } catch (err) {
-    console.error("Error cargando paquetes:", err);
-  }
-}
-
 /* ── Arranque ────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initUI();
 
-  const auth = loadAuth();
-
-  if(isLogged()){
-    S.logged = true;
-    S.userId = auth.id;
-    S.name = auth.username;
-    // LLAMADA CLAVE: Al cargar, pedimos el saldo al backend
-    loadUserBalance(); 
-  }
-
   const session = loadSession();
   if (session?.id && session?.roomId) {
-    S.id     = session.id;
-    S.name   = session.name;
-    S.roomId = session.roomId;
+    S.id       = session.id;
+    S.name     = session.name;
+    S.roomId   = session.roomId;
     S.roomCode = session.roomCode;
     const inp  = $('input-name');
     if (inp) inp.value = session.name || '';
-    
-    if(isLogged()){
-      showScreen('screen-lobby');
-    } else {
-      showScreen('screen-auth');
-    }
+    showScreen('screen-lobby');
     toast('🔄 Restaurando sesión...', 2000);
     connect();
   } else if (session?.id) {
@@ -1534,58 +1087,3 @@ document.addEventListener('DOMContentLoaded', () => {
     if (inp) inp.value = session.name || '';
   }
 });
-
-/* ── Navegación Maestra ────────────────────────────── */
-function navigateToLobbyOrAuth() {
-  if (isLogged()) {
-    showScreen('screen-lobby');
-  } else {
-    clearAuth();
-    clearSession();
-    showScreen('screen-auth');
-  }
-}
-
-$('btn-back-to-auth').onclick = () => {
-  clearSession(); 
-  showScreen('screen-auth');
-};
-
-/* ── Recuperación de contraseña ─────────────────────── */
-$('btn-forgot').onclick = () => {
-  $('modal-forgot').classList.remove('hidden');
-};
-
-// Función llamada desde el onclick del HTML: onclick="sendRecoveryEmail(event)"
-async function sendRecoveryEmail(event) {
-  const email = $('forgot-email').value;
-  if (!email) {
-    toast("Ingresa un correo válido");
-    return;
-  }
-
-  const btn = event.target;
-  btn.textContent = "Enviando...";
-  btn.disabled = true;
-
-  try {
-    const res = await fetch('/api/forgot-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json'},
-      body: JSON.stringify({ email })
-    });
-
-    if (res.ok) {
-      toast("✅ Instrucciones enviadas a tu correo.");
-      $('modal-forgot').classList.add('hidden');
-    } else {
-      const data = await res.json();
-      toast("❌ " + (data.error || "Error al enviar"));
-    }
-  } catch (e) {
-    toast("❌ Error de conexión");
-  } finally {
-    btn.textContent = "Enviar instrucciones";
-    btn.disabled = false;
-  }
-}
