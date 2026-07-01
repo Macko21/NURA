@@ -573,18 +573,23 @@ async function checkMissionsCompleted(playerId) {
 
 // ── INVENTARIO ────────────────────────────────────────────
 async function getOwnedItems(userId) {
-  const playerRes = await pool.query(`SELECT id, equipped_avatar, equipped_dice, equipped_special FROM players WHERE user_id = $1`, [userId]);
-  if (!playerRes.rows[0]) return { owned: [], equipped: {} };
-  const p = playerRes.rows[0];
-  const redRes = await pool.query(`SELECT reward_id FROM redemptions WHERE player_id = $1 AND status = 'completed'`, [p.id]);
-  const ownedIds = redRes.rows.map(r => r.reward_id);
-  const owned = SHOP_CATALOG.filter(item => ownedIds.includes(item.id));
-  const equipped = {
-    avatar: p.equipped_avatar || '',
-    dice: p.equipped_dice || '',
-    special: p.equipped_special || ''
-  };
-  return { owned, equipped };
+  try {
+    const playerRes = await pool.query(`SELECT * FROM players WHERE user_id = $1`, [userId]);
+    if (!playerRes.rows[0]) return { owned: [], equipped: {} };
+    const p = playerRes.rows[0];
+    const redRes = await pool.query(`SELECT reward_id FROM redemptions WHERE player_id = $1 AND status = 'completed'`, [p.id]);
+    const ownedIds = redRes.rows.map(r => r.reward_id);
+    const owned = SHOP_CATALOG.filter(item => ownedIds.includes(item.id));
+    const equipped = {
+      avatar: p.equipped_avatar || '',
+      dice: p.equipped_dice || '',
+      special: p.equipped_special || ''
+    };
+    return { owned, equipped };
+  } catch (err) {
+    console.error("getOwnedItems error:", err.message);
+    return { owned: [], equipped: {} };
+  }
 }
 
 async function equipItem(playerId, itemId, category) {

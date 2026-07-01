@@ -1678,12 +1678,60 @@ async function loadProfile() {
     $('profile-content').classList.remove('hidden');
     
     // Cargar inventario y badges después del perfil
-    loadInventory();
+    // Pasamos los datos ya obtenidos para evitar otro fetch
+    loadInventoryData(inv);
     loadBadges();
   } catch (err) {
     toast('⚠ ' + err.message);
     $('profile-loading').textContent = 'Error al cargar perfil';
     navigateToLobbyOrAuth();
+  }
+}
+
+/* ── Renderizar inventario (con datos ya obtenidos) ── */
+function loadInventoryData(invData) {
+  const container = $('profile-inventory');
+  if (!container) return;
+  if (!invData) {
+    container.innerHTML = '<p class="inv-empty">Error al cargar</p>';
+    return;
+  }
+  const { owned, equipped } = invData;
+  if (!owned.length) {
+    container.innerHTML = '<p class="inv-empty">Todavía no compraste nada 🛒</p>';
+    return;
+  }
+  const categories = { avatares: 'Avatares', dados: 'Dados', especiales: 'Especiales' };
+  container.innerHTML = '';
+  for (const [catKey, catLabel] of Object.entries(categories)) {
+    const items = owned.filter(i => i.category === catKey);
+    if (!items.length) continue;
+    const section = document.createElement('div');
+    section.className = 'inv-cat';
+    section.innerHTML = `<p class="inv-cat-title">${catLabel}</p><div class="inv-items"></div>`;
+    container.appendChild(section);
+    const grid = section.querySelector('.inv-items');
+    // Botón para default
+    const isAvatar = catKey === 'avatares';
+    const defaultDiv = document.createElement('div');
+    defaultDiv.className = 'inv-item' + (equipped[catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special'] === '' ? ' equipped' : '');
+    defaultDiv.innerHTML = `<div class="inv-item-icon">${isAvatar ? '👤' : '🎲'}</div><span class="inv-item-name">Original</span>`;
+    defaultDiv.onclick = () => equipItemFromProfile('default', catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special');
+    grid.appendChild(defaultDiv);
+    items.forEach(item => {
+      const cat = item.category === 'avatares' ? 'avatar' : item.category === 'dados' ? 'dice' : 'special';
+      const isEquipped = equipped[cat] === String(item.id);
+      const div = document.createElement('div');
+      div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
+      div.innerHTML = `
+        <div class="inv-item-icon">${item.icon}</div>
+        <span class="inv-item-name">${item.name}</span>
+        ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
+      `;
+      div.onclick = () => !isEquipped && equipItemFromProfile(String(item.id), cat);
+      if (!isEquipped) div.style.cursor = 'pointer';
+      grid.appendChild(div);
+    });
   }
 }
 
