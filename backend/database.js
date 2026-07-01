@@ -292,27 +292,41 @@ async function getPlayerByUserId(userId) {
 // Diseñado por un game designer exitoso 🏆
 const SHOP_CATALOG = [
   // ── DADOS (skins) ──
-  { id: 1,  category: 'dados',     name: 'Dados Neón',     icon: '🎲', price: 500,  desc: 'Brillá en la oscuridad' },
-  { id: 2,  category: 'dados',     name: 'Dados Fuego',    icon: '🔥', price: 1500, desc: 'Llamaradas al rodar' },
-  { id: 4,  category: 'dados',     name: 'Dados Élite',    icon: '💎', price: 3000, desc: 'El lujo de ganar' },
-  { id: 5,  category: 'dados',     name: 'Dados Fantasma', icon: '👻', price: 2000, desc: 'Espectral y misterioso' },
-  { id: 6,  category: 'dados',     name: 'Dados Hielo',    icon: '❄️', price: 2500, desc: 'Frío como la victoria' },
+  { id: 1,  category: 'dados',     name: 'Dados Neón',       icon: '🎲', price: 500,  desc: 'Brillá en la oscuridad' },
+  { id: 2,  category: 'dados',     name: 'Dados Fuego',      icon: '🔥', price: 1500, desc: 'Llamaradas al rodar' },
+  { id: 4,  category: 'dados',     name: 'Dados Élite',      icon: '💎', price: 3000, desc: 'El lujo de ganar' },
+  { id: 5,  category: 'dados',     name: 'Dados Fantasma',   icon: '👻', price: 2000, desc: 'Espectral y misterioso' },
+  { id: 6,  category: 'dados',     name: 'Dados Hielo',      icon: '❄️', price: 2500, desc: 'Frío como la victoria' },
+  { id: 18, category: 'dados',     name: 'Dados Láser',      icon: '🔴', price: 1200, desc: 'Precisión letal' },
+  { id: 19, category: 'dados',     name: 'Dados Dorados',    icon: '🏅', price: 4000, desc: 'Oro puro en cada tiro' },
+  { id: 20, category: 'dados',     name: 'Dados Esmeralda',  icon: '💚', price: 1800, desc: 'Suerte verde' },
+  { id: 21, category: 'dados',     name: 'Dados Zombie',     icon: '🧟', price: 2200, desc: 'Apocalipsis en tus manos' },
+  { id: 22, category: 'dados',     name: 'Dados Arcoíris',   icon: '🌈', price: 2800, desc: 'Todos los colores del éxito' },
   
   // ── AVATARES ──
-  { id: 7,  category: 'avatares',  name: 'Avatar Pirata',    icon: '🏴‍☠️', price: 400,  desc: 'Izá la bandera' },
-  { id: 8,  category: 'avatares',  name: 'Avatar Ninja',     icon: '🥷', price: 700,  desc: 'Sigilo y precisión' },
-  { id: 9,  category: 'avatares',  name: 'Avatar Mago',      icon: '🧙', price: 600,  desc: 'Magia en los dados' },
-  { id: 10, category: 'avatares',  name: 'Avatar Robot',     icon: '🤖', price: 1200, desc: 'Precisión mecánica' },
-  { id: 11, category: 'avatares',  name: 'Avatar Fantasma',  icon: '👻', price: 1000, desc: 'Aparecé de la nada' },
-  { id: 12, category: 'avatares',  name: 'Avatar Rey',       icon: '👑', price: 2000, desc: 'La corona es tuya' },
-  { id: 13, category: 'avatares',  name: 'Avatar Dragón',    icon: '🐉', price: 2500, desc: 'Poder ancestral' },
-  { id: 14, category: 'avatares',  name: 'Avatar Legendario',icon: '⚡', price: 3500, desc: 'Solo para elegidos' },
+  { id: 7,  category: 'avatares',  name: 'Pirata',        icon: '🏴‍☠️', price: 400,  desc: 'Izá la bandera' },
+  { id: 8,  category: 'avatares',  name: 'Ninja',         icon: '🥷', price: 700,  desc: 'Sigilo y precisión' },
+  { id: 9,  category: 'avatares',  name: 'Mago',          icon: '🧙', price: 600,  desc: 'Magia en los dados' },
+  { id: 10, category: 'avatares',  name: 'Robot',         icon: '🤖', price: 1200, desc: 'Precisión mecánica' },
+  { id: 11, category: 'avatares',  name: 'Fantasma',      icon: '👻', price: 1000, desc: 'Aparecé de la nada' },
+  { id: 12, category: 'avatares',  name: 'Rey',           icon: '👑', price: 2000, desc: 'La corona es tuya' },
+  { id: 13, category: 'avatares',  name: 'Dragón',        icon: '🐉', price: 2500, desc: 'Poder ancestral' },
+  { id: 14, category: 'avatares',  name: 'Legendario',    icon: '⚡', price: 3500, desc: 'Solo para elegidos' },
+  { id: 23, category: 'avatares',  name: 'Payaso',        icon: '🤡', price: 300,  desc: 'Risa mortal' },
+  { id: 24, category: 'avatares',  name: 'Samurái',       icon: '⚔️', price: 1600, desc: 'Honor y victoria' },
+  { id: 25, category: 'avatares',  name: 'Ángel',         icon: '😇', price: 2200, desc: 'Protección divina' },
+  { id: 26, category: 'avatares',  name: 'Diablo',        icon: '😈', price: 1400, desc: 'Fuego infernal' },
+  { id: 27, category: 'avatares',  name: 'Alien',         icon: '👽', price: 3000, desc: 'De otro mundo' },
   
   // ── ESPECIALES ──
-  { id: 3,  category: 'especiales',name: 'Pack Emotes VIP',      icon: '😎', price: 800,  desc: 'Emojis exclusivos en chat' },
-  { id: 15, category: 'especiales',name: 'Marco Premium',         icon: '🖼️',  price: 1800, desc: 'Marco dorado en tu perfil' },
-  { id: 16, category: 'especiales',name: 'Efecto Victoria',       icon: '🎆', price: 2800, desc: 'Celebración épica al ganar' },
-  { id: 17, category: 'especiales',name: 'Tema Oscuro Ultra',     icon: '🌑', price: 1500, desc: 'Estilo nocturno supremo' },
+  { id: 3,  category: 'especiales',name: 'Emotes VIP',         icon: '😎', price: 800,  desc: 'Emojis exclusivos en chat' },
+  { id: 15, category: 'especiales',name: 'Marco Premium',      icon: '🖼️',  price: 1800, desc: 'Marco dorado en tu perfil' },
+  { id: 16, category: 'especiales',name: 'Efecto Victoria',    icon: '🎆', price: 2800, desc: 'Celebración épica al ganar' },
+  { id: 17, category: 'especiales',name: 'Tema Oscuro Ultra',  icon: '🌑', price: 1500, desc: 'Estilo nocturno supremo' },
+  { id: 28, category: 'especiales',name: 'Nick Dorado',        icon: '✨', price: 2000, desc: 'Tu nombre brilla en el chat' },
+  { id: 29, category: 'especiales',name: 'Dado Mag. Animado',  icon: '🪄', price: 3500, desc: 'Animación especial al tirar' },
+  { id: 30, category: 'especiales',name: 'Racha Visible',      icon: '📢', price: 1200, desc: 'Todos ven tu racha de victorias' },
+  { id: 31, category: 'especiales',name: '+50% Monedas x 1d',  icon: '⏫', price: 2500, desc: 'Ganás 50% más monedas por 24h' },
 ];
 
 function getShopCatalog() {

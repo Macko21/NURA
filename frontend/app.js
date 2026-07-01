@@ -1953,8 +1953,10 @@ async function loadShopCatalog() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) return;
-    const { items } = await res.json();
+    const { items, ownedIds, equipped } = await res.json();
     if (!items) return;
+    
+    const ownedSet = new Set(ownedIds || []);
     
     // Renderizar items por categoría
     const container = $('shop-items-container');
@@ -1981,19 +1983,31 @@ async function loadShopCatalog() {
       
       const grid = section.querySelector('.shop-grid');
       catItems.forEach(item => {
+        const isOwned = ownedSet.has(item.id);
+        const cat = item.category === 'avatares' ? 'avatar' : item.category === 'dados' ? 'dice' : 'special';
+        const isEquipped = equipped && equipped[cat] === String(item.id);
         const div = document.createElement('div');
-        div.className = 'shop-item';
-        div.innerHTML = `
-          <div class="shop-item-preview">${item.icon}</div>
-          <h3>${item.name}</h3>
-          <p class="shop-item-desc">${item.desc}</p>
-          <button class="btn btn-gold btn-buy" data-id="${item.id}">🪙 ${item.priceDisplay}</button>
-        `;
+        div.className = 'shop-item' + (isOwned ? ' owned' : '');
+        if (isOwned) {
+          div.innerHTML = `
+            <div class="shop-item-preview">${item.icon}</div>
+            <h3>${item.name}</h3>
+            <p class="shop-item-desc">${item.desc}</p>
+            <span class="shop-owned-badge">${isEquipped ? '✔ Equipado' : '✔ Tuyo'}</span>
+          `;
+        } else {
+          div.innerHTML = `
+            <div class="shop-item-preview">${item.icon}</div>
+            <h3>${item.name}</h3>
+            <p class="shop-item-desc">${item.desc}</p>
+            <button class="btn btn-gold btn-buy" data-id="${item.id}">🪙 ${item.priceDisplay}</button>
+          `;
+        }
         grid.appendChild(div);
       });
     }
     
-    // Handlers de compra
+    // Handlers de compra (solo para botones que no son "Tuyo")
     container.querySelectorAll('.btn-buy').forEach(btn => {
       btn.onclick = async (e) => {
         const itemId = e.target.getAttribute('data-id');
@@ -2015,9 +2029,9 @@ async function loadShopCatalog() {
           toast('¡Compra exitosa! 🎉');
           $('lobby-coins').textContent = d.newBalance;
           $('game-coins-amount').textContent = d.newBalance;
-          e.target.textContent = '✔ Tuyo';
-          e.target.classList.remove('btn-gold');
-          e.target.classList.add('btn-ghost');
+          // Recargar el catálogo para mostrar "✔ Tuyo"
+          loadShopCatalog();
+          loadUserBalance();
         } catch (err) {
           toast('⚠ ' + err.message);
           e.target.textContent = originalText;

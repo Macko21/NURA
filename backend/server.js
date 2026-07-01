@@ -106,9 +106,18 @@ app.get("/ranking", requireAuth, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Ruta para obtener el catálogo de la tienda
-app.get("/api/shop/catalog", requireAuth, (req, res) => {
-  res.json({ items: getShopCatalog() });
+// Ruta para obtener el catálogo de la tienda (incluye ownership)
+app.get("/api/shop/catalog", requireAuth, async (req, res) => {
+  try {
+    const items = getShopCatalog();
+    // Obtener items que ya posee el usuario
+    const inv = await getOwnedItems(req.user.userId);
+    const ownedIds = inv.owned.map(i => i.id);
+    const equipped = inv.equipped;
+    res.json({ items, ownedIds, equipped });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Ruta para comprar en la tienda (PROTEGIDA)

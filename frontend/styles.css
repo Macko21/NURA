@@ -353,11 +353,12 @@ html,body{
 .sc-chip.me{border-color:var(--green);background:rgba(42,154,108,.08)}
 .sc-top{display:flex;align-items:center;gap:3px;justify-content:center}
 .sc-av{
-  width:16px;height:16px;border-radius:50%;
+  width:18px;height:18px;border-radius:50%;
   background:linear-gradient(135deg,var(--gold2),var(--gold-dk));
-  color:#1A1200;font-size:8px;font-weight:800;
+  color:#1A1200;font-size:11px;font-weight:800;
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
+  line-height:1;
 }
 .sc-nm{font-size:9px;color:var(--text2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center}
 .sc-sc{font-family:'Cinzel',serif;font-size:14px;color:var(--gold);font-weight:700}
@@ -886,8 +887,16 @@ html,body{
   pointer-events:none;
 }
 .shop-item:hover{border-color:var(--gold);background:var(--bg-hover);transform:translateY(-3px);box-shadow:0 8px 24px rgba(212,175,55,.08)}
+.shop-item.owned{opacity:.75;border-color:var(--border)}
+.shop-item.owned:hover{border-color:var(--gold);opacity:1}
 .shop-item h3{font-size:13px;color:var(--text);font-weight:600}
 .shop-item-preview{font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
+.shop-owned-badge{
+  display:inline-block;font-size:10px;font-weight:600;
+  color:var(--green-lt);background:rgba(42,154,108,.1);
+  border:1px solid rgba(42,154,108,.2);
+  border-radius:6px;padding:5px 10px;
+}
 
 /* Items de la tienda de monedas */
 .coin-pack{
