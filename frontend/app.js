@@ -24,7 +24,9 @@ const S = {
   rolling:false,
   banking:false,
 
-  avatarEquipped: null // Icono del avatar equipado
+  avatarEquipped: null, // Icono del avatar equipado
+  diceEquipped: null,   // ID del skin de dados equipado
+  specialEquipped: null  // ID del item especial equipado
 };
 let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
@@ -137,22 +139,44 @@ const DOT_POSITIONS = {
   6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
 };
 
-function makeDieSVG(value, hot=false) {
+// Mapa de skins de dados: ID del item → colores
+const DICE_SKINS = {
+  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón' },
+  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego' },
+  '4':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite' },
+  '5':  { bg: ['#D0C8E8','#B8AED8'], dot:'#2a1a3e', sh:'#988EC8', name:'Fantasma' },
+  '6':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo' },
+  '18': { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser' },
+  '19': { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados' },
+  '20': { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda' },
+  '21': { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie' },
+  '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris' },
+  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante' },
+  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos' }
+};
+
+function makeDieSVG(value, hot=false, skinId=null) {
   const dots = DOT_POSITIONS[value] || [];
-  const dotColor = hot ? '#6b3400' : '#1a1a2e';
+  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
+  const dotColor = hot ? '#6b3400' : (skin ? skin.dot : '#1a1a2e');
   const circles = dots.map(([cx,cy]) =>
     `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${dotColor}"/>`
   ).join('');
   return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">${circles}</svg>`;
 }
 
-function makeDie(value, state='normal') {
+function makeDie(value, state='normal', skinId=null) {
   const el = document.createElement('div');
+  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
   el.className = 'die rolling'
-    + (state === 'scoring' ? ' scoring' : '')  // verde individual
-    + (state === 'hot'     ? ' hot'     : '')  // dorado caliente
+    + (state === 'scoring' ? ' scoring' : '')
+    + (state === 'hot'     ? ' hot'     : '')
     + (state === 'dead'    ? ' dead'    : '');
-  el.innerHTML = makeDieSVG(value, state === 'hot');
+  if (skin && state !== 'dead') {
+    el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+    el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 4px 12px rgba(0,0,0,.4)`;
+  }
+  el.innerHTML = makeDieSVG(value, state === 'hot', skinId);
   el.dataset.val = value;
   return el;
 }
@@ -192,10 +216,10 @@ function showDice(dice, mode) {
 
   dice.forEach((val, i) => {
     let state = 'normal';
-    if (mode === 'all')    state = 'hot';     // todos calientes → dorado
+    if (mode === 'all')    state = 'hot';
     if (mode === 'dead')   state = 'dead';
-    if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring'; // verdes individuales
-    const die = makeDie(val, state);
+    if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
+    const die = makeDie(val, state, S.diceEquipped);
     die.style.animationDelay = (i * 55) + 'ms';
     row.appendChild(die);
   });
@@ -776,6 +800,7 @@ function handle(type, data) {
 
     case 'DEAD_ROLL':
       S.match=data.match;
+      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
       renderSB(data.match);
       showDice(data.dice,'dead');
       setMsg('¡Sin puntos! Turno perdido 💀','bad');
@@ -787,6 +812,7 @@ function handle(type, data) {
 
     case 'BUST':
       S.match=data.match;
+      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
       renderSB(data.match);
       showDice(data.dice,'dead');
       setMsg('¡Te pasaste de 10.000! 💥','bad');
@@ -798,6 +824,7 @@ function handle(type, data) {
 
     case 'HOT_DICE':
       S.match=data.match;
+      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
       renderSB(data.match);
       showDice(data.dice,'all');
       setMsg('🔥 DADOS CALIENTES — Tiro extra. Si saca algo, suma y termina','hot');
@@ -859,6 +886,7 @@ function handle(type, data) {
     /* ── Victorias ───────────────────────────────────── */
     case 'INSTANT_WIN':
       S.match=data.match;
+      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
@@ -868,6 +896,7 @@ function handle(type, data) {
 
     case 'WIN':
       S.match=data.match;
+      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
@@ -1076,7 +1105,10 @@ function addChat(name, text) {
   const msgs = $('chat-msgs');
   const d    = document.createElement('div');
   d.className = 'cm';
-  d.innerHTML = `<span class="cn">${esc(name)}</span>: ${esc(text)}`;
+  // Nick Dorado: si el que habla tiene el item especial 28 equipado, su nombre brilla
+  const hasNickDorado = S.specialEquipped === '28';
+  const nameStyle = hasNickDorado ? ' style="color:var(--gold2);text-shadow:0 0 8px rgba(212,175,55,.4)"' : '';
+  d.innerHTML = `<span class="cn"${nameStyle}>${esc(name)}</span>: ${esc(text)}`;
   msgs.appendChild(d);
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -1255,11 +1287,16 @@ function showWin(playerName, desc, dice) {
   (dice||[]).forEach(v => {
     const d = document.createElement('div');
     d.className = 'win-die';
-    d.innerHTML = makeDieSVG(v, true);
+    d.innerHTML = makeDieSVG(v, true, S.diceEquipped);
     wr.appendChild(d);
   });
   $('modal-win').classList.remove('hidden');
   launchConfetti();
+  // Efecto Victoria: si el jugador local tiene item 16 equipado, confetti extra
+  if (S.specialEquipped === '16') {
+    setTimeout(() => launchConfetti(), 1000);
+    setTimeout(() => launchConfetti(), 2000);
+  }
 }
 
 /* ── Init UI ─────────────────────────────────────────── */
@@ -1522,6 +1559,8 @@ function initUI() {
 
       $('btn-login').textContent = 'Ingresar';
       
+      // Cargar items equipados
+      loadEquippedItems();
       // Comprobar misiones completadas
       setTimeout(checkPendingMissions, 2000);
       loadChestStatus();
@@ -1805,61 +1844,6 @@ async function loadTransactions() {
   }
 }
 
-/* ── Cargar inventario ─────────────────────────────── */
-async function loadInventory() {
-  const token = localStorage.getItem('gameToken');
-  if (!token) return;
-  const container = $('profile-inventory');
-  if (!container) return;
-  try {
-    const res = await fetch('/api/user/inventory', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) { container.innerHTML = '<p class="inv-empty">Error al cargar</p>'; return; }
-    const { owned, equipped } = await res.json();
-    if (!owned.length) {
-      container.innerHTML = '<p class="inv-empty">Todavía no compraste nada 🛒</p>';
-      return;
-    }
-    // Separar por categorías
-    const categories = { avatares: 'Avatares', dados: 'Dados', especiales: 'Especiales' };
-    container.innerHTML = '';
-    for (const [catKey, catLabel] of Object.entries(categories)) {
-      const items = owned.filter(i => i.category === catKey);
-      if (!items.length) continue;
-      const section = document.createElement('div');
-      section.className = 'inv-cat';
-      section.innerHTML = `<p class="inv-cat-title">${catLabel}</p><div class="inv-items"></div>`;
-      container.appendChild(section);
-      const grid = section.querySelector('.inv-items');
-      // Botón para default
-      const isAvatar = catKey === 'avatares';
-      const defaultDiv = document.createElement('div');
-      defaultDiv.className = 'inv-item' + (equipped[catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special'] === '' ? ' equipped' : '');
-      defaultDiv.innerHTML = `<div class="inv-item-icon">${isAvatar ? '👤' : '🎲'}</div><span class="inv-item-name">Original</span>`;
-      defaultDiv.onclick = () => equipItemFromProfile('default', catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special');
-      grid.appendChild(defaultDiv);
-      // Items comprados
-      items.forEach(item => {
-        const cat = item.category === 'avatares' ? 'avatar' : item.category === 'dados' ? 'dice' : 'special';
-        const isEquipped = equipped[cat] === String(item.id);
-        const div = document.createElement('div');
-        div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
-        div.innerHTML = `
-          <div class="inv-item-icon">${item.icon}</div>
-          <span class="inv-item-name">${item.name}</span>
-          ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
-        `;
-        div.onclick = () => !isEquipped && equipItemFromProfile(String(item.id), cat);
-        if (!isEquipped) div.style.cursor = 'pointer';
-        grid.appendChild(div);
-      });
-    }
-  } catch (err) {
-    container.innerHTML = '<p class="inv-empty">Error al cargar</p>';
-  }
-}
-
 /* ── Equipar item desde perfil ──────────────────────── */
 async function equipItemFromProfile(itemId, category) {
   const token = localStorage.getItem('gameToken');
@@ -1873,8 +1857,8 @@ async function equipItemFromProfile(itemId, category) {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error);
     toast('✔ Equipado correctamente');
-    loadInventory();
-    loadProfile(); // Recargar perfil para actualizar avatar
+    loadProfile(); // Recargar perfil (usa loadInventoryData internamente)
+    loadEquippedItems(); // Actualizar items equipados en S
   } catch (err) {
     toast('⚠ ' + err.message);
   }
@@ -2067,6 +2051,27 @@ async function loadChestStatus() {
       btn.title = `Cofre disponible en ${hours}h ${mins}min`;
     }
   } catch (e) {}
+}
+
+/* ── Cargar items equipados del usuario ─────────────── */
+async function loadEquippedItems() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/user/inventory', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const inv = await res.json();
+    if (!inv || !inv.equipped) return;
+    S.diceEquipped = inv.equipped.dice || null;
+    S.specialEquipped = inv.equipped.special || null;
+    // Avatar equipado
+    if (inv.equipped.avatar) {
+      const item = inv.owned.find(i => i.id === parseInt(inv.equipped.avatar));
+      if (item) S.avatarEquipped = item.icon;
+    }
+  } catch (e) { console.error('Error loading equipped:', e); }
 }
 
 /* ── Cargar saldo real del usuario ───────────────────── */
@@ -2303,7 +2308,8 @@ document.addEventListener('DOMContentLoaded', () => {
     S.userId = auth.id;
     S.name = auth.username;
     // LLAMADA CLAVE: Al cargar, pedimos el saldo al backend
-    loadUserBalance(); 
+    loadUserBalance();
+    loadEquippedItems();
   }
 
   const session = loadSession();
