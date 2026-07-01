@@ -211,7 +211,40 @@ async function getPlayerByUserId(userId) {
   return result.rows[0];
 }
 
-// --- LÓGICA DE TIENDA ---
+// --- CATÁLOGO DE TIENDA COMPLETO ---
+// Diseñado por un game designer exitoso 🏆
+const SHOP_CATALOG = [
+  // ── DADOS (skins) ──
+  { id: 1,  category: 'dados',     name: 'Dados Neón',     icon: '🎲', price: 500,  desc: 'Brillá en la oscuridad' },
+  { id: 2,  category: 'dados',     name: 'Dados Fuego',    icon: '🔥', price: 1500, desc: 'Llamaradas al rodar' },
+  { id: 4,  category: 'dados',     name: 'Dados Élite',    icon: '💎', price: 3000, desc: 'El lujo de ganar' },
+  { id: 5,  category: 'dados',     name: 'Dados Fantasma', icon: '👻', price: 2000, desc: 'Espectral y misterioso' },
+  { id: 6,  category: 'dados',     name: 'Dados Hielo',    icon: '❄️', price: 2500, desc: 'Frío como la victoria' },
+  
+  // ── AVATARES ──
+  { id: 7,  category: 'avatares',  name: 'Avatar Pirata',    icon: '🏴‍☠️', price: 400,  desc: 'Izá la bandera' },
+  { id: 8,  category: 'avatares',  name: 'Avatar Ninja',     icon: '🥷', price: 700,  desc: 'Sigilo y precisión' },
+  { id: 9,  category: 'avatares',  name: 'Avatar Mago',      icon: '🧙', price: 600,  desc: 'Magia en los dados' },
+  { id: 10, category: 'avatares',  name: 'Avatar Robot',     icon: '🤖', price: 1200, desc: 'Precisión mecánica' },
+  { id: 11, category: 'avatares',  name: 'Avatar Fantasma',  icon: '👻', price: 1000, desc: 'Aparecé de la nada' },
+  { id: 12, category: 'avatares',  name: 'Avatar Rey',       icon: '👑', price: 2000, desc: 'La corona es tuya' },
+  { id: 13, category: 'avatares',  name: 'Avatar Dragón',    icon: '🐉', price: 2500, desc: 'Poder ancestral' },
+  { id: 14, category: 'avatares',  name: 'Avatar Legendario',icon: '⚡', price: 3500, desc: 'Solo para elegidos' },
+  
+  // ── ESPECIALES ──
+  { id: 3,  category: 'especiales',name: 'Pack Emotes VIP',      icon: '😎', price: 800,  desc: 'Emojis exclusivos en chat' },
+  { id: 15, category: 'especiales',name: 'Marco Premium',         icon: '🖼️',  price: 1800, desc: 'Marco dorado en tu perfil' },
+  { id: 16, category: 'especiales',name: 'Efecto Victoria',       icon: '🎆', price: 2800, desc: 'Celebración épica al ganar' },
+  { id: 17, category: 'especiales',name: 'Tema Oscuro Ultra',     icon: '🌑', price: 1500, desc: 'Estilo nocturno supremo' },
+];
+
+function getShopCatalog() {
+  return SHOP_CATALOG.map(item => ({
+    ...item,
+    priceDisplay: item.price.toLocaleString('es-AR')
+  }));
+}
+
 // --- SISTEMA DE RECOMPENSAS ---
 async function rewardWinner(playerId, coinsAmount) {
   const client = await pool.connect();
@@ -243,11 +276,10 @@ async function rewardWinner(playerId, coinsAmount) {
 async function buyShopItem(userId, itemId) {
   const client = await pool.connect();
   
-  // Precios hardcodeados (1: Neón, 2: Fuego, 3: Emotes, 4: Élite)
-  const prices = { "1": 500, "2": 1500, "3": 800, "4": 3000 };
-  const cost = prices[itemId];
-
-  if (!cost) throw new Error("Ítem no válido");
+  // Buscar el ítem en el catálogo
+  const item = SHOP_CATALOG.find(i => i.id === parseInt(itemId));
+  if (!item) throw new Error("Ítem no válido");
+  const cost = item.price;
 
   try {
     await client.query("BEGIN");
@@ -296,6 +328,7 @@ module.exports = {
   getUserByEmailOrUsername,
   getPlayerByUserId,
   buyShopItem,
+  getShopCatalog,
   rewardWinner,
   pool
 };

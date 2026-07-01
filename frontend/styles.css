@@ -604,6 +604,20 @@ html,body{
   padding:8px 12px;outline:none;transition:border-color .25s;
 }
 .chat-foot input:focus{border-color:var(--gold)}
+.chat-mic-btn{
+  background:transparent;border:1px solid var(--border2);
+  width:34px;height:34px;border-radius:8px;cursor:pointer;
+  font-size:15px;flex-shrink:0;display:flex;
+  align-items:center;justify-content:center;
+  transition:all .2s;color:var(--text2);
+}
+.chat-mic-btn:hover{border-color:var(--gold);color:var(--gold)}
+.chat-mic-btn.recording{
+  background:rgba(200,60,48,.15);border-color:var(--red);
+  color:var(--red-lt);animation:micPulse .8s ease-in-out infinite;
+}
+@keyframes micPulse{0%,100%{opacity:1}50%{opacity:.4}}
+
 .chat-send-btn{
   background:linear-gradient(135deg,var(--gold),var(--gold-dk));
   color:#1A1200;border:none;width:34px;height:34px;
@@ -613,6 +627,28 @@ html,body{
   transition:filter .18s,transform .12s;
 }
 .chat-send-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+
+/* ── Mensajes de audio en chat ──────────────────────── */
+.cm.audio-msg{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.audio-player{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--bg-card2);border:1px solid var(--border2);
+  border-radius:16px;padding:3px 10px 3px 5px;
+  margin:2px 0;cursor:pointer;
+  transition:all .2s;
+}
+.audio-player:hover{border-color:var(--gold);background:var(--bg-hover)}
+.audio-play-btn{
+  background:var(--gold);color:#1A1200;border:none;
+  width:26px;height:26px;border-radius:50%;
+  font-size:11px;cursor:pointer;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .15s;
+}
+.audio-play-btn:hover{transform:scale(1.12)}
+.audio-duration{font-size:10px;color:var(--text3);font-weight:600;min-width:18px}
+.audio-wave{font-size:12px;opacity:.6}
+.cm.mine .audio-player{border-color:var(--border)}
 
 /* ══════════════════════════════════════
    RANKING
@@ -763,25 +799,27 @@ html,body{
    ══════════════════════════════════════ */
 .pwa-install-bar{
   display:flex;align-items:center;gap:10px;
-  position:fixed;bottom:80px;left:50%;
-  transform:translateX(-50%);
+  position:fixed;top:0;left:0;right:0;
   z-index:250;
-  background:var(--bg-card);backdrop-filter:blur(12px);
-  border:1px solid var(--border);border-radius:var(--r-sm);
-  padding:10px 16px;max-width:360px;width:90%;
-  box-shadow:var(--sh);
-  animation:modalFade .25s ease;
+  padding:8px 16px;
+  background:rgba(10,10,18,.92);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+  min-height:38px;
+  animation:slideDown .3s ease;
 }
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
 .pwa-install-bar.hidden{display:none}
-.pwa-install-text{flex:1;font-size:12px;color:var(--text2);font-weight:500;min-width:0;white-space:normal}
+.pwa-install-text{flex:1;font-size:11px;color:var(--text2);font-weight:500;white-space:normal}
 .pwa-install-btn{
   background:var(--gold);color:#1A1200;border:none;
-  border-radius:8px;padding:6px 12px;font-size:11px;
+  border-radius:6px;padding:4px 10px;font-size:10px;
   font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;
-  transition:filter .18s;
+  transition:filter .18s;white-space:nowrap;
 }
 .pwa-install-btn:hover{filter:brightness(1.1)}
-.pwa-install-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;flex-shrink:0;padding:3px;border-radius:6px;transition:all .18s}
+.pwa-install-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;flex-shrink:0;padding:2px 6px;border-radius:4px;transition:all .18s}
 .pwa-install-close:hover{color:var(--text);background:var(--bg-hover)}
 
 /* ══════════════════════════════════════

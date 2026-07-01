@@ -187,6 +187,7 @@
     <div id="chat-msgs" class="chat-msgs"></div>
     <div class="chat-foot">
       <input id="chat-input" type="text" placeholder="Escribí algo..." maxlength="200" autocomplete="off">
+      <button id="btn-chat-mic" class="chat-mic-btn" title="Grabar audio">🎤</button>
       <button id="chat-send" class="chat-send-btn">↑</button>
     </div>
   </div>
@@ -234,31 +235,9 @@
       <button class="shop-tab" data-tab="coins">🪙 Monedas</button>
     </div>
     
-    <!-- TAB: Skins (monedas virtuales) -->
+    <!-- TAB: Items (catálogo dinámico desde backend) -->
     <div id="shop-tab-items" class="shop-tab-content">
-      <p class="shop-section-title">🎲 <span>Personalización</span></p>
-      <div class="shop-grid">
-        <div class="shop-item">
-          <div class="shop-item-preview">🎲</div>
-          <h3>Dados Neón</h3>
-          <button class="btn btn-gold btn-buy" data-id="1">🪙 500</button>
-        </div>
-        <div class="shop-item">
-          <div class="shop-item-preview">🔥</div>
-          <h3>Dados Fuego</h3>
-          <button class="btn btn-gold btn-buy" data-id="2">🪙 1.500</button>
-        </div>
-        <div class="shop-item">
-          <div class="shop-item-preview">💎</div>
-          <h3>Dados Élite</h3>
-          <button class="btn btn-gold btn-buy" data-id="4">🪙 3.000</button>
-        </div>
-        <div class="shop-item">
-          <div class="shop-item-preview">😎</div>
-          <h3>Pack Emotes VIP</h3>
-          <button class="btn btn-gold btn-buy" data-id="3">🪙 800</button>
-        </div>
-      </div>
+      <div id="shop-items-container"></div>
     </div>
     
     <!-- TAB: Comprar monedas -->

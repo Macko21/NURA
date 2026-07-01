@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, rewardWinner, pool } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -104,6 +104,11 @@ app.post("/api/login", login);
 app.get("/ranking", requireAuth, async (req, res) => {
   try { res.json(await getTopRanking()); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Ruta para obtener el catálogo de la tienda
+app.get("/api/shop/catalog", requireAuth, (req, res) => {
+  res.json({ items: getShopCatalog() });
 });
 
 // Ruta para comprar en la tienda (PROTEGIDA)
@@ -583,6 +588,19 @@ wss.on("connection", socket => {
           playerId:   data.playerId,
           playerName: data.playerName,
           message:    String(data.message || "").slice(0, 500),
+          timestamp:  Date.now()
+        });
+        return;
+      }
+
+      /* ── AUDIO CHAT ──────────────────────────────────── */
+      if (type === "CHAT_AUDIO") {
+        // Reenviar el audio a todos en la sala (sin persistir)
+        broadcastRoom(data.roomId, "CHAT_AUDIO", {
+          playerId:   data.playerId,
+          playerName: data.playerName,
+          audioData:  String(data.audioData || "").slice(0, 300000), // ~300KB max
+          duration:   Math.min(data.duration || 0, 30), // max 30s
           timestamp:  Date.now()
         });
         return;

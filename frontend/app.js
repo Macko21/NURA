@@ -39,12 +39,23 @@ if ('serviceWorker' in navigator) {
 }
 
 /* Capturar evento de instalación PWA */
+let _pwaDismissed = false;
+let _pwaAutoTimer = null;
+
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   _deferredInstall = e;
-  // Mostrar banner de instalación
+  // No mostrar si el usuario ya lo cerró antes
+  if (_pwaDismissed) return;
   const bar = $('pwa-install-bar');
-  if (bar) bar.classList.remove('hidden');
+  if (bar) {
+    bar.classList.remove('hidden');
+    // Auto-ocultar después de 8s para no molestar
+    clearTimeout(_pwaAutoTimer);
+    _pwaAutoTimer = setTimeout(() => {
+      bar.classList.add('hidden');
+    }, 8000);
+  }
 });
 
 /* Esconder banner si ya se instaló */
@@ -420,6 +431,15 @@ function resetJoinBtn() {
 function goLobby(msg) {
   stopTimer();
   clearSession();
+  // Limpiar grabación de audio si está activa
+  if (_recording && _mediaRecorder?.state === 'recording') {
+    try { _mediaRecorder.stop(); } catch(e) {}
+  }
+  _mediaRecorder = null;
+  _audioChunks = [];
+  _recording = false;
+  const micBtn = $('btn-chat-mic');
+  if (micBtn) { micBtn.textContent = '🎤'; micBtn.classList.remove('recording'); }
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   S.match    = null;
@@ -888,6 +908,13 @@ function handle(type, data) {
       SFX.chat();
       break;
 
+    case 'CHAT_AUDIO':
+      if (data.playerId !== S.id) {
+        addAudioMsg(data.playerName, data.audioData, data.duration, false);
+        SFX.chat();
+      }
+      break;
+
     /* ── Ranking ─────────────────────────────────────── */
     case 'RANKING':
       renderRanking(data.ranking);
@@ -1053,6 +1080,133 @@ function sendChat() {
   inp.value = '';
 }
 
+/* ── Audio Chat (ephemeral) ──────────────────────────── */
+let _mediaRecorder = null;
+let _audioChunks   = [];
+let _recording     = false;
+let _recStartTime  = 0;
+
+function toggleRecording() {
+  const micBtn = $('btn-chat-mic');
+  if (!micBtn) return;
+  
+  if (_recording) {
+    // Detener grabación
+    _mediaRecorder?.stop();
+    _recording = false;
+    micBtn.textContent = '🎤';
+    micBtn.classList.remove('recording');
+    return;
+  }
+  
+  // Iniciar grabación
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('Tu navegador no soporta grabación de audio');
+    return;
+  }
+  
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      _audioChunks = [];
+      _mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+          ? 'audio/webm;codecs=opus' : 'audio/webm'
+      });
+      
+      _mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) _audioChunks.push(e.data);
+      };
+      
+      _mediaRecorder.onstop = () => {
+        // Liberar el stream del micrófono
+        stream.getTracks().forEach(t => t.stop());
+        
+        const blob = new Blob(_audioChunks, { type: _mediaRecorder.mimeType });
+        if (blob.size < 100) return; // Muy corto, ignorar
+        
+        // Convertir a base64 y enviar
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result.split(',')[1];
+          const duration = Math.round((Date.now() - _recStartTime) / 1000);
+          wsSend('CHAT_AUDIO', {
+            roomId: S.roomId,
+            playerId: S.id,
+            playerName: S.name,
+            audioData: base64,
+            duration
+          });
+          // Mostrar en el chat local
+          addAudioMsg(S.name, base64, duration, true);
+          SFX.chat();
+        };
+        reader.readAsDataURL(blob);
+      };
+      
+      _mediaRecorder.onerror = () => {
+        toast('Error al grabar audio');
+        micBtn.textContent = '🎤';
+        micBtn.classList.remove('recording');
+      };
+      
+      _recStartTime = Date.now();
+      _recording = true;
+      _mediaRecorder.start(100); // fragmentos cada 100ms
+      micBtn.textContent = '🔴';
+      micBtn.classList.add('recording');
+      
+      // Auto-stop a los 15s
+      setTimeout(() => {
+        if (_recording) toggleRecording();
+      }, 15000);
+    })
+    .catch(() => {
+      toast('Permití el micrófono para grabar audio');
+    });
+}
+
+function addAudioMsg(name, audioBase64, duration, isMine) {
+  const msgs = $('chat-msgs');
+  const d = document.createElement('div');
+  d.className = 'cm audio-msg' + (isMine ? ' mine' : '');
+  
+  // Verificar soporte de audio webm en este navegador
+  const canPlay = document.createElement('audio').canPlayType('audio/webm;codecs=opus');
+  const audioSrc = `data:audio/webm;base64,${audioBase64}`;
+  
+  d.innerHTML = `
+    <span class="cn">${esc(name)}</span>
+    <span class="audio-player">
+      <button class="audio-play-btn">▶</button>
+      <span class="audio-duration">${duration || 0}s</span>
+      <span class="audio-wave">🎤</span>
+      ${!canPlay ? '<span class="audio-note">📱</span>' : ''}
+    </span>
+  `;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  
+  // Handler para reproducir
+  const playBtn = d.querySelector('.audio-play-btn');
+  if (playBtn) {
+    let audioEl = null;
+    playBtn.onclick = () => {
+      if (!canPlay) { toast('Audio no disponible en este navegador'); return; }
+      if (audioEl && !audioEl.paused) {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        playBtn.textContent = '▶';
+        return;
+      }
+      audioEl = new Audio(audioSrc);
+      audioEl.onended = () => { playBtn.textContent = '▶'; };
+      audioEl.onerror = () => { playBtn.textContent = '⚠'; };
+      audioEl.play().catch(() => { playBtn.textContent = '⚠'; });
+      playBtn.textContent = '⏹';
+    };
+  }
+}
+
 /* ── Ranking ─────────────────────────────────────────── */
 function renderRanking(rows) {
   const list = $('ranking-list');
@@ -1105,13 +1259,15 @@ function initUI() {
     _deferredInstall = null;
   };
   $('pwa-install-close').onclick = () => {
+    _pwaDismissed = true; // Nunca más mostrar esta sesión
+    clearTimeout(_pwaAutoTimer);
     $('pwa-install-bar').classList.add('hidden');
   };
 
   /* ── Tienda ─────────────────────────────────────────── */
   $('btn-open-shop').onclick = () => {
     $('modal-shop').classList.remove('hidden');
-    loadCoinPacks();
+    loadShopCatalog();
   };
   $('btn-close-shop').onclick = () => $('modal-shop').classList.add('hidden');
 
@@ -1124,48 +1280,7 @@ function initUI() {
       const content = $('shop-tab-' + tab.dataset.tab);
       if (content) content.style.display = 'block';
       if (tab.dataset.tab === 'coins') loadCoinPacks();
-    };
-  });
-
-  // Lógica de compra con monedas virtuales
-  document.querySelectorAll('.btn-buy').forEach(btn => {
-    btn.onclick = async (e) => {
-      const itemId = e.target.getAttribute('data-id');
-      const token = localStorage.getItem('gameToken');
-      
-      if (!token) {
-        toast('Debes iniciar sesión para comprar');
-        return;
-      }
-
-      const originalText = e.target.textContent;
-      e.target.textContent = '⏳';
-      e.target.disabled = true;
-
-      try {
-        const res = await fetch('/api/shop/buy', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ itemId })
-        });
-        
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        toast('¡Compra exitosa! 🎉');
-        $('lobby-coins').textContent = data.newBalance;
-        
-        e.target.textContent = '✔ Tuyo';
-        e.target.classList.remove('btn-gold');
-        e.target.classList.add('btn-ghost');
-      } catch (err) {
-        toast('⚠ ' + err.message);
-        e.target.textContent = originalText;
-        e.target.disabled = false;
-      }
+      if (tab.dataset.tab === 'items') loadShopCatalog();
     };
   });
 
@@ -1437,8 +1552,9 @@ function initUI() {
   };
 
   /* Chat fijo */
-  $('chat-send').onclick    = sendChat;
-  $('chat-input').onkeydown = e => { if (e.key==='Enter') sendChat(); };
+  $('chat-send').onclick     = sendChat;
+  $('chat-input').onkeydown  = e => { if (e.key==='Enter') sendChat(); };
+  $('btn-chat-mic').onclick  = toggleRecording;
 
   /* Ranking */
 /* Ranking */
@@ -1479,6 +1595,93 @@ async function loadUserBalance() {
     }
   } catch (err) {
     console.error("Error al cargar saldo:", err);
+  }
+}
+
+/* ── Cargar catálogo de tienda (dinámico desde backend) ─── */
+async function loadShopCatalog() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  
+  try {
+    const res = await fetch('/api/shop/catalog', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const { items } = await res.json();
+    if (!items) return;
+    
+    // Renderizar items por categoría
+    const container = $('shop-items-container');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    const categories = {
+      dados: { label: '🎲 Skins de Dados', icon: '🎲', id: 'dados' },
+      avatares: { label: '👤 Avatares', icon: '👤', id: 'avatares' },
+      especiales: { label: '✨ Especiales', icon: '✨', id: 'especiales' }
+    };
+    
+    for (const [catKey, catInfo] of Object.entries(categories)) {
+      const catItems = items.filter(i => i.category === catKey);
+      if (!catItems.length) continue;
+      
+      const section = document.createElement('div');
+      section.className = 'shop-section';
+      section.innerHTML = `
+        <p class="shop-section-title">${catInfo.icon} <span>${catInfo.label}</span></p>
+        <div class="shop-grid" id="shop-grid-${catKey}"></div>
+      `;
+      container.appendChild(section);
+      
+      const grid = section.querySelector('.shop-grid');
+      catItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'shop-item';
+        div.innerHTML = `
+          <div class="shop-item-preview">${item.icon}</div>
+          <h3>${item.name}</h3>
+          <p class="shop-item-desc">${item.desc}</p>
+          <button class="btn btn-gold btn-buy" data-id="${item.id}">🪙 ${item.priceDisplay}</button>
+        `;
+        grid.appendChild(div);
+      });
+    }
+    
+    // Handlers de compra
+    container.querySelectorAll('.btn-buy').forEach(btn => {
+      btn.onclick = async (e) => {
+        const itemId = e.target.getAttribute('data-id');
+        if (!token) {
+          toast('Debes iniciar sesión');
+          return;
+        }
+        const originalText = e.target.textContent;
+        e.target.textContent = '⏳';
+        e.target.disabled = true;
+        try {
+          const r = await fetch('/api/shop/buy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ itemId })
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error);
+          toast('¡Compra exitosa! 🎉');
+          $('lobby-coins').textContent = d.newBalance;
+          $('game-coins-amount').textContent = d.newBalance;
+          e.target.textContent = '✔ Tuyo';
+          e.target.classList.remove('btn-gold');
+          e.target.classList.add('btn-ghost');
+        } catch (err) {
+          toast('⚠ ' + err.message);
+          e.target.textContent = originalText;
+        }
+        e.target.disabled = false;
+      };
+    });
+  } catch (err) {
+    console.error("Error cargando tienda:", err);
   }
 }
 
