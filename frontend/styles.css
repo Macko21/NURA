@@ -1095,6 +1095,51 @@ html,body{
 }
 
 /* ══════════════════════════════════════
+   HISTORIAL DE TRANSACCIONES
+   ══════════════════════════════════════ */
+.profile-section-hint{font-size:10px;color:var(--text3);text-align:left;margin:-6px 0 10px;font-weight:400}
+.transactions-list{display:flex;flex-direction:column;gap:4px}
+.tx-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--bg-card2);backdrop-filter:blur(8px);
+  border:1px solid var(--border2);border-radius:8px;
+  padding:8px 12px;transition:all .15s;
+}
+.tx-item:hover{border-color:var(--border)}
+.tx-icon{font-size:16px;flex-shrink:0;width:24px;text-align:center}
+.tx-info{flex:1;min-width:0}
+.tx-reason{display:block;font-size:12px;color:var(--text);font-weight:500;line-height:1.2}
+.tx-date{display:block;font-size:9px;color:var(--text3);margin-top:1px}
+.tx-amount{
+  font-family:'Cinzel',serif;font-size:15px;font-weight:700;
+  flex-shrink:0;min-width:48px;text-align:right;
+}
+.tx-amount.pos{color:var(--green-lt)}
+.tx-amount.neg{color:var(--red-lt)}
+
+/* ══════════════════════════════════════
+   ULTRA ITEMS (tienda)
+   ══════════════════════════════════════ */
+.shop-item.ultra-teaser{
+  border-color:rgba(212,175,55,.25);
+  background:linear-gradient(180deg,rgba(212,175,55,.08),var(--bg-card2));
+  cursor:default;
+}
+.shop-item.ultra-teaser:hover{
+  transform:translateY(-3px);
+  box-shadow:0 0 30px rgba(212,175,55,.15);
+  border-color:var(--gold);
+}
+.ultra-badge{
+  display:inline-block;font-size:9px;font-weight:600;
+  background:linear-gradient(135deg,var(--gold),var(--gold-dk));
+  color:#1A1200;border-radius:5px;padding:3px 8px;
+  text-transform:uppercase;letter-spacing:.5px;
+  white-space:nowrap;
+}
+.shop-item-price{font-size:13px;color:var(--text2);font-weight:600;font-family:'Cinzel',serif}
+
+/* ══════════════════════════════════════
    STRIPE / PAGO
    ══════════════════════════════════════ */
 .stripe-form{

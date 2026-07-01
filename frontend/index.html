@@ -250,7 +250,14 @@
       <!-- INVENTARIO: Items comprados -->
       <div class="profile-section" id="profile-inventory-section">
         <p class="profile-section-title">🎒 <span>Mi Inventario</span></p>
+        <p class="profile-section-hint">Hacé click en un item para equiparlo</p>
         <div id="profile-inventory" class="inventory-grid"></div>
+      </div>
+
+      <!-- HISTORIAL DE TRANSACCIONES -->
+      <div class="profile-section">
+        <p class="profile-section-title">📜 <span>Historial</span></p>
+        <div id="profile-transactions" class="transactions-list"></div>
       </div>
 
       <!-- INSIGNIAS / LOGROS -->
@@ -289,6 +296,7 @@
     
     <div class="shop-tabs">
       <button class="shop-tab active" data-tab="items">🎨 Skins</button>
+      <button class="shop-tab" data-tab="ultra">💎 Ultra</button>
       <button class="shop-tab" data-tab="missions">🎯 Misiones</button>
       <button class="shop-tab" data-tab="coins">🪙 Monedas</button>
     </div>
@@ -296,6 +304,11 @@
     <!-- TAB: Items (catálogo dinámico desde backend) -->
     <div id="shop-tab-items" class="shop-tab-content">
       <div id="shop-items-container"></div>
+    </div>
+    
+    <!-- TAB: Ultra (exclusivos cofre diario) -->
+    <div id="shop-tab-ultra" class="shop-tab-content" style="display:none">
+      <div id="ultra-items-container"></div>
     </div>
     
     <!-- TAB: Misiones -->

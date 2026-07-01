@@ -1302,6 +1302,7 @@ function initUI() {
       if (tab.dataset.tab === 'coins') loadCoinPacks();
       if (tab.dataset.tab === 'items') loadShopCatalog();
       if (tab.dataset.tab === 'missions') loadMissions();
+      if (tab.dataset.tab === 'ultra') loadUltraItems();
     };
   });
 
@@ -1705,9 +1706,9 @@ async function loadProfile() {
     $('profile-loading').classList.add('hidden');
     $('profile-content').classList.remove('hidden');
     
-    // Cargar inventario y badges después del perfil
-    // Pasamos los datos ya obtenidos para evitar otro fetch
+    // Cargar inventario, historial y badges después del perfil
     loadInventoryData(inv);
+    loadTransactions();
     loadBadges();
   } catch (err) {
     toast('⚠ ' + err.message);
@@ -1760,6 +1761,47 @@ function loadInventoryData(invData) {
       if (!isEquipped) div.style.cursor = 'pointer';
       grid.appendChild(div);
     });
+  }
+}
+
+/* ── Cargar historial de transacciones ────────────── */
+async function loadTransactions() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const container = $('profile-transactions');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/user/transactions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { container.innerHTML = ''; return; }
+    const { transactions } = await res.json();
+    if (!transactions || !transactions.length) {
+      container.innerHTML = '<p class="inv-empty">Sin movimientos aún</p>';
+      return;
+    }
+    container.innerHTML = '';
+    transactions.slice(0, 30).forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'tx-item';
+      const isPositive = (t.amount || 0) > 0;
+      const amt = t.amount || 0;
+      // Formatear fecha
+      const d = new Date(t.created_at);
+      const dateStr = d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+      const timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      div.innerHTML = `
+        <div class="tx-icon">${isPositive ? '🪙' : '🛒'}</div>
+        <div class="tx-info">
+          <span class="tx-reason">${esc(t.reason || 'Transacción')}</span>
+          <span class="tx-date">${dateStr} ${timeStr}</span>
+        </div>
+        <span class="tx-amount ${isPositive ? 'pos' : 'neg'}">${isPositive ? '+' : ''}${amt.toLocaleString()}</span>
+      `;
+      container.appendChild(div);
+    });
+  } catch (err) {
+    container.innerHTML = '';
   }
 }
 
@@ -2042,6 +2084,48 @@ async function loadUserBalance() {
     }
   } catch (err) {
     console.error("Error al cargar saldo:", err);
+  }
+}
+
+/* ── Cargar items Ultra (exclusivos del cofre) ────── */
+async function loadUltraItems() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const container = $('ultra-items-container');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/shop/catalog', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { container.innerHTML = '<p class="shop-desc">Error al cargar</p>'; return; }
+    const { items } = await res.json();
+    const ultraItems = items.filter(i => i.category === 'ultra');
+    if (!ultraItems.length) {
+      container.innerHTML = '<p class="shop-desc" style="padding:20px;text-align:center">Próximamente...</p>';
+      return;
+    }
+    container.innerHTML = `
+      <p class="shop-section-title">💎 <span>Ultra Raros</span></p>
+      <p class="shop-desc" style="font-size:11px;color:var(--gold2);text-align:center;margin-bottom:12px">
+        🎁 Estos items solo se obtienen en el <strong>Cofre Diario</strong> (5% de chance)
+      </p>
+      <div class="shop-grid"></div>
+    `;
+    const grid = container.querySelector('.shop-grid');
+    ultraItems.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'shop-item ultra-teaser';
+      div.innerHTML = `
+        <div class="shop-item-preview" style="font-size:44px">${item.icon}</div>
+        <h3>${item.name}</h3>
+        <p class="shop-item-desc">${item.desc}</p>
+        <span class="shop-item-price" style="font-size:12px;color:var(--gold2);font-weight:600">💰 ${item.priceDisplay}</span>
+        <span class="ultra-badge">🎁 Solo Cofre</span>
+      `;
+      grid.appendChild(div);
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="shop-desc">Error al cargar</p>';
   }
 }
 

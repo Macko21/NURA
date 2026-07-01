@@ -385,7 +385,7 @@ async function buyShopItem(userId, itemId) {
 
     // 1. Obtener el jugador y bloquear la fila para evitar compras duplicadas simultáneas
     const playerRes = await client.query(
-      `SELECT id, coins FROM players WHERE user_id = $1 FOR UPDATE`,
+      `SELECT id, coins, shop_purchases FROM players WHERE user_id = $1 FOR UPDATE`,
       [userId]
     );
 
@@ -396,18 +396,26 @@ async function buyShopItem(userId, itemId) {
     // 2. Restar las monedas
     const newBalance = player.coins - cost;
     await client.query(
-      `UPDATE players SET coins = $1 WHERE user_id = $2`,
+      `UPDATE players SET coins = $1, shop_purchases = COALESCE(shop_purchases, 0) + 1 WHERE user_id = $2`,
       [newBalance, userId]
     );
 
     // 3. Registrar la compra en redemptions
+    const now = Date.now();
     await client.query(
       `INSERT INTO redemptions (player_id, reward_id, status, created_at) 
        VALUES ($1, $2, $3, $4)`,
-      [player.id, parseInt(itemId), 'completed', Date.now()]
+      [player.id, parseInt(itemId), 'completed', now]
+    );
+
+    // 4. Registrar en transactions (historial)
+    await client.query(
+      `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+      [player.id, -cost, 'Compra: ' + item.name, now]
     );
 
     await client.query("COMMIT");
+    console.log(`✅ ${player.id} compró ${item.name} por ${cost}🪙`);
     return { success: true, newBalance };
   } catch (err) {
     await client.query("ROLLBACK");
@@ -637,19 +645,22 @@ async function getChestStatus(userId) {
 async function getOwnedItems(userId) {
   try {
     const playerRes = await pool.query(`SELECT * FROM players WHERE user_id = $1`, [userId]);
-    if (!playerRes.rows[0]) return { owned: [], equipped: {} };
+    if (!playerRes.rows[0]) {
+      console.warn("getOwnedItems: No player found for userId", userId);
+      return { owned: [], equipped: {} };
+    }
     const p = playerRes.rows[0];
     const redRes = await pool.query(`SELECT reward_id FROM redemptions WHERE player_id = $1 AND status = 'completed'`, [p.id]);
-    const ownedIds = redRes.rows.map(r => r.reward_id);
+    const ownedIds = redRes.rows.map(r => Number(r.reward_id)); // Forzar a number
     const owned = SHOP_CATALOG.filter(item => ownedIds.includes(item.id));
     const equipped = {
-      avatar: p.equipped_avatar || '',
-      dice: p.equipped_dice || '',
-      special: p.equipped_special || ''
+      avatar: String(p.equipped_avatar || ''),
+      dice: String(p.equipped_dice || ''),
+      special: String(p.equipped_special || '')
     };
     return { owned, equipped };
   } catch (err) {
-    console.error("getOwnedItems error:", err.message);
+    console.error("getOwnedItems error:", err.message, err.stack);
     return { owned: [], equipped: {} };
   }
 }
@@ -677,6 +688,20 @@ async function getAvatarUrl(playerId) {
   return item ? item.icon : null;
 }
 
+// ── HISTORIAL DE TRANSACCIONES ──────────────────────────
+async function getPlayerTransactions(playerId, limit = 50) {
+  try {
+    const res = await pool.query(
+      `SELECT id, amount, reason, created_at FROM transactions WHERE player_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [playerId, limit]
+    );
+    return res.rows;
+  } catch (err) {
+    console.error("getPlayerTransactions error:", err.message);
+    return [];
+  }
+}
+
 module.exports = {
   initializeDatabase,
   createPlayer,
@@ -693,5 +718,5 @@ module.exports = {
   getUserProfile, awardXP, getLevel, getRank,
   getPlayerMissions, claimMissionReward, checkMissionsCompleted,
   MISSIONS, RANKS, SHOP_CATALOG, getOwnedItems, equipItem,
-  claimDailyChest, getChestStatus
+  claimDailyChest, getChestStatus, getPlayerTransactions
 };

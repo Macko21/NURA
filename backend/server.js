@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -196,6 +196,18 @@ app.post("/api/user/equip", requireAuth, async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ── HISTORIAL DE TRANSACCIONES ──────────────────────────
+app.get("/api/user/transactions", requireAuth, async (req, res) => {
+  try {
+    const profile = await getUserProfile(req.user.userId);
+    if (!profile) return res.status(404).json({ error: "Perfil no encontrado" });
+    const rows = await getPlayerTransactions(profile.id);
+    res.json({ transactions: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
