@@ -22,7 +22,9 @@ const S = {
   joiningRoom:false,
   isOwner:false,
   rolling:false,
-  banking:false
+  banking:false,
+
+  avatarEquipped: null // Icono del avatar equipado
 };
 let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
@@ -983,9 +985,13 @@ function renderSB(match) {
       sub = '✅ en juego';
     }
     const yoTag = isMe ? '<span class="sc-yo">YO</span>' : '';
-    const avInitial = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
+    // Mostrar avatar equipado o inicial
+    let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
+    if (isMe && S.avatarEquipped) {
+      avContent = S.avatarEquipped;
+    }
     chip.innerHTML = `
-      <div class="sc-top">${yoTag}<span class="sc-av">${avInitial}</span><span class="sc-nm">${esc(p.name)}</span></div>
+      <div class="sc-top">${yoTag}<span class="sc-av">${avContent}</span><span class="sc-nm">${esc(p.name)}</span></div>
       <span class="sc-sc">${p.score}</span>
       <span class="sc-sb">${sub}</span>`;
     sb.appendChild(chip);
@@ -1302,10 +1308,15 @@ function initUI() {
   /* ── Perfil ─────────────────────────────────────────── */
   $('btn-back-profile').onclick = navigateToLobbyOrAuth;
   $('lobby-avatar').onclick = () => {
-    if (isLogged()) loadProfile();
+    if (isLogged()) { loadProfile(); }
   };
   $('lobby-username').onclick = () => {
-    if (isLogged()) loadProfile();
+    if (isLogged()) { loadProfile(); }
+  };
+  // Click en avatar del perfil → scrollear al inventario
+  $('profile-avatar').onclick = () => {
+    const inv = $('profile-inventory-section');
+    if (inv) inv.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   /* Lobby */
@@ -1469,6 +1480,13 @@ function initUI() {
       S.name = data.player.alias;
       S.id = data.player.id; // Clave para que los sockets del juego sigan usando este ID
       
+      // GUARDAR SESIÓN COMPLETA para que sobreviva al refresh
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        id: S.id, name: S.name,
+        roomId: null, roomCode: null,
+        entered: false, ts: Date.now()
+      }));
+      
       updateUserPanel(data.player.alias, data.player.coins);
       
       const inp = $('input-name');
@@ -1617,14 +1635,22 @@ async function loadProfile() {
   showScreen('screen-profile');
 
   try {
-    const res = await fetch('/api/user/profile', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) throw new Error('Error al cargar perfil');
-    const p = await res.json();
+    const [profileRes, invRes] = await Promise.all([
+      fetch('/api/user/profile', { headers: { 'Authorization': `Bearer ${token}` } }),
+      fetch('/api/user/inventory', { headers: { 'Authorization': `Bearer ${token}` } })
+    ]);
+    if (!profileRes.ok) throw new Error('Error al cargar perfil');
+    const p = await profileRes.json();
+    const inv = invRes.ok ? await invRes.json() : null;
 
-    // Avatar y header
-    $('profile-avatar').textContent = (p.alias || '?').charAt(0).toUpperCase();
+    // Avatar y header — mostrar icono equipado si tiene
+    let avatarDisplay = (p.alias || '?').charAt(0).toUpperCase();
+    if (inv?.equipped?.avatar) {
+      const equippedItem = inv.owned.find(i => i.id === parseInt(inv.equipped.avatar));
+      if (equippedItem) avatarDisplay = equippedItem.icon;
+    }
+    $('profile-avatar').textContent = avatarDisplay;
+    S.avatarEquipped = (avatarDisplay.length > 1 && !(/^[A-Z]$/.test(avatarDisplay))) ? avatarDisplay : null;
     $('profile-name').textContent = p.alias || '—';
     $('profile-email').textContent = p.email || '—';
     $('profile-rank').textContent = (p.rankIcon || '🌱') + ' ' + (p.rank || 'Rookie');
@@ -1650,10 +1676,123 @@ async function loadProfile() {
 
     $('profile-loading').classList.add('hidden');
     $('profile-content').classList.remove('hidden');
+    
+    // Cargar inventario y badges después del perfil
+    loadInventory();
+    loadBadges();
   } catch (err) {
     toast('⚠ ' + err.message);
     $('profile-loading').textContent = 'Error al cargar perfil';
     navigateToLobbyOrAuth();
+  }
+}
+
+/* ── Cargar inventario ─────────────────────────────── */
+async function loadInventory() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const container = $('profile-inventory');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/user/inventory', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { container.innerHTML = '<p class="inv-empty">Error al cargar</p>'; return; }
+    const { owned, equipped } = await res.json();
+    if (!owned.length) {
+      container.innerHTML = '<p class="inv-empty">Todavía no compraste nada 🛒</p>';
+      return;
+    }
+    // Separar por categorías
+    const categories = { avatares: 'Avatares', dados: 'Dados', especiales: 'Especiales' };
+    container.innerHTML = '';
+    for (const [catKey, catLabel] of Object.entries(categories)) {
+      const items = owned.filter(i => i.category === catKey);
+      if (!items.length) continue;
+      const section = document.createElement('div');
+      section.className = 'inv-cat';
+      section.innerHTML = `<p class="inv-cat-title">${catLabel}</p><div class="inv-items"></div>`;
+      container.appendChild(section);
+      const grid = section.querySelector('.inv-items');
+      // Botón para default
+      const isAvatar = catKey === 'avatares';
+      const defaultDiv = document.createElement('div');
+      defaultDiv.className = 'inv-item' + (equipped[catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special'] === '' ? ' equipped' : '');
+      defaultDiv.innerHTML = `<div class="inv-item-icon">${isAvatar ? '👤' : '🎲'}</div><span class="inv-item-name">Original</span>`;
+      defaultDiv.onclick = () => equipItemFromProfile('default', catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special');
+      grid.appendChild(defaultDiv);
+      // Items comprados
+      items.forEach(item => {
+        const cat = item.category === 'avatares' ? 'avatar' : item.category === 'dados' ? 'dice' : 'special';
+        const isEquipped = equipped[cat] === String(item.id);
+        const div = document.createElement('div');
+        div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
+        div.innerHTML = `
+          <div class="inv-item-icon">${item.icon}</div>
+          <span class="inv-item-name">${item.name}</span>
+          ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
+        `;
+        div.onclick = () => !isEquipped && equipItemFromProfile(String(item.id), cat);
+        if (!isEquipped) div.style.cursor = 'pointer';
+        grid.appendChild(div);
+      });
+    }
+  } catch (err) {
+    container.innerHTML = '<p class="inv-empty">Error al cargar</p>';
+  }
+}
+
+/* ── Equipar item desde perfil ──────────────────────── */
+async function equipItemFromProfile(itemId, category) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/user/equip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ itemId, category })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast('✔ Equipado correctamente');
+    loadInventory();
+    loadProfile(); // Recargar perfil para actualizar avatar
+  } catch (err) {
+    toast('⚠ ' + err.message);
+  }
+}
+
+/* ── Cargar insignias ───────────────────────────────── */
+async function loadBadges() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const container = $('profile-badges');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/user/missions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { container.innerHTML = ''; return; }
+    const { missions } = await res.json();
+    const achievements = missions.filter(m => m.type === 'achievement');
+    if (!achievements.length) { container.innerHTML = '<p class="inv-empty">Sin insignias aún</p>'; return; }
+    container.innerHTML = '';
+    achievements.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'badge-item' + (m.completed ? '' : ' locked');
+      const icons = { 'a1': '🏆', 'a2': '🎖️', 'a3': '🔥', 'a4': '👑', 'a6': '💎', 'a7': '⚡', 'a8': '💯' };
+      div.innerHTML = `
+        <div class="badge-icon">${icons[m.id] || '🏅'}</div>
+        <div class="badge-info">
+          <span class="badge-name">${m.name}</span>
+          <span class="badge-desc">${m.desc}</span>
+        </div>
+        <span class="badge-status">${m.completed ? '✅' : '🔒'}</span>
+      `;
+      container.appendChild(div);
+    });
+  } catch (err) {
+    container.innerHTML = '';
   }
 }
 

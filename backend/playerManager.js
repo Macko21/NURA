@@ -37,7 +37,11 @@ function resetWinStreak(id) {
 
 // Stubs — para uso futuro
 function registerStraight(id)    { return Promise.resolve(); }
-function registerFiveOnes(id)    { return Promise.resolve(); }
+async function registerFiveOnes(id)    {
+  const p = await getPlayer(id);
+  if (!p) return;
+  return updatePlayer(id, { perfect_game: (p.perfect_game || 0) + 1 });
+}
 function registerKick(id)        { return Promise.resolve(); }
 
 async function registerDisconnect(id) {

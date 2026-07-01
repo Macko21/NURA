@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -165,6 +165,28 @@ app.get("/api/user/missions", requireAuth, async (req, res) => {
     res.json({ missions });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── INVENTARIO ────────────────────────────────────────────
+app.get("/api/user/inventory", requireAuth, async (req, res) => {
+  try {
+    const inventory = await getOwnedItems(req.user.userId);
+    res.json(inventory);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/user/equip", requireAuth, async (req, res) => {
+  try {
+    const { itemId, category } = req.body; // category: 'avatar' | 'dice' | 'special'
+    const player = await getUserProfile(req.user.userId);
+    if (!player) throw new Error('Jugador no encontrado');
+    const result = await equipItem(player.id, itemId, category);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

@@ -89,7 +89,20 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS chat_messages INTEGER DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS shop_purchases INTEGER DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS perfect_game INTEGER DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_avatar TEXT DEFAULT ''`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_dice TEXT DEFAULT ''`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_special TEXT DEFAULT ''`,
     ];
+    // Migración para tabla missions_reset (timestamps de reseteo)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS missions_reset (
+          player_id TEXT PRIMARY KEY,
+          daily_reset BIGINT DEFAULT 0,
+          weekly_reset BIGINT DEFAULT 0
+        )
+      `);
+    } catch(e) {}
     for (const sql of migraciones) {
       try { await pool.query(sql); } catch(e) {}
     }
@@ -220,6 +233,7 @@ const MISSIONS = [
   { id: 'a4', type: 'achievement', name: 'Leyenda del juego', desc: 'Gana 50 partidas', req: 50, track: 'games_won', coins: 2000, xp: 500 },
   { id: 'a6', type: 'achievement', name: 'Coleccionista', desc: 'Compra 10 items en la tienda', req: 10, track: 'shop_purchases', coins: 800, xp: 300 },
   { id: 'a7', type: 'achievement', name: 'Dios de los dados', desc: 'Nivel 300', req: 300, track: 'level', coins: 5000, xp: 1000 },
+  { id: 'a8', type: 'achievement', name: 'Perfecto', desc: 'Saca cinco 1 en una tirada', req: 1, track: 'perfect_game', coins: 1000, xp: 500 },
 ];
 
 
@@ -432,7 +446,44 @@ async function awardXP(playerId, amount) {
 }
 
 // --- MISIONES ---
+const DAY_MS  = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+
 async function getPlayerMissions(playerId) {
+  // Obtener timestamps de reseteo
+  const resetRes = await pool.query(`SELECT daily_reset, weekly_reset FROM missions_reset WHERE player_id = $1`, [playerId]);
+  const now = Date.now();
+  let dailyReset  = resetRes.rows[0]?.daily_reset || 0;
+  let weeklyReset = resetRes.rows[0]?.weekly_reset || 0;
+  const isNewDaily  = (now - dailyReset) > DAY_MS;
+  const isNewWeekly = (now - weeklyReset) > WEEK_MS;
+
+  // Si pasó el daily reset, marcar claimed de diarias como 0 para que se puedan re-completar
+  if (isNewDaily) {
+    await pool.query(
+      `UPDATE missions SET claimed = 0, completed = 0 WHERE player_id = $1 AND mission_id LIKE 'd%'`,
+      [playerId]
+    );
+    await pool.query(
+      `INSERT INTO missions_reset (player_id, daily_reset, weekly_reset) VALUES ($1, $2, $3)
+       ON CONFLICT (player_id) DO UPDATE SET daily_reset = $2`,
+      [playerId, now, weeklyReset]
+    );
+    dailyReset = now;
+  }
+  if (isNewWeekly) {
+    await pool.query(
+      `UPDATE missions SET claimed = 0, completed = 0 WHERE player_id = $1 AND mission_id LIKE 'w%'`,
+      [playerId]
+    );
+    await pool.query(
+      `INSERT INTO missions_reset (player_id, daily_reset, weekly_reset) VALUES ($1, $2, $3)
+       ON CONFLICT (player_id) DO UPDATE SET weekly_reset = $2`,
+      [playerId, dailyReset, now]
+    );
+    weeklyReset = now;
+  }
+
   const res = await pool.query(
     `SELECT mission_id, progress, completed, claimed FROM missions WHERE player_id = $1`,
     [playerId]
@@ -451,7 +502,10 @@ async function getPlayerMissions(playerId) {
   };
   return MISSIONS.map(m => {
     const saved = progressMap[m.id];
-    const currentProgress = stats[m.track] || 0;
+    let currentProgress = stats[m.track] || 0;
+    // Para diarias y semanales, si se reseteó, el progreso es 0
+    if (m.type === 'daily' && isNewDaily) currentProgress = 0;
+    if (m.type === 'weekly' && isNewWeekly) currentProgress = 0;
     const completed = currentProgress >= m.req ? 1 : 0;
     return { ...m, progress: Math.min(currentProgress, m.req), completed, claimed: saved?.claimed || 0 };
   });
@@ -503,6 +557,45 @@ async function checkMissionsCompleted(playerId) {
   return missions.filter(m => m.completed && !m.claimed);
 }
 
+// ── INVENTARIO ────────────────────────────────────────────
+async function getOwnedItems(userId) {
+  const playerRes = await pool.query(`SELECT id, equipped_avatar, equipped_dice, equipped_special FROM players WHERE user_id = $1`, [userId]);
+  if (!playerRes.rows[0]) return { owned: [], equipped: {} };
+  const p = playerRes.rows[0];
+  const redRes = await pool.query(`SELECT reward_id FROM redemptions WHERE player_id = $1 AND status = 'completed'`, [p.id]);
+  const ownedIds = redRes.rows.map(r => r.reward_id);
+  const owned = SHOP_CATALOG.filter(item => ownedIds.includes(item.id));
+  const equipped = {
+    avatar: p.equipped_avatar || '',
+    dice: p.equipped_dice || '',
+    special: p.equipped_special || ''
+  };
+  return { owned, equipped };
+}
+
+async function equipItem(playerId, itemId, category) {
+  // category: 'avatar' | 'dice' | 'special'
+  const colMap = { avatar: 'equipped_avatar', dice: 'equipped_dice', special: 'equipped_special' };
+  const col = colMap[category];
+  if (!col) throw new Error('Categoria invalida');
+  
+  // Verificar que posee el item
+  const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parseInt(itemId)]);
+  if (!redRes.rows.length && itemId !== 'default') throw new Error('No posees este item');
+  
+  await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [itemId === 'default' ? '' : String(itemId), playerId]);
+  return { success: true };
+}
+
+async function getAvatarUrl(playerId) {
+  const res = await pool.query(`SELECT equipped_avatar FROM players WHERE id = $1`, [playerId]);
+  if (!res.rows[0]) return null;
+  const avatarId = res.rows[0].equipped_avatar;
+  if (!avatarId) return null;
+  const item = SHOP_CATALOG.find(i => i.id === parseInt(avatarId) && i.category === 'avatares');
+  return item ? item.icon : null;
+}
+
 module.exports = {
   initializeDatabase,
   createPlayer,
@@ -518,5 +611,5 @@ module.exports = {
   pool,
   getUserProfile, awardXP, getLevel, getRank,
   getPlayerMissions, claimMissionReward, checkMissionsCompleted,
-  MISSIONS, RANKS
+  MISSIONS, RANKS, SHOP_CATALOG
 };
