@@ -100,6 +100,13 @@ function requireAuth(req, res, next) {
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 
+// Verificar que las credenciales de email estén configuradas
+const hasEmailConfig = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+
+if (!hasEmailConfig) {
+  console.warn("⚠ EMAIL_USER/EMAIL_PASS no configurados — recuperación de contraseña no disponible");
+}
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -107,6 +114,17 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
+
+// Verificar conexión SMTP al iniciar (no bloqueante)
+if (hasEmailConfig) {
+  transporter.verify().then(() => {
+    console.log("✅ Conexión SMTP (Gmail) verificada");
+  }).catch(err => {
+    console.warn("⚠ Error verificando SMTP:", err.message);
+    console.warn("  → Si usás Gmail, necesitás una Contraseña de Aplicación");
+    console.warn("  → https://myaccount.google.com/apppasswords");
+  });
+}
 
 async function requestPasswordReset(req, res) {
   const { email } = req.body;
@@ -132,7 +150,14 @@ async function requestPasswordReset(req, res) {
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
   
+  // Si no hay credenciales de email, ni intentamos enviar
+  if (!hasEmailConfig) {
+    console.warn("No se puede enviar email: EMAIL_USER/EMAIL_PASS no configurados");
+    return res.json({ message: "Si el correo está registrado, recibirás instrucciones" });
+  }
+
   try {
+    console.log(`📧 Enviando correo de recuperación a ${email}...`);
     // Timeout de 10s para que no se cuelgue si Gmail falla
     await Promise.race([
       transporter.sendMail({
@@ -154,8 +179,13 @@ async function requestPasswordReset(req, res) {
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout email 10s")), 10000))
     ]);
+    console.log(`✅ Email enviado a ${email}`);
   } catch (err) {
-    console.error("Error al enviar email:", err);
+    console.error("❌ Error al enviar email de recuperación:", err.message);
+    if (err.code === 'EAUTH') {
+      console.error("   → Credenciales de Gmail incorrectas. Necesitás una Contraseña de Aplicación:");
+      console.error("   → https://myaccount.google.com/apppasswords");
+    }
     // No devolvemos error al cliente por seguridad (no revelar si el email existe)
   }
 

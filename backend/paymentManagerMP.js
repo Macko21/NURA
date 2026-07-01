@@ -74,9 +74,16 @@ async function createCheckoutPreference(packId, userId, userEmail) {
     };
 
     const result = await mpPreference.create(preferenceData);
+    
+    // SDK v3+ devuelve los datos directamente (no envueltos en .body)
+    const prefBody = result.body || result;
+    if (!prefBody || !prefBody.init_point) {
+      throw new Error("Mercado Pago no generó link de pago. Verificá las credenciales.");
+    }
+    
     return {
-      redirectUrl: result.body.init_point,
-      preferenceId: result.body.id,
+      redirectUrl: prefBody.init_point || prefBody.sandbox_init_point,
+      preferenceId: prefBody.id,
       coins: pack.coins,
       name: pack.name,
       price: pack.price
@@ -102,7 +109,8 @@ async function handleMPWebhook(paymentId, topic, pool) {
 
   try {
     const result = await mpPayment.get({ id: paymentId });
-    const paymentData = result.body;
+    // SDK v3+: paymentData viene directamente o en .body según versión
+    const paymentData = result.body || result;
 
     if (paymentData.status === "approved") {
       const extRef = JSON.parse(paymentData.external_reference || "{}");

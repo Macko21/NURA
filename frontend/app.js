@@ -20,7 +20,9 @@ const S = {
 
   ws:null,
   joiningRoom:false,
-  isOwner:false
+  isOwner:false,
+  rolling:false,
+  banking:false
 };
 let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
@@ -662,6 +664,8 @@ function handle(type, data) {
     /* ── Inicio de partida ───────────────────────────── */
     case 'GAME_STARTED':
       S.match=data.match; S.entered=false;
+      S.rolling = false;
+      S.banking = false;
       saveSession();
       showScreen('screen-game');
       // Resetear botones al iniciar partida nueva
@@ -671,6 +675,7 @@ function handle(type, data) {
       updateTurnUI(data.match);
       clearDice();
       updateGameRoomCode();
+      updateGameCoins();
       sys('¡La partida comenzó!');
       SFX.score();
       if (data.firstPlayer?.id === S.id) startTimer(TURN_SECS);
@@ -716,6 +721,9 @@ function handle(type, data) {
     /* ── Tiradas ─────────────────────────────────────── */
     case 'ROLL_RESULT':
       S.match=data.match;
+      if (data.playerId===S.id) {
+        S.rolling = false; // Liberar flag anti-click
+      }
       renderSB(data.match);
       showDice(data.dice,'scored');
       setMsg(
@@ -774,6 +782,9 @@ function handle(type, data) {
 
     case 'BANKED':
       S.match=data.match;
+      if (data.playerId===S.id) {
+        S.banking = false; // Liberar flag anti-click
+      }
       renderSB(data.match);
       updateTurnUI(data.match);
       syncMyScore(data.match);
@@ -789,6 +800,8 @@ function handle(type, data) {
     /* ── Cambio de turno ─────────────────────────────── */
     case 'TURN_START':
       S.match=data.match;
+      S.rolling = false; // Reset anti-click al cambiar turno
+      S.banking = false;
       renderSB(data.match);
       // Siempre resetear el botón tirar al cambiar de turno
       $('btn-roll').disabled = false;
@@ -833,7 +846,10 @@ function handle(type, data) {
       break;
 
     case 'GAME_OVER':
+      S.rolling = false;
+      S.banking = false;
       stopTimer();
+      updateGameCoins();
       showWin(
         data.winner?.alias||data.winner?.name||'?',
         `Ganó la partida con ${data.winner?.score} puntos`,
@@ -908,7 +924,11 @@ function renderSB(match) {
   const sb    = $('scoreboard');
   const curId = match.players[match.currentPlayerIndex]?.id;
   sb.innerHTML = '';
-  match.players.forEach(p => {
+  
+  // Ordenar por puntaje descendente para que se sepa quién va ganando
+  const sortedPlayers = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+  
+  sortedPlayers.forEach(p => {
     const isMe  = p.id === S.id;
     const isCur = p.id === curId;
     const chip  = document.createElement('div');
@@ -934,6 +954,25 @@ function renderSB(match) {
 }
 
 /* ── Update UI turno ─────────────────────────────────── */
+/* ── Actualizar monedas en pantalla de juego ────────── */
+function updateGameCoins() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) {
+    $('game-coins-display').classList.add('hidden');
+    return;
+  }
+  fetch('/api/user/balance', { headers: { 'Authorization': `Bearer ${token}` } })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (data) {
+        $('game-coins-amount').textContent = data.coins || 0;
+        $('game-coins-display').classList.remove('hidden');
+        $('lobby-coins').textContent = data.coins || 0;
+      }
+    })
+    .catch(() => {});
+}
+
 function updateTurnUI(match) {
   if (!match) return;
   S.match = match;
@@ -1361,23 +1400,31 @@ function initUI() {
 
   /* Juego */
   $('btn-roll').onclick = () => {
-    if (!S.myTurn || $('btn-roll').disabled) return;
+    if (!S.myTurn || $('btn-roll').disabled || S.rolling) return;
+    S.rolling = true;
+    $('btn-roll').disabled = true;
     clearDice();
     setMsg('','');
     SFX.roll();
-    $('btn-roll').disabled = true;
     wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
-    // Safety: si en 8s no llega respuesta del servidor, rehabilitar el botón
+    // Safety timeout: rehabilitar botón si no hay respuesta en 10s
     setTimeout(() => {
+      S.rolling = false;
       if (S.myTurn && $('btn-roll') && $('btn-roll').disabled) {
         $('btn-roll').disabled = false;
       }
-    }, 8000);
+    }, 10000);
   };
-
+  
   $('btn-bank').onclick = () => {
-    if (!S.myTurn || $('btn-bank').disabled) return;
+    if (!S.myTurn || $('btn-bank').disabled || S.banking) return;
+    S.banking = true;
+    $('btn-bank').disabled = true;
     wsSend('BANK', { roomId:S.roomId, playerId:S.id });
+    // Safety timeout
+    setTimeout(() => {
+      S.banking = false;
+    }, 5000);
   };
 
   /* Salir de partida — modal propio, va al lobby inmediatamente */

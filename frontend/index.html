@@ -80,12 +80,6 @@
       <button id="btn-back-to-auth" class="btn btn-link">← Volver al login</button>
     </div>
 
-    <div id="pwa-install-bar" class="pwa-install-bar hidden">
-      <span class="pwa-install-text">📲 Instalá como app</span>
-      <button id="pwa-install-btn" class="pwa-install-btn">Instalar</button>
-      <button id="pwa-install-close" class="pwa-install-close">✕</button>
-      
-    </div>
   </div>
 </div>
 
@@ -131,7 +125,10 @@
       <span id="game-room-code" class="game-room-value">—</span>
       <button id="btn-copy-game-code" class="btn-copy-code-inline" title="Copiar">📋</button>
     </div>
-    <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
+    <div class="game-user-info">
+      <span id="game-coins-display" class="game-coins-display hidden">🪙 <span id="game-coins-amount">0</span></span>
+      <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
+    </div>
   </div>
 
   <div id="scoreboard" class="scoreboard"></div>
@@ -279,6 +276,13 @@
     <button onclick="sendRecoveryEmail(event)" class="btn btn-gold">Enviar instrucciones</button>
     <button onclick="$('modal-forgot').classList.add('hidden')" class="btn btn-ghost">Cancelar</button>
   </div>
+</div>
+
+<!-- PWA Install Bar — GLOBAL (visible en cualquier pantalla) -->
+<div id="pwa-install-bar" class="pwa-install-bar hidden">
+  <span class="pwa-install-text">📲 Instalá Los 10.000 como app</span>
+  <button id="pwa-install-btn" class="pwa-install-btn">Instalar</button>
+  <button id="pwa-install-close" class="pwa-install-close">✕</button>
 </div>
 
 <!-- ══ TOAST ══ -->

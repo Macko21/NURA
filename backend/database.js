@@ -144,9 +144,12 @@ async function updatePlayer(playerId, fields) {
 }
 
 async function getRanking() {
+  // Solo mostrar jugadores que se registraron (tienen user_id)
+  // Excluir invitados que no crearon cuenta
   const result = await pool.query(`
     SELECT *
     FROM players
+    WHERE user_id IS NOT NULL
     ORDER BY games_won DESC,
              ranking_points DESC
     LIMIT 100
@@ -293,5 +296,6 @@ module.exports = {
   getUserByEmailOrUsername,
   getPlayerByUserId,
   buyShopItem,
+  rewardWinner,
   pool
 };

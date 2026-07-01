@@ -236,8 +236,26 @@ async function onMatchWon(match, roomId) {
   try {
     await registerWin(winner.id);
     
-    // NUEVO: Premiar al ganador con 250 monedas
-    await rewardWinner(winner.id, 250); 
+    // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
+    // Ordenar jugadores por score descendente (el ganador ya está en match.winner)
+    const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+    
+    // Premier al 1° con 500, 2° con 200, 3° con 100 monedas
+    const rewards = [500, 200, 100];
+    for (let i = 0; i < Math.min(sortedByScore.length, 3); i++) {
+      const player = sortedByScore[i];
+      const amount = rewards[i];
+      if (amount > 0 && player.id) {
+        // rewardWinner maneja la transacción con BEGIN/COMMIT, pero no podemos
+        // usar transacción anidada. Llamamos una por una.
+        try {
+          await rewardWinner(player.id, amount);
+          console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
+        } catch (e) {
+          console.error(`Error al premiar a ${player.id}:`, e.message);
+        }
+      }
+    }
     
     for (const p of match.players) {
       await registerGamePlayed(p.id, p.score);
