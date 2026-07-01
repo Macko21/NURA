@@ -61,6 +61,10 @@ html,body{
 .screen{position:fixed;inset:0;display:none;flex-direction:column;overflow:hidden}
 .screen.active{display:flex}
 
+/* Cuando el PWA bar está visible, las screens necesitan padding-top */
+.pwa-visible .screen{padding-top:38px}
+.pwa-visible .pwa-install-bar{display:flex}
+
 /* ── Fondo animado con partículas ─────────────────────── */
 .bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;display:block !important;opacity:.5}
 
@@ -810,6 +814,7 @@ html,body{
   animation:slideDown .3s ease;
 }
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+/* Cuando el PWA bar está OCULTO, la clase pwa-visible se remueve */
 .pwa-install-bar.hidden{display:none}
 .pwa-install-text{flex:1;font-size:11px;color:var(--text2);font-weight:500;white-space:normal}
 .pwa-install-btn{
@@ -935,15 +940,65 @@ input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield}
 
 /* ══════════════════════════════════════
-   RESPONSIVE
+   RESPONSIVE — Mobile, Tablet, Desktop
    ══════════════════════════════════════ */
+
+/* <= 420px: Mobile chico */
 @media(max-width:420px){
-  .die{width:54px;height:54px}
-  .die svg{width:42px;height:42px}
-  .dice-tray{min-width:auto;padding:12px 14px}
+  .die{width:48px;height:48px}
+  .die svg{width:38px;height:38px}
+  .dice-tray{min-width:auto;padding:10px 12px}
   .action-zone{max-width:100%}
-  .lobby-content{gap:16px;padding:14px}
+  .lobby-content{gap:14px;padding:12px}
   .scoreboard{gap:3px;padding:4px}
-  .sc-sc{font-size:12px}
+  .sc-sc{font-size:11px}
+  .shop-box{width:96% !important;padding:24px 14px !important}
   .shop-grid{grid-template-columns:repeat(2,1fr)}
+  .shop-item{padding:12px 8px}
+  .shop-item-preview{font-size:30px}
+  .shop-item h3{font-size:11px}
+  .game-room-value{font-size:13px;letter-spacing:2px}
+  .game-coins-display{font-size:11px;padding:3px 10px}
+  .turn-banner{font-size:10px}
+  .stat-val{font-size:16px}
+  .stats-row{gap:5px}
+  .dice-row{gap:8px}
+  .auth-box{padding:0 8px}
+  .code-input{font-size:24px;letter-spacing:6px}
+  .scoreboard{grid-template-columns:repeat(auto-fill,minmax(60px,1fr))}
+  .cm{font-size:10px}
+  .pwa-install-text{font-size:10px}
+  .chat-mic-btn{width:30px;height:30px;font-size:13px}
+  .chat-send-btn{width:30px;height:30px;font-size:14px}
+}
+
+/* 421px - 768px: Tablets y phablets */
+@media(min-width:421px) and (max-width:768px){
+  .scoreboard{grid-template-columns:repeat(auto-fill,minmax(70px,1fr))}
+  .shop-box{max-width:680px !important}
+  .shop-grid{grid-template-columns:repeat(3,1fr)}
+  .die{width:56px;height:56px}
+  .die svg{width:44px;height:44px}
+  .lobby-content{max-width:420px}
+  .game-table{padding:20px 24px 14px}
+}
+
+/* > 768px: Desktop */
+@media(min-width:769px){
+  .scoreboard{grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;padding:8px 14px}
+  .shop-box{max-width:720px !important}
+  .shop-grid{grid-template-columns:repeat(4,1fr)}
+  .die{width:68px;height:68px}
+  .die svg{width:52px;height:52px}
+  .dice-tray{padding:22px 28px;min-width:340px}
+  .game-table{padding:24px 32px 16px}
+  .lobby-content{max-width:400px}
+  .lobby-content{gap:26px}
+  .chat-msgs{max-height:100px}
+  .stats-row{max-width:400px}
+  .action-zone{max-width:400px}
+  .turn-header{max-width:400px}
+  .auth-box{max-width:380px}
+  .game-topbar{padding:10px 20px}
+  .top-bar{padding:14px 24px}
 }

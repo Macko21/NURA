@@ -42,6 +42,12 @@ if ('serviceWorker' in navigator) {
 let _pwaDismissed = false;
 let _pwaAutoTimer = null;
 
+function updatePwaOffset() {
+  const bar = $('pwa-install-bar');
+  const isVisible = bar && !bar.classList.contains('hidden');
+  document.body.classList.toggle('pwa-visible', isVisible);
+}
+
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   _deferredInstall = e;
@@ -50,10 +56,12 @@ window.addEventListener('beforeinstallprompt', e => {
   const bar = $('pwa-install-bar');
   if (bar) {
     bar.classList.remove('hidden');
+    updatePwaOffset();
     // Auto-ocultar después de 8s para no molestar
     clearTimeout(_pwaAutoTimer);
     _pwaAutoTimer = setTimeout(() => {
       bar.classList.add('hidden');
+      updatePwaOffset();
     }, 8000);
   }
 });
@@ -62,7 +70,7 @@ window.addEventListener('beforeinstallprompt', e => {
 window.addEventListener('appinstalled', () => {
   _deferredInstall = null;
   const bar = $('pwa-install-bar');
-  if (bar) bar.classList.add('hidden');
+  if (bar) { bar.classList.add('hidden'); updatePwaOffset(); }
 });
 
 /* ── Persistencia de sesión ──────────────────────────── */
@@ -1255,6 +1263,7 @@ function initUI() {
     const { outcome } = await _deferredInstall.userChoice;
     if (outcome === 'accepted') {
       $('pwa-install-bar').classList.add('hidden');
+      updatePwaOffset();
     }
     _deferredInstall = null;
   };
@@ -1262,6 +1271,7 @@ function initUI() {
     _pwaDismissed = true; // Nunca más mostrar esta sesión
     clearTimeout(_pwaAutoTimer);
     $('pwa-install-bar').classList.add('hidden');
+    updatePwaOffset();
   };
 
   /* ── Tienda ─────────────────────────────────────────── */
