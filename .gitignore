@@ -1,0 +1,6 @@
+node_modules/
+.env
+database/*.db
+*.log
+.vscode/
+LOS10MILDEMACKO.zip

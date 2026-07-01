@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: los10000-macko
+    runtime: node
+    buildCommand: npm install
+    startCommand: node backend/server.js
