@@ -239,6 +239,18 @@ html,body{
 }
 .coin-icon{font-size:14px;filter:drop-shadow(0 0 4px rgba(212,175,55,.4))}
 #lobby-coins{font-weight:700;color:var(--gold);font-size:14px;font-family:'Cinzel',serif;min-width:20px}
+.btn-chest{
+  background:linear-gradient(135deg,#F0D060,#C8961E);
+  color:#1A1200;border:none;border-radius:8px;
+  width:30px;height:30px;font-size:14px;
+  cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;
+  transition:filter .18s,transform .12s;
+  box-shadow:0 0 10px rgba(212,175,55,.2);
+}
+.btn-chest:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-1px) scale(1.05)}
+.btn-chest:disabled{opacity:.5;cursor:not-allowed}
+
 .btn-shop{
   background:linear-gradient(135deg,var(--gold),var(--gold-dk));
   color:#1A1200;border:none;border-radius:8px;padding:5px 10px;

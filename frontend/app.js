@@ -1336,6 +1336,33 @@ function initUI() {
     showScreen('screen-join');
   };
 
+  /* ── Cofre diario ──────────────────────────────────────── */
+  loadChestStatus();
+  $('btn-chest').onclick = async () => {
+    const token = localStorage.getItem('gameToken');
+    if (!token) { toast('Debes iniciar sesión'); return; }
+    const btn = $('btn-chest');
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    try {
+      const res = await fetch('/api/user/claim-chest', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      let msg = `🎁 +${d.coins} monedas`;
+      if (d.itemGained) msg += ` + ¡${d.itemGained.icon} ${d.itemGained.name}!`;
+      toast(msg);
+      loadChestStatus();
+      loadUserBalance();
+    } catch (err) {
+      toast('⚠ ' + err.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '🎁';
+  };
+
   $('btn-ranking').onclick = async () => {
     if (!isLogged()) {
       toast('🔒 Debes iniciar sesión para ver el ranking');
@@ -1496,6 +1523,7 @@ function initUI() {
       
       // Comprobar misiones completadas
       setTimeout(checkPendingMissions, 2000);
+      loadChestStatus();
       showScreen('screen-lobby');
       toast('¡Bienvenido, ' + S.name + '!');
       
@@ -1971,6 +1999,32 @@ function showMissionComplete(mission) {
     overlay.classList.add('fade-out');
     setTimeout(() => overlay.remove(), 600);
   }, 5000);
+}
+
+/* ── Cargar estado del cofre diario ─────────────────── */
+async function loadChestStatus() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const btn = $('btn-chest');
+  if (!btn) return;
+  try {
+    const res = await fetch('/api/user/chest-status', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.canClaim) {
+      btn.disabled = false;
+      btn.textContent = '🎁';
+      btn.title = '¡Reclamá tu cofre diario!';
+    } else {
+      btn.disabled = true;
+      const hours = Math.floor(d.remaining / 3600000);
+      const mins = Math.floor((d.remaining % 3600000) / 60000);
+      btn.textContent = `⏳${hours}h`;
+      btn.title = `Cofre disponible en ${hours}h ${mins}min`;
+    }
+  } catch (e) {}
 }
 
 /* ── Cargar saldo real del usuario ───────────────────── */

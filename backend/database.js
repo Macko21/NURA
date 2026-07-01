@@ -92,6 +92,7 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_avatar TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_dice TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_special TEXT DEFAULT ''`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
     ];
     // Migración para tabla missions_reset (timestamps de reseteo)
     try {
@@ -327,6 +328,13 @@ const SHOP_CATALOG = [
   { id: 29, category: 'especiales',name: 'Dado Mag. Animado',  icon: '🪄', price: 3500, desc: 'Animación especial al tirar' },
   { id: 30, category: 'especiales',name: 'Racha Visible',      icon: '📢', price: 1200, desc: 'Todos ven tu racha de victorias' },
   { id: 31, category: 'especiales',name: '+50% Monedas x 1d',  icon: '⏫', price: 2500, desc: 'Ganás 50% más monedas por 24h' },
+  
+  // ── ULTRA RAROS (premium) ──
+  { id: 32, category: 'ultra',     name: 'Dados Diamante',    icon: '💠', price: 5000, desc: 'Brillo eterno en cada tiro' },
+  { id: 33, category: 'ultra',     name: 'Dados Galácticos',  icon: '🌌', price: 7000, desc: 'Poder estelar al rodar' },
+  { id: 34, category: 'ultra',     name: 'Avatar Unicornio',  icon: '🦄', price: 6000, desc: 'Magia y rareza suprema' },
+  { id: 35, category: 'ultra',     name: 'Avatar Fénix',      icon: '🔥', price: 8000, desc: 'Renacé de las cenizas' },
+  { id: 36, category: 'ultra',     name: 'Efecto Láser',      icon: '💥', price: 10000, desc: 'Explosión láser al ganar' },
 ];
 
 function getShopCatalog() {
@@ -571,6 +579,60 @@ async function checkMissionsCompleted(playerId) {
   return missions.filter(m => m.completed && !m.claimed);
 }
 
+// ── COFRE DIARIO ────────────────────────────────────────
+const CHEST_DAY_MS = 24 * 60 * 60 * 1000;
+const CHEST_COINS_MIN = 50;
+const CHEST_COINS_MAX = 200;
+const CHEST_ITEM_CHANCE = 0.05; // 5% de chance de obtener un item ultra raro gratis
+const CHEST_ULTRA_ITEMS = SHOP_CATALOG.filter(i => i.category === 'ultra');
+
+async function claimDailyChest(userId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(`SELECT id, coins, last_chest FROM players WHERE user_id = $1 FOR UPDATE`, [userId]);
+    if (!res.rows[0]) throw new Error('Jugador no encontrado');
+    const p = res.rows[0];
+    const now = Date.now();
+    if (now - (p.last_chest || 0) < CHEST_DAY_MS) {
+      const remaining = CHEST_DAY_MS - (now - (p.last_chest || 0));
+      const hours = Math.floor(remaining / 3600000);
+      const mins = Math.floor((remaining % 3600000) / 60000);
+      throw new Error(`Ya reclamaste tu cofre. Volvé en ${hours}h ${mins}min`);
+    }
+    // Monedas aleatorias
+    const coins = Math.floor(Math.random() * (CHEST_COINS_MAX - CHEST_COINS_MIN + 1)) + CHEST_COINS_MIN;
+    await client.query(`UPDATE players SET coins = coins + $1, last_chest = $2 WHERE id = $3`, [coins, now, p.id]);
+    await client.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+      [p.id, coins, 'Cofre diario', now]);
+    
+    let itemGained = null;
+    // 5% de chance de item ultra
+    if (Math.random() < CHEST_ITEM_CHANCE && CHEST_ULTRA_ITEMS.length > 0) {
+      const randomItem = CHEST_ULTRA_ITEMS[Math.floor(Math.random() * CHEST_ULTRA_ITEMS.length)];
+      await client.query(`INSERT INTO redemptions (player_id, reward_id, status, created_at) VALUES ($1, $2, 'completed', $3)`,
+        [p.id, randomItem.id, now]);
+      itemGained = { id: randomItem.id, name: randomItem.name, icon: randomItem.icon };
+    }
+    await client.query("COMMIT");
+    return { coins, itemGained };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function getChestStatus(userId) {
+  const res = await pool.query(`SELECT last_chest FROM players WHERE user_id = $1`, [userId]);
+  const lastChest = res.rows[0]?.last_chest || 0;
+  const now = Date.now();
+  const canClaim = (now - lastChest) >= CHEST_DAY_MS;
+  const remaining = canClaim ? 0 : CHEST_DAY_MS - (now - lastChest);
+  return { canClaim, remaining, lastChest };
+}
+
 // ── INVENTARIO ────────────────────────────────────────────
 async function getOwnedItems(userId) {
   try {
@@ -630,5 +692,6 @@ module.exports = {
   pool,
   getUserProfile, awardXP, getLevel, getRank,
   getPlayerMissions, claimMissionReward, checkMissionsCompleted,
-  MISSIONS, RANKS, SHOP_CATALOG
+  MISSIONS, RANKS, SHOP_CATALOG, getOwnedItems, equipItem,
+  claimDailyChest, getChestStatus
 };

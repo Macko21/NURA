@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -193,6 +193,25 @@ app.post("/api/user/equip", requireAuth, async (req, res) => {
     const player = await getUserProfile(req.user.userId);
     if (!player) throw new Error('Jugador no encontrado');
     const result = await equipItem(player.id, itemId, category);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── COFRE DIARIO ─────────────────────────────────────────
+app.get("/api/user/chest-status", requireAuth, async (req, res) => {
+  try {
+    const status = await getChestStatus(req.user.userId);
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/user/claim-chest", requireAuth, async (req, res) => {
+  try {
+    const result = await claimDailyChest(req.user.userId);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
