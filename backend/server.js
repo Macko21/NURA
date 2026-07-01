@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -145,6 +145,40 @@ app.get("/api/user/balance", requireAuth, async (req, res) => {
   }
 });
 
+// ── PERFIL DE USUARIO ──────────────────────────────────────
+app.get("/api/user/profile", requireAuth, async (req, res) => {
+  try {
+    const profile = await getUserProfile(req.user.userId);
+    if (!profile) return res.status(404).json({ error: "Perfil no encontrado" });
+    res.json(profile);
+  } catch (err) {
+    console.error("Error perfil:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── MISIONES ─────────────────────────────────────────────────
+app.get("/api/user/missions", requireAuth, async (req, res) => {
+  try {
+    const playerId = req.user.playerId;
+    const missions = await getPlayerMissions(playerId);
+    res.json({ missions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/user/missions/claim", requireAuth, async (req, res) => {
+  try {
+    const { missionId } = req.body;
+    const playerId = req.user.playerId;
+    const result = await claimMissionReward(playerId, missionId);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── STRIPE ──────────────────────────────────────────────────
 
 // Ruta para obtener paquetes de monedas (protegida)
@@ -211,7 +245,10 @@ console.log("🎲 Iniciando Los 10.000 de Macko...");
 
 const clients      = new Map(); // playerId → socket
 const reconnTimers = new Map(); // playerId → timeoutId
-const RECONN_MS    = 120_000;  // 2 minutos de gracia (era 30s)
+const RECONN_MS    = 120_000;
+const XP_PER_GAME   = 25;
+const XP_PER_WIN    = 50;
+const XP_PER_TOP3   = 15;
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function send(socket, type, data = {}) {
@@ -262,6 +299,10 @@ async function onMatchWon(match, roomId) {
       }
     }
     
+    // Dar XP base a todos los jugadores
+    for (const p of match.players) {
+      try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
+    }
     for (const p of match.players) {
       await registerGamePlayed(p.id, p.score);
       if (p.id !== winner.id) await resetWinStreak(p.id);
@@ -590,6 +631,8 @@ wss.on("connection", socket => {
           message:    String(data.message || "").slice(0, 500),
           timestamp:  Date.now()
         });
+        // Incrementar contador de mensajes de chat para las misiones
+        try { await pool.query("UPDATE players SET chat_messages = chat_messages + 1 WHERE id = $1", [data.playerId]); } catch(e) {}
         return;
       }
 
