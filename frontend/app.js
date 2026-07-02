@@ -160,6 +160,17 @@ const DICE_SKINS = {
   '34': { bg: ['#1A1A1A','#0D0D0D'], dot:'#CC4444', sh:'#000000', name:'Ninja',    icon:'🥷' }
 };
 
+/* ── Mezclar dos colores hex ──────────────────────────── */
+function blendHexColor(hex1, hex2, ratio = 0.4) {
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [r1,g1,b1] = p(hex1);
+  const [r2,g2,b2] = p(hex2);
+  const r = Math.round(r1 * (1-ratio) + r2 * ratio);
+  const g = Math.round(g1 * (1-ratio) + g2 * ratio);
+  const b = Math.round(b1 * (1-ratio) + b2 * ratio);
+  return `rgb(${r},${g},${b})`;
+}
+
 function makeDieSVG(value, state='normal', skinId=null) {
   const dots = DOT_POSITIONS[value] || [];
   const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
