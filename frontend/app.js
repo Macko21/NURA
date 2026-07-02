@@ -179,6 +179,7 @@ function makeDie(value, state='normal', skinId=null) {
   if (skin && state !== 'dead') {
     el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
     el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 4px 12px rgba(0,0,0,.4)`;
+    el.classList.add('die-skin-' + skinId);
   }
   el.innerHTML = makeDieSVG(value, state === 'hot', skinId);
   el.dataset.val = value;
@@ -1080,6 +1081,8 @@ function renderSB(match) {
     } else if (isMe && S.avatarEquipped) {
       avContent = S.avatarEquipped;
     }
+    // Determinar si tiene avatar personalizado (icono) o es solo letra
+    const hasCustomAvatar = avContent.length > 1 && !(/^[A-Z]$/i.test(avContent));
     // Racha Visible (item 30): mostrar racha de victorias en scoreboard
     let rachaHtml = '';
     if (p.equippedSpecial === '30' && p.entered) {
@@ -1089,7 +1092,9 @@ function renderSB(match) {
       }
     }
     chip.innerHTML = `
-      <div class="sc-top">${yoTag}<span class="sc-av">${avContent}</span><span class="sc-nm">${esc(p.name)}</span></div>
+      <span class="sc-av${hasCustomAvatar ? ' icon' : ''}">${avContent}</span>
+      ${yoTag}
+      <span class="sc-nm">${esc(p.name)}</span>
       <span class="sc-sc">${p.score}</span>
       ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
@@ -1855,7 +1860,8 @@ function loadInventoryData(invData) {
     container.innerHTML = '<p class="inv-empty">Error al cargar</p>';
     return;
   }
-  const { owned, equipped } = invData;
+  const owned = invData.owned || [];
+  const equipped = invData.equipped || {};
   if (!owned.length) {
     container.innerHTML = '<p class="inv-empty">Todavía no compraste nada 🛒</p>';
     return;
