@@ -222,15 +222,21 @@ function makeDie(value, state='normal', skinId=null) {
       el.style.background = `linear-gradient(145deg,${bg0},${bg1})`;
       el.style.boxShadow = `2px 2px 0 ${sh}, 3px 3px 0 ${sh}, 0 4px 12px rgba(0,0,0,.4)`;
       el.classList.add('die-skin-' + skinId);
+      // Ícono de la skin como overlay semi-transparente (visible detras de los puntos)
+      el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId);
     } else if (state === 'scoring') {
       el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
+      el.innerHTML = makeDieSVG(value, state, skinId);
     } else if (state === 'hot') {
       el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
+      el.innerHTML = makeDieSVG(value, state, skinId);
+    } else {
+      el.innerHTML = makeDieSVG(value, state, skinId);
     }
+  } else {
+    el.innerHTML = makeDieSVG(value, state, skinId);
   }
 
-  // SIEMPRE usar SVG con puntos (dots) adaptados a la skin y estado
-  el.innerHTML = makeDieSVG(value, state, skinId);
   el.dataset.val = value;
   return el;
 }
@@ -272,7 +278,15 @@ function showDice(dice, mode) {
     loadEquippedCache();
     if (S.diceEquipped) activeSkinId = String(S.diceEquipped);
   }
-  console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId]);
+  console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId], '| match:', S.match?.currentPlayerIndex, '| players:', S.match?.players?.length);
+  // Forzar sync: si no hay skin, intentar del match state del propio jugador
+  if (!activeSkinId && S.match) {
+    const meInMatch = S.match.players.find(p => p.id === S.id);
+    if (meInMatch && meInMatch.equippedDice) {
+      activeSkinId = String(meInMatch.equippedDice);
+      console.log('🎲 Skin recuperado (fallback propios):', activeSkinId);
+    }
+  }
 
   // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
   let greenIdx = [];

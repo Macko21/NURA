@@ -559,7 +559,9 @@ html,body{
 /* ── Efectos visuales por skin de dados ──────────────── */
 .die[class*="die-skin-"]::after{content:'';position:absolute;inset:-2px;border-radius:13px;pointer-events:none;z-index:0;opacity:0;transition:opacity .3s}
 .die[class*="die-skin-"]:not(.dead)::after{opacity:1}
+.die{position:relative}
 .die[class*="die-skin-"] svg{position:relative;z-index:1}
+.die[class*="die-skin-"] .die-icon-bg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:28px;opacity:.4;pointer-events:none;z-index:0;filter:drop-shadow(0 0 3px rgba(0,0,0,.3))}
 
 /* Skin 1 - Neón */
 .die-skin-1::after{border:2px solid rgba(255,255,255,.3);box-shadow:inset 0 0 12px rgba(255,255,255,.15),0 0 12px rgba(255,255,255,.1);animation:skinPulse 1.5s ease-in-out infinite}

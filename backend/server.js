@@ -576,6 +576,11 @@ wss.on("connection", socket => {
           isPrivate:  data.isPrivate,
           maxPlayers: data.maxPlayers || 10
         });
+        // Cargar items equipados del owner para que todos lo vean
+        try {
+          const owner = room.players.find(p => p.id === data.playerId);
+          if (owner) await loadEquippedToRoomPlayer(owner, data.playerId);
+        } catch(e) { console.error('Error loading owner equipped:', e.message); }
         clients.set(data.playerId, socket);
         socket.playerId = data.playerId;
         socket.roomId   = room.id;
