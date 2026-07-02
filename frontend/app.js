@@ -251,20 +251,23 @@ function scoringIndices(dice) {
 }
 
 function showDice(dice, mode) {
-  console.log('🎲 Skin:', S.diceEquipped);
   const row = $('dice-row');
   row.innerHTML = '';
 
-  // SIEMPRE sincronizar skin de dados desde cualquier fuente disponible
-  // 1. Match state (datos más frescos del servidor)
-  if (!S.diceEquipped && S.match) {
-    const me = S.match.players.find(p => p.id === S.id);
-    if (me && me.equippedDice) S.diceEquipped = me.equippedDice;
+  // Determinar skin de dados del jugador que está tirando (para que TODOS vean el skin)
+  let activeSkinId = S.diceEquipped;
+  if (S.match && S.match.players && S.match.currentPlayerIndex !== undefined) {
+    const rollingPlayer = S.match.players[S.match.currentPlayerIndex];
+    if (rollingPlayer && rollingPlayer.equippedDice) {
+      activeSkinId = rollingPlayer.equippedDice;
+    }
   }
-  // 2. Cache local (fallback)
-  if (!S.diceEquipped) {
+  // Fallback: cache local
+  if (!activeSkinId) {
     loadEquippedCache();
+    activeSkinId = S.diceEquipped;
   }
+  console.log('🎲 Skin activo:', activeSkinId);
 
   // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
   let greenIdx = [];
@@ -285,7 +288,7 @@ function showDice(dice, mode) {
     if (mode === 'all')    state = 'hot';
     if (mode === 'dead')   state = 'dead';
     if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
-    const die = makeDie(val, state, S.diceEquipped);
+    const die = makeDie(val, state, activeSkinId);
     die.style.animationDelay = (i * 55) + 'ms';
     // Dado Mag. Animado (item 29): animación extra al tirar
     if (S.specialEquipped === '29' && mode !== 'dead') {
@@ -495,10 +498,18 @@ function updateUserPanel(name, coins) {
   if (isLogged() && name) {
     topBar.classList.remove('hidden');
     $('lobby-username').textContent = name;
-    $('lobby-avatar').textContent = name.charAt(0).toUpperCase();
     $('lobby-coins').textContent = coins || 0;
+    // Mostrar avatar equipado (icono) o inicial si no tiene
+    const lobbyAv = $('lobby-avatar');
+    if (S.avatarEquipped) {
+      lobbyAv.textContent = S.avatarEquipped;
+      lobbyAv.classList.add('avatar-icon');
+    } else {
+      lobbyAv.textContent = name.charAt(0).toUpperCase();
+      lobbyAv.classList.remove('avatar-icon');
+    }
     // Marco Premium en avatar del lobby
-    $('lobby-avatar')?.classList.toggle('avatar-premium', S.specialEquipped === '15');
+    lobbyAv?.classList.toggle('avatar-premium', S.specialEquipped === '15');
     
     $('guest-name-field').classList.add('hidden');
     $('btn-logout').classList.remove('hidden');
@@ -970,42 +981,55 @@ function handle(type, data) {
       break;
 
     /* ── Victorias ───────────────────────────────────── */
-    case 'INSTANT_WIN':
+    case 'INSTANT_WIN': {
       S.match=data.match;
       S.banking=false;
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
-      showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice);
+      // Obtener skin del ganador del match state
+      const winP = S.match.players.find(p => p.id === data.playerId);
+      showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice, winP?.equippedDice || null);
       SFX.win();
       break;
+    }
 
-    case 'WIN':
+    case 'WIN': {
       S.match=data.match;
       S.banking=false;
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
-      showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice);
+      // Obtener skin del ganador del match state
+      const winP = S.match.players.find(p => p.id === data.playerId);
+      showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice, winP?.equippedDice || null);
       SFX.win();
       break;
+    }
 
-    case 'GAME_OVER':
+    case 'GAME_OVER': {
       S.banking = false;
       $('btn-roll').disabled = true;
       stopTimer();
       updateGameCoins();
       // Verificar misiones completadas
       checkPendingMissions();
+      // Obtener skin del ganador del match state
+      const winnerId = data.winner?.id;
+      const winSkin = winnerId && S.match 
+        ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
+        : null;
       showWin(
         data.winner?.alias||data.winner?.name||'?',
         `Ganó la partida con ${data.winner?.score} puntos`,
-        []
+        [],
+        winSkin
       );
       SFX.win();
       break;
+    }
 
     /* ── Revancha ────────────────────────────────────── */
     case 'PLAY_AGAIN': {
@@ -1079,8 +1103,8 @@ function renderRoom(room) {
     d.innerHTML = `<div class="p-av${hasCustomAvatar ? ' icon' : ''}">${avContent}</div>
       <span class="p-name">${esc(p.name)}</span>
       <span class="p-tag ${p.ready?'tag-ready':'tag-wait'}">${p.ready?'Listo ✓':'Esperando'}</span>`;
-    // Marco Premium: solo en el avatar del jugador que tiene el item
-    if (S.specialEquipped === '15' && p.id === S.id) {
+    // Marco Premium: avatar dorado en el jugador que tiene el item equipado
+    if (p.equippedSpecial === '15') {
       d.querySelector('.p-av')?.classList.add('avatar-premium');
     }
     list.appendChild(d);
@@ -1159,8 +1183,8 @@ function renderSB(match) {
       <span class="sc-sc">${p.score}</span>
       ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
-    // Marco Premium: avatar dorado SOLO en el jugador que tiene el item
-    if (S.specialEquipped === '15' && isMe) {
+    // Marco Premium: avatar dorado en el jugador que tiene el item equipado
+    if (p.equippedSpecial === '15') {
       const scAv = chip.querySelector('.sc-av');
       if (scAv) scAv.classList.add('avatar-premium');
     }
@@ -1420,15 +1444,22 @@ function renderRanking(rows) {
 }
 
 /* ── Modal victoria ──────────────────────────────────── */
-function showWin(playerName, desc, dice) {
+function showWin(playerName, desc, dice, skinId) {
   $('win-name').textContent = '¡'+playerName+'!';
   $('win-desc').textContent = desc;
   const wr = $('win-dice');
   wr.innerHTML = '';
-  (dice||[]).forEach(v => {
+  // Usar skin del ganador (del match state) o fallback al skin local
+  let winnerSkin = skinId || S.diceEquipped;
+  if (!winnerSkin && S.match && S.match.winner) {
+    const wPlayer = S.match.players.find(p => p.id === S.match.winner.id);
+    if (wPlayer && wPlayer.equippedDice) winnerSkin = wPlayer.equippedDice;
+  }
+  const displayDice = (dice && dice.length > 0) ? dice : [1,2,3,4,5];
+  displayDice.forEach(v => {
     const d = document.createElement('div');
     d.className = 'win-die';
-    d.innerHTML = makeDieSVG(v, 'hot', S.diceEquipped);
+    d.innerHTML = makeDieSVG(v, 'hot', winnerSkin);
     wr.appendChild(d);
   });
   $('modal-win').classList.remove('hidden');
@@ -1861,26 +1892,32 @@ async function loadProfile() {
     const p = await profileRes.json();
     const inv = invRes.ok ? await invRes.json() : null;
 
-    // Avatar y header — mostrar icono equipado si tiene
+    // Avatar y header — mostrar icono equipado si tiene (SIN fondo dorado)
     let avatarDisplay = (p.alias || '?').charAt(0).toUpperCase();
+    let hasCustomAvatar = false;
+    const profileAv = $('profile-avatar');
     S.avatarEquipped = null;
     if (inv?.equipped?.avatar) {
       const equippedItem = inv.owned.find(i => i.id === parseInt(inv.equipped.avatar));
-      if (equippedItem) avatarDisplay = equippedItem.icon;
+      if (equippedItem) {
+        avatarDisplay = equippedItem.icon;
+        hasCustomAvatar = true;
+      }
     }
-    $('profile-avatar').textContent = avatarDisplay;
+    profileAv.textContent = avatarDisplay;
+    profileAv.classList.toggle('profile-avatar-icon', hasCustomAvatar);
     // Marco Premium (item 15): agregar borde dorado al avatar del perfil
     if (inv?.equipped?.special === '15') {
-      $('profile-avatar').classList.add('premium-marco');
+      profileAv.classList.add('premium-marco');
     } else {
-      $('profile-avatar').classList.remove('premium-marco');
+      profileAv.classList.remove('premium-marco');
     }
     // +50% Monedas x 1d (item 31): mostrar badge de boost activo
     const boostBadge = $('boost-badge');
     if (boostBadge) {
       boostBadge.classList.toggle('hidden', inv?.equipped?.special !== '31');
     }
-    S.avatarEquipped = (avatarDisplay.length > 1 && !(/^[A-Z]$/.test(avatarDisplay))) ? avatarDisplay : null;
+    S.avatarEquipped = hasCustomAvatar ? avatarDisplay : null;
     $('profile-name').textContent = p.alias || '—';
     $('profile-email').textContent = p.email || '—';
     $('profile-rank').textContent = (p.rankIcon || '🌱') + ' ' + (p.rank || 'Rookie');

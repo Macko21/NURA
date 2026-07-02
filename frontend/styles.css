@@ -230,6 +230,15 @@ html,body{
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 0 16px rgba(212,175,55,.3);flex-shrink:0;
 }
+.user-avatar.avatar-icon{
+  background:transparent;
+  color:var(--text);font-size:20px;
+  box-shadow:none;width:40px;height:40px;
+}
+.user-avatar.avatar-icon.avatar-premium{
+  box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.2),0 0 12px rgba(212,175,55,.3) !important;
+  border-radius:50%;
+}
 .user-name{font-family:'Cinzel',serif;font-size:14px;font-weight:600;color:var(--gold)}
 .user-wallet{
   display:flex;align-items:center;gap:8px;
@@ -350,6 +359,16 @@ html,body{
   font-size:13px;font-weight:700;color:#1A1200;flex-shrink:0;
   box-shadow:0 0 12px rgba(212,175,55,.2);
 }
+.p-av.icon{
+  background:transparent;
+  color:var(--text);font-size:22px;
+  box-shadow:none;
+  line-height:1;width:44px;height:44px;
+}
+.p-av.icon.avatar-premium{
+  box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.2),0 0 12px rgba(212,175,55,.3) !important;
+  border-radius:50%;
+}
 .p-name{flex:1;font-size:13px;font-weight:500;color:var(--text)}
 .p-tag{font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px}
 .tag-ready{background:rgba(42,154,108,.15);color:var(--green-lt);border:1px solid rgba(42,154,108,.2)}
@@ -391,8 +410,13 @@ html,body{
 }
 .sc-av.icon{
   background:transparent;
-  color:var(--text);font-size:18px;
+  color:var(--text);font-size:22px;
   box-shadow:none;
+  line-height:1;
+}
+.sc-av.icon.avatar-premium{
+  box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.2),0 0 12px rgba(212,175,55,.3) !important;
+  border-radius:50%;
 }
 .sc-nm{font-size:9px;color:var(--text2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;text-align:center;margin-top:1px}
 .sc-sc{font-family:'Cinzel',serif;font-size:14px;color:var(--gold);font-weight:700;margin-top:1px}
@@ -1076,6 +1100,15 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
   cursor:pointer;transition:transform .2s;
 }
 .profile-avatar:hover{transform:scale(1.05)}
+.profile-avatar.profile-avatar-icon{
+  background:transparent;
+  color:var(--text);font-size:34px;
+  box-shadow:none;
+}
+.profile-avatar.profile-avatar-icon.premium-marco{
+  box-shadow:0 0 0 3px var(--gold),0 0 0 6px rgba(212,175,55,.2),0 0 24px rgba(212,175,55,.4) !important;
+  animation:marcoPulse 2s ease-in-out infinite;
+}
 .profile-avatar.premium-marco{
   box-shadow:0 0 0 3px var(--gold),0 0 0 6px rgba(212,175,55,.2),0 0 24px rgba(212,175,55,.4);
   animation:marcoPulse 2s ease-in-out infinite;
