@@ -156,7 +156,8 @@ const DICE_SKINS = {
   '21': { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie' },
   '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris' },
   '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante' },
-  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos' }
+  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos' },
+  '34': { bg: ['#1A1A1A','#0D0D0D'], dot:'#CC4444', sh:'#000000', name:'Ninja' }
 };
 
 function makeDieSVG(value, hot=false, skinId=null) {
