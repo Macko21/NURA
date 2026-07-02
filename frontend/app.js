@@ -213,11 +213,15 @@ function makeDie(value, state='normal', skinId=null) {
       let bg0 = skin.bg[0], bg1 = skin.bg[1];
       let sh = skin.sh;
       if (state === 'scoring') {
-        bg0 = blendHexColor(skin.bg[0], '#76C858', 0.4);
-        bg1 = blendHexColor(skin.bg[1], '#50B038', 0.4);
+        // Mezcla más intensa con verde para que se note claramente
+        bg0 = blendHexColor(skin.bg[0], '#4ADE40', 0.7);
+        bg1 = blendHexColor(skin.bg[1], '#22C55E', 0.7);
+        sh = '#15803D';
       } else if (state === 'hot') {
-        bg0 = blendHexColor(skin.bg[0], '#F0DC58', 0.4);
-        bg1 = blendHexColor(skin.bg[1], '#D08000', 0.4);
+        // Mezcla más intensa con dorado para que se note claramente
+        bg0 = blendHexColor(skin.bg[0], '#FBBF24', 0.7);
+        bg1 = blendHexColor(skin.bg[1], '#F59E0B', 0.7);
+        sh = '#B45309';
       }
       el.style.background = `linear-gradient(145deg,${bg0},${bg1})`;
       el.style.boxShadow = `2px 2px 0 ${sh}, 3px 3px 0 ${sh}, 0 4px 12px rgba(0,0,0,.4)`;
@@ -276,24 +280,10 @@ function showDice(dice, mode) {
       activeSkinId = String(rollingPlayer.equippedDice);
     }
   }
-  // 2. Fallback: mi skin local
-  if (!activeSkinId && S.diceEquipped) {
-    activeSkinId = String(S.diceEquipped);
-  }
-  // 3. Fallback: cache local
-  if (!activeSkinId) {
-    loadEquippedCache();
-    if (S.diceEquipped) activeSkinId = String(S.diceEquipped);
-  }
+  // 2. NO usar fallback a skin local — solo la skin del jugador que tira
+  // Si el jugador activo no tiene skin, se ven dados normales
   console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId], '| match:', S.match?.currentPlayerIndex, '| players:', S.match?.players?.length, '| rollingPlayer:', S.match?.players?.[S.match?.currentPlayerIndex]?.name, '| diceEq:', S.match?.players?.[S.match?.currentPlayerIndex]?.equippedDice);
-  // Forzar sync: si no hay skin, intentar del match state del propio jugador
-  if (!activeSkinId && S.match) {
-    const meInMatch = S.match.players.find(p => p.id === S.id);
-    if (meInMatch && meInMatch.equippedDice) {
-      activeSkinId = String(meInMatch.equippedDice);
-      console.log('🎲 Skin recuperado (fallback propios):', activeSkinId);
-    }
-  }
+  // Solo usar skin del jugador que está tirando (ya no hay fallback local)
 
   // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
   let greenIdx = [];

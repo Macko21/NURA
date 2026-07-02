@@ -547,12 +547,26 @@ html,body{
     0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3),
     inset 0 1px 2px rgba(180,255,160,.9) !important;
 }
+/* Scoring con skin: borde verde visible */
+.die.scoring[class*="die-skin-"]{
+  border:2.5px solid rgba(34,197,94,.85) !important;
+  box-shadow:
+    0 0 12px rgba(34,197,94,.5), 0 0 24px rgba(34,197,94,.2),
+    inset 0 0 8px rgba(34,197,94,.15) !important;
+}
 .die.hot{
   box-shadow:
     2px 2px 0 #B06008, 3px 3px 0 #883800,
     0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3),
     inset 0 1px 2px rgba(255,230,110,.9) !important;
   animation:dieScale .35s ease both;
+}
+/* Hot con skin: borde dorado visible */
+.die.hot[class*="die-skin-"]{
+  border:2.5px solid rgba(251,191,36,.85) !important;
+  box-shadow:
+    0 0 14px rgba(251,191,36,.5), 0 0 28px rgba(251,191,36,.2),
+    inset 0 0 10px rgba(251,191,36,.2) !important;
 }
 .die.dead{opacity:.25;filter:grayscale(1);transform:scale(.95)}
 
