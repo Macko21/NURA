@@ -345,6 +345,28 @@ function broadcastRoomState(roomId) {
   broadcastRoom(roomId, "ROOM_STATE", { room });
 }
 
+/* ── Verificar si es invitado (sin user_id en BD) ──────── */
+async function checkIfGuest(playerId) {
+  try {
+    const res = await pool.query(`SELECT user_id FROM players WHERE id = $1`, [playerId]);
+    return !res.rows[0] || !res.rows[0].user_id;
+  } catch(e) {
+    return true; // asumir invitado si hay error
+  }
+}
+
+/* ── Cargar items equipados a un room player ──────────── */
+async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
+  try {
+    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special FROM players WHERE id = $1`, [playerId]);
+    if (plRes.rows[0]) {
+      roomPlayer.equippedAvatar = plRes.rows[0].equipped_avatar || '';
+      roomPlayer.equippedDice = plRes.rows[0].equipped_dice || '';
+      roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
+    }
+  } catch(e) {}
+}
+
 /* ── Post-victoria ───────────────────────────────────────── */
 async function onMatchWon(match, roomId) {
   const winner = match.winner;
@@ -392,6 +414,19 @@ async function onMatchWon(match, roomId) {
 
   const room = getRoom(roomId);
   if (room) {
+    // Limpiar invitados desconectados al terminar la partida
+    for (const p of [...room.players]) {
+      if (p.disconnected) {
+        try {
+          const isG = await checkIfGuest(p.id);
+          if (isG) {
+            reconnTimers.delete(p.id);
+            clients.delete(p.id);
+            removePlayer(roomId, p.id);
+          }
+        } catch(e) {}
+      }
+    }
     room.status = "waiting";
     for (const p of room.players) {
       p.ready   = false;
@@ -598,6 +633,8 @@ wss.on("connection", socket => {
         // Sala de espera: entrada normal
         if (room.status === "waiting") {
           const player = addPlayer(room.id, data.playerId, data.playerName);
+          // Cargar items equipados del jugador para que todos lo vean
+          await loadEquippedToRoomPlayer(player, data.playerId);
           clients.set(data.playerId, socket);
           socket.playerId = data.playerId;
           socket.roomId   = room.id;
@@ -798,7 +835,7 @@ wss.on("connection", socket => {
     const { roomId, playerId } = socket;
     if (!roomId || !playerId) return;
 
-    console.log(`⚡ Desconectado: ${playerId} — gracia ${RECONN_MS/1000}s`);
+    console.log(`⚡ Desconectado: ${playerId}`);
 
     try { await registerDisconnect(playerId); } catch (e) {}
 
@@ -820,19 +857,40 @@ wss.on("connection", socket => {
       }
     }
 
-    // Timer de 2 minutos antes de eliminar definitivamente
-    const timerId = setTimeout(() => {
-      const currentRoom = getRoom(roomId);
-      if (currentRoom) {
-        broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
-        eliminatePlayer(roomId, playerId);
-      } else {
-        reconnTimers.delete(playerId);
-        clients.delete(playerId);
-      }
-    }, RECONN_MS);
+    // Verificar si es invitado (no tiene user_id en DB)
+    const isGuest = await checkIfGuest(playerId);
 
-    reconnTimers.set(playerId, timerId);
+    if (isGuest) {
+      // Invitados: persisten durante la partida, no se eliminan
+      // Solo si la sala está en waiting (sin partida activa), limpiar después de 5s
+      if (!match && room && room.status === "waiting") {
+        const timerId = setTimeout(() => {
+          const currentRoom = getRoom(roomId);
+          if (currentRoom) {
+            broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
+            eliminatePlayer(roomId, playerId);
+          } else {
+            reconnTimers.delete(playerId);
+            clients.delete(playerId);
+          }
+        }, 5000);
+        reconnTimers.set(playerId, timerId);
+      }
+      // Si hay partida activa, el invitado queda hasta que termine
+    } else {
+      // Usuarios registrados: timer de 2 min para reconectar
+      const timerId = setTimeout(() => {
+        const currentRoom = getRoom(roomId);
+        if (currentRoom) {
+          broadcastRoom(roomId, "PLAYER_LEFT", { playerId });
+          eliminatePlayer(roomId, playerId);
+        } else {
+          reconnTimers.delete(playerId);
+          clients.delete(playerId);
+        }
+      }, RECONN_MS);
+      reconnTimers.set(playerId, timerId);
+    }
   });
 });
 

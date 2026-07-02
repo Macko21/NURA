@@ -251,7 +251,11 @@ html,body{
 }
 .btn-chest:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-1px) scale(1.05)}
 .btn-chest:disabled{opacity:.5;cursor:not-allowed}
-.btn-chest-timer{font-size:10px;color:rgba(255,255,255,.7);font-weight:600}
+.btn-chest-timer{font-size:10px;color:#1A1200;font-weight:700;opacity:.8}
+
+/* Skin icon dice: overlay tint for scoring/hot */
+.die.icon-die svg{position:relative;z-index:1}
+.die.icon-die text{fill:currentColor;color:var(--text)}
 
 /* Marco dorado premium en cualquier avatar (item 15) */
 .avatar-premium{

@@ -145,19 +145,19 @@ const DOT_POSITIONS = {
 
 // Mapa de skins de dados: ID del item → colores
 const DICE_SKINS = {
-  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón' },
-  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego' },
-  '4':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite' },
-  '5':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma' },
-  '6':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo' },
-  '18': { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser' },
-  '19': { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados' },
-  '20': { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda' },
-  '21': { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie' },
-  '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris' },
-  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante' },
-  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos' },
-  '34': { bg: ['#1A1A1A','#0D0D0D'], dot:'#CC4444', sh:'#000000', name:'Ninja' }
+  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',     icon:'🎲' },
+  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego',    icon:'🔥' },
+  '4':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',    icon:'💎' },
+  '5':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma', icon:'👻' },
+  '6':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',    icon:'❄️' },
+  '18': { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',    icon:'🔴' },
+  '19': { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',  icon:'🏅' },
+  '20': { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',icon:'💚' },
+  '21': { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',   icon:'🧟' },
+  '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris', icon:'🌈' },
+  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante', icon:'💠' },
+  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos',icon:'🌌' },
+  '34': { bg: ['#1A1A1A','#0D0D0D'], dot:'#CC4444', sh:'#000000', name:'Ninja',    icon:'🥷' }
 };
 
 /* ── Mezclar dos colores hex ──────────────────────────── */
@@ -181,13 +181,33 @@ function makeDieSVG(value, hot=false, skinId=null) {
   return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">${circles}</svg>`;
 }
 
+// SVG version with skin icon as large emoji (replaces dots)
+function makeDieIconSVG(value, state='normal', skinId=null) {
+  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
+  if (!skin || !skin.icon) return makeDieSVG(value, state === 'hot', skinId);
+  const emoji = skin.icon;
+  // Overlay tint color
+  let tintColor = '';
+  if (state === 'scoring') tintColor = 'rgba(42,180,70,.35)';
+  else if (state === 'hot') tintColor = 'rgba(240,200,50,.35)';
+  const overlay = tintColor
+    ? `<rect x="0" y="0" width="50" height="50" rx="10" fill="${tintColor}" pointer-events="none"/>`
+    : '';
+  return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+    <text x="25" y="36" text-anchor="middle" font-size="32" style="font-family:Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">${emoji}</text>
+    ${overlay}
+  </svg>`;
+}
+
 function makeDie(value, state='normal', skinId=null) {
   const el = document.createElement('div');
   const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
+  const hasIcon = !!(skin && skin.icon);
   el.className = 'die rolling'
     + (state === 'scoring' ? ' scoring' : '')
     + (state === 'hot'     ? ' hot'     : '')
-    + (state === 'dead'    ? ' dead'    : '');
+    + (state === 'dead'    ? ' dead'    : '')
+    + (hasIcon ? ' icon-die' : '');
   
   // Colores de fondo: skin + estado (scoring=verde, hot=dorado, normal=skin, sin skin=default)
   if (state !== 'dead') {
@@ -195,11 +215,9 @@ function makeDie(value, state='normal', skinId=null) {
       let bg0 = skin.bg[0], bg1 = skin.bg[1];
       let sh = skin.sh;
       if (state === 'scoring') {
-        // Skin con tinte verde (mezcla 60% skin + 40% verde)
         bg0 = blendHexColor(skin.bg[0], '#76C858', 0.4);
         bg1 = blendHexColor(skin.bg[1], '#50B038', 0.4);
       } else if (state === 'hot') {
-        // Skin con tinte dorado (mezcla 60% skin + 40% dorado)
         bg0 = blendHexColor(skin.bg[0], '#F0DC58', 0.4);
         bg1 = blendHexColor(skin.bg[1], '#D08000', 0.4);
       }
@@ -211,10 +229,14 @@ function makeDie(value, state='normal', skinId=null) {
     } else if (state === 'hot') {
       el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
     }
-    // Sin skin en estado normal: usa el CSS por defecto (no se pone inline style)
   }
   
-  el.innerHTML = makeDieSVG(value, state === 'hot', skinId);
+  // Skin con icono: usar SVG con emoji grande + overlay coloreado
+  if (hasIcon) {
+    el.innerHTML = makeDieIconSVG(value, state, skinId);
+  } else {
+    el.innerHTML = makeDieSVG(value, state === 'hot', skinId);
+  }
   el.dataset.val = value;
   return el;
 }
@@ -1052,11 +1074,15 @@ function renderRoom(room) {
     const d = document.createElement('div');
     d.className = 'p-item';
     let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
-    // Mostrar avatar equipado para el jugador local
-    if (p.id === S.id && S.avatarEquipped) {
+    // Mostrar avatar equipado para TODOS los jugadores (se carga desde BD al unirse)
+    if (p.equippedAvatar) {
+      avContent = p.equippedAvatar;
+    } else if (p.id === S.id && S.avatarEquipped) {
       avContent = S.avatarEquipped;
     }
-    d.innerHTML = `<div class="p-av">${avContent}</div>
+    // Detectar si es icono personalizado (no solo letra)
+    const hasCustomAvatar = avContent.length > 1 && !(/^[A-Z]$/i.test(avContent));
+    d.innerHTML = `<div class="p-av${hasCustomAvatar ? ' icon' : ''}">${avContent}</div>
       <span class="p-name">${esc(p.name)}</span>
       <span class="p-tag ${p.ready?'tag-ready':'tag-wait'}">${p.ready?'Listo ✓':'Esperando'}</span>`;
     // Marco Premium: solo en el avatar del jugador que tiene el item
@@ -1408,7 +1434,12 @@ function showWin(playerName, desc, dice) {
   (dice||[]).forEach(v => {
     const d = document.createElement('div');
     d.className = 'win-die';
-    d.innerHTML = makeDieSVG(v, true, S.diceEquipped);
+    const winSkin = S.diceEquipped && DICE_SKINS[S.diceEquipped];
+    if (winSkin && winSkin.icon) {
+      d.innerHTML = `<span style="font-size:28px">${winSkin.icon}</span>`;
+    } else {
+      d.innerHTML = makeDieSVG(v, true, S.diceEquipped);
+    }
     wr.appendChild(d);
   });
   $('modal-win').classList.remove('hidden');
