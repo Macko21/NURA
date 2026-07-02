@@ -285,7 +285,7 @@ function showDice(dice, mode) {
     loadEquippedCache();
     if (S.diceEquipped) activeSkinId = String(S.diceEquipped);
   }
-  console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId], '| match:', S.match?.currentPlayerIndex, '| players:', S.match?.players?.length);
+  console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId], '| match:', S.match?.currentPlayerIndex, '| players:', S.match?.players?.length, '| rollingPlayer:', S.match?.players?.[S.match?.currentPlayerIndex]?.name, '| diceEq:', S.match?.players?.[S.match?.currentPlayerIndex]?.equippedDice);
   // Forzar sync: si no hay skin, intentar del match state del propio jugador
   if (!activeSkinId && S.match) {
     const meInMatch = S.match.players.find(p => p.id === S.id);
@@ -1562,7 +1562,7 @@ function initUI() {
     if (!name) { toast('Ingresá tu nombre'); return; }
     S.name = name; S.id = uid();
     connect(() => setTimeout(() =>
-      wsSend('CREATE_ROOM', { playerId:S.id, playerName:S.name, isPrivate:true, maxPlayers:10 })
+      wsSend('CREATE_ROOM', { playerId:S.id, playerName:S.name, isPrivate:true, maxPlayers:10, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped })
     , 200));
   };
 
@@ -1787,7 +1787,7 @@ function initUI() {
     S.joiningRoom = true;
     $('btn-join-confirm').disabled    = true;
     $('btn-join-confirm').textContent = 'Entrando...';
-    const doJoin = () => wsSend('JOIN_ROOM', { playerId:S.id, playerName:S.name, code });
+    const doJoin = () => wsSend('JOIN_ROOM', { playerId:S.id, playerName:S.name, code, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
     if (!S.ws || S.ws.readyState !== WebSocket.OPEN) connect(() => setTimeout(doJoin, 300));
     else doJoin();
   };
@@ -1820,7 +1820,7 @@ function initUI() {
   };
 
   $('btn-ready').onclick = () => {
-    wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id });
+    wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
     $('btn-ready').disabled    = true;
     $('btn-ready').textContent = 'Esperando...';
   };

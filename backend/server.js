@@ -579,7 +579,13 @@ wss.on("connection", socket => {
         // Cargar items equipados del owner para que todos lo vean
         try {
           const owner = room.players.find(p => p.id === data.playerId);
-          if (owner) await loadEquippedToRoomPlayer(owner, data.playerId);
+          if (owner) {
+            await loadEquippedToRoomPlayer(owner, data.playerId);
+            // Fallback: usar valores del frontend si la BD no tenía datos
+            if (!owner.equippedAvatar && data.equippedAvatar) owner.equippedAvatar = data.equippedAvatar;
+            if (!owner.equippedDice && data.equippedDice) owner.equippedDice = data.equippedDice;
+            if (!owner.equippedSpecial && data.equippedSpecial) owner.equippedSpecial = data.equippedSpecial;
+          }
         } catch(e) { console.error('Error loading owner equipped:', e.message); }
         clients.set(data.playerId, socket);
         socket.playerId = data.playerId;
@@ -647,6 +653,10 @@ wss.on("connection", socket => {
           const player = addPlayer(room.id, data.playerId, data.playerName);
           // Cargar items equipados del jugador para que todos lo vean
           await loadEquippedToRoomPlayer(player, data.playerId);
+          // Fallback: usar valores del frontend si la BD no tenía datos
+          if (!player.equippedAvatar && data.equippedAvatar) player.equippedAvatar = data.equippedAvatar;
+          if (!player.equippedDice && data.equippedDice) player.equippedDice = data.equippedDice;
+          if (!player.equippedSpecial && data.equippedSpecial) player.equippedSpecial = data.equippedSpecial;
           clients.set(data.playerId, socket);
           socket.playerId = data.playerId;
           socket.roomId   = room.id;
@@ -687,6 +697,10 @@ wss.on("connection", socket => {
               playerState.winStreak = plRes.rows[0].win_streak || 0;
             }
           } catch(e) { console.error('Error loading equipped for joining player:', e.message); }
+          // Fallback: usar valores del frontend si la BD no tenía datos
+          if (!playerState.equippedDice && data.equippedDice) playerState.equippedDice = data.equippedDice;
+          if (!playerState.equippedAvatar && data.equippedAvatar) playerState.equippedAvatar = data.equippedAvatar;
+          if (!playerState.equippedSpecial && data.equippedSpecial) playerState.equippedSpecial = data.equippedSpecial;
 
           clients.set(data.playerId, socket);
           socket.playerId = data.playerId;
@@ -718,20 +732,29 @@ wss.on("connection", socket => {
           const firstPlayer = startGame(data.roomId);
           const room  = getRoom(data.roomId);
           const match = createMatch(room);
-          // Cargar items equipados y racha de cada jugador desde la BD
-          try {
-            for (const p of match.players) {
-              if (p.id) {
+          // Cargar items equipados y racha de cada jugador desde la BD (per-player)
+          for (const p of match.players) {
+            if (p.id) {
+              try {
                 const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
                 if (plRes.rows[0]) {
                   p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
                   p.equippedDice = plRes.rows[0].equipped_dice || null;
                   p.equippedSpecial = plRes.rows[0].equipped_special || null;
                   p.winStreak = plRes.rows[0].win_streak || 0;
+                  console.log(`🎮 ${p.name}: avatar=${p.equippedAvatar}, dice=${p.equippedDice}`);
                 }
+              } catch(e) {
+                console.error(`Error loading equipped for ${p.id}:`, e.message);
+              }
+              // Fallback: usar valores del frontend si este es el jugador que clickeó listo
+              if (p.id === data.playerId) {
+                if (!p.equippedDice && data.equippedDice) p.equippedDice = data.equippedDice;
+                if (!p.equippedAvatar && data.equippedAvatar) p.equippedAvatar = data.equippedAvatar;
+                if (!p.equippedSpecial && data.equippedSpecial) p.equippedSpecial = data.equippedSpecial;
               }
             }
-          } catch(e) { console.error('Error loading equipped items:', e.message); }
+          }
           broadcastRoom(data.roomId, "GAME_STARTED", {
             firstPlayer, match: snapshotMatch(match)
           });

@@ -78,16 +78,16 @@ function createPlayerState(player) {
     turnExpired: false,
 
     /**
-     * Items equipados (se cargan desde la BD al crear la partida)
+     * Items equipados (se cargan desde la BD o del room player como fallback)
      */
-    equippedAvatar: null,
-    equippedDice: null,
-    equippedSpecial: null,
+    equippedAvatar: player.equippedAvatar || null,
+    equippedDice: player.equippedDice || null,
+    equippedSpecial: player.equippedSpecial || null,
 
     /**
      * Racha de victorias (cargada desde BD)
      */
-    winStreak: 0
+    winStreak: player.winStreak || 0
   };
 }
 
