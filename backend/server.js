@@ -816,12 +816,18 @@ wss.on("connection", socket => {
         const isOwner = room.players[0]?.id === playerId;
         if (!isOwner) return;
         broadcastRoom(roomId, "ROOM_CANCELLED", { roomId });
-        for (const p of room.players) {
-          const sock = clients.get(p.id);
-          if (sock) sock.roomId = null;
-        }
-        rooms.delete(roomId);
-        return;
+      for (const p of room.players) {
+        const sock = clients.get(p.id);
+        if (sock) sock.roomId = null;
+      }
+      rooms.delete(roomId);
+      // Si se cancela sala, limpiar invitados antiguos de la BD
+      try {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24h
+        await pool.query(`DELETE FROM players WHERE user_id IS NULL AND created_at < $1`, [cutoff]);
+        console.log('🧹 Limpieza de invitados antiguos completada');
+      } catch(e) {}
+      return;
       }
 
     } catch (err) {
@@ -940,6 +946,18 @@ app.post("/api/reset-password", async (req, res) => {
   
   res.json({ message: "Contraseña actualizada" });
 });
+
+/* ── Limpieza periódica de invitados fantasma ──────────── */
+async function cleanupGuestPlayers() {
+  try {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24h
+    const res = await pool.query(`DELETE FROM players WHERE user_id IS NULL AND created_at < $1`, [cutoff]);
+    if (res.rowCount > 0) console.log(`🧹 Limpiados ${res.rowCount} invitados antiguos`);
+  } catch(e) {}
+}
+// Ejecutar cada 6 horas
+setInterval(cleanupGuestPlayers, 6 * 60 * 60 * 1000);
+cleanupGuestPlayers(); // también al iniciar
 
 /* ── Init ────────────────────────────────────────────────── */
 initializeDatabase();
