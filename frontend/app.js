@@ -171,44 +171,42 @@ function blendHexColor(hex1, hex2, ratio = 0.4) {
   return `rgb(${r},${g},${b})`;
 }
 
-function makeDieSVG(value, hot=false, skinId=null) {
+function makeDieSVG(value, state='normal', skinId=null) {
   const dots = DOT_POSITIONS[value] || [];
   const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
-  const dotColor = hot ? '#6b3400' : (skin ? skin.dot : '#1a1a2e');
+
+  let dotColor = '#1a1a2e';
+  if (skin) {
+    if (state === 'scoring') {
+      dotColor = blendHexColor(skin.dot, '#1a6a0a', 0.45);
+    } else if (state === 'hot') {
+      dotColor = blendHexColor(skin.dot, '#6b3400', 0.4);
+    } else if (state === 'dead') {
+      dotColor = blendHexColor(skin.dot, '#888888', 0.5);
+    } else {
+      dotColor = skin.dot;
+    }
+  } else {
+    if (state === 'scoring') dotColor = '#103808';
+    else if (state === 'hot') dotColor = '#6b3400';
+    else if (state === 'dead') dotColor = '#666666';
+  }
+
   const circles = dots.map(([cx,cy]) =>
     `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${dotColor}"/>`
   ).join('');
   return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">${circles}</svg>`;
 }
 
-// SVG version with skin icon as large emoji (replaces dots)
-function makeDieIconSVG(value, state='normal', skinId=null) {
-  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
-  if (!skin || !skin.icon) return makeDieSVG(value, state === 'hot', skinId);
-  const emoji = skin.icon;
-  // Overlay tint color
-  let tintColor = '';
-  if (state === 'scoring') tintColor = 'rgba(42,180,70,.35)';
-  else if (state === 'hot') tintColor = 'rgba(240,200,50,.35)';
-  const overlay = tintColor
-    ? `<rect x="0" y="0" width="50" height="50" rx="10" fill="${tintColor}" pointer-events="none"/>`
-    : '';
-  return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
-    <text x="25" y="36" text-anchor="middle" font-size="32" style="font-family:Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">${emoji}</text>
-    ${overlay}
-  </svg>`;
-}
-
 function makeDie(value, state='normal', skinId=null) {
   const el = document.createElement('div');
   const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
-  const hasIcon = !!(skin && skin.icon);
+
   el.className = 'die rolling'
     + (state === 'scoring' ? ' scoring' : '')
     + (state === 'hot'     ? ' hot'     : '')
-    + (state === 'dead'    ? ' dead'    : '')
-    + (hasIcon ? ' icon-die' : '');
-  
+    + (state === 'dead'    ? ' dead'    : '');
+
   // Colores de fondo: skin + estado (scoring=verde, hot=dorado, normal=skin, sin skin=default)
   if (state !== 'dead') {
     if (skin) {
@@ -230,13 +228,9 @@ function makeDie(value, state='normal', skinId=null) {
       el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
     }
   }
-  
-  // Skin con icono: usar SVG con emoji grande + overlay coloreado
-  if (hasIcon) {
-    el.innerHTML = makeDieIconSVG(value, state, skinId);
-  } else {
-    el.innerHTML = makeDieSVG(value, state === 'hot', skinId);
-  }
+
+  // SIEMPRE usar SVG con puntos (dots) adaptados a la skin y estado
+  el.innerHTML = makeDieSVG(value, state, skinId);
   el.dataset.val = value;
   return el;
 }
@@ -1434,12 +1428,7 @@ function showWin(playerName, desc, dice) {
   (dice||[]).forEach(v => {
     const d = document.createElement('div');
     d.className = 'win-die';
-    const winSkin = S.diceEquipped && DICE_SKINS[S.diceEquipped];
-    if (winSkin && winSkin.icon) {
-      d.innerHTML = `<span style="font-size:28px">${winSkin.icon}</span>`;
-    } else {
-      d.innerHTML = makeDieSVG(v, true, S.diceEquipped);
-    }
+    d.innerHTML = makeDieSVG(v, 'hot', S.diceEquipped);
     wr.appendChild(d);
   });
   $('modal-win').classList.remove('hidden');

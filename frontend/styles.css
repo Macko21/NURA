@@ -253,10 +253,6 @@ html,body{
 .btn-chest:disabled{opacity:.5;cursor:not-allowed}
 .btn-chest-timer{font-size:10px;color:#1A1200;font-weight:700;opacity:.8}
 
-/* Skin icon dice: overlay tint for scoring/hot */
-.die.icon-die svg{position:relative;z-index:1}
-.die.icon-die text{fill:currentColor;color:var(--text)}
-
 /* Marco dorado premium en cualquier avatar (item 15) */
 .avatar-premium{
   box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.2),0 0 12px rgba(212,175,55,.3) !important;
@@ -527,7 +523,6 @@ html,body{
     0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3),
     inset 0 1px 2px rgba(180,255,160,.9) !important;
 }
-.die.scoring .dot{fill:#103808 !important}
 .die.hot{
   box-shadow:
     2px 2px 0 #B06008, 3px 3px 0 #883800,
@@ -535,7 +530,6 @@ html,body{
     inset 0 1px 2px rgba(255,230,110,.9) !important;
   animation:dieScale .35s ease both;
 }
-.die.hot .dot{fill:#582000 !important}
 .die.dead{opacity:.25;filter:grayscale(1);transform:scale(.95)}
 
 /* ── Efectos visuales por skin de dados ──────────────── */

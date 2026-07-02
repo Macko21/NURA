@@ -4,10 +4,3 @@ services:
     runtime: node
     buildCommand: npm install
     startCommand: node backend/server.js
-<<<<<<< HEAD
-=======
-    disk:
-      name: db
-      mountPath: /app/database
-      sizeGB: 1
->>>>>>> f8b7f241c90c5f6a26b408e28357147ae53d3e28
