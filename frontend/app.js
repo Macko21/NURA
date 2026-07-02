@@ -222,7 +222,8 @@ function makeDie(value, state='normal', skinId=null) {
       el.style.background = `linear-gradient(145deg,${bg0},${bg1})`;
       el.style.boxShadow = `2px 2px 0 ${sh}, 3px 3px 0 ${sh}, 0 4px 12px rgba(0,0,0,.4)`;
       el.classList.add('die-skin-' + skinId);
-      // Ícono de la skin como overlay semi-transparente (visible detras de los puntos)
+      // Ícono de la skin como elemento visual principal que REEMPLAZA el dado
+      // Los puntos se superponen encima para mostrar el valor
       el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId);
     } else if (state === 'scoring') {
       el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
@@ -234,7 +235,13 @@ function makeDie(value, state='normal', skinId=null) {
       el.innerHTML = makeDieSVG(value, state, skinId);
     }
   } else {
-    el.innerHTML = makeDieSVG(value, state, skinId);
+    // Dados muertos con skin: el ícono se ve apagado junto con los puntos
+    if (skin) {
+      el.classList.add('die-skin-' + skinId);
+      el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId);
+    } else {
+      el.innerHTML = makeDieSVG(value, state, skinId);
+    }
   }
 
   el.dataset.val = value;
@@ -1476,10 +1483,11 @@ function showWin(playerName, desc, dice, skinId) {
   }
   const displayDice = (dice && dice.length > 0) ? dice : [1,2,3,4,5];
   displayDice.forEach(v => {
-    const d = document.createElement('div');
-    d.className = 'win-die';
-    d.innerHTML = makeDieSVG(v, 'hot', winnerSkin);
-    wr.appendChild(d);
+    // Usar makeDie para que se vea la skin completa con ícono + puntos
+    const dieEl = makeDie(v, 'hot', winnerSkin);
+    dieEl.classList.remove('rolling');
+    dieEl.classList.add('win-die');
+    wr.appendChild(dieEl);
   });
   $('modal-win').classList.remove('hidden');
   launchConfetti();

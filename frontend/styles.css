@@ -561,7 +561,8 @@ html,body{
 .die[class*="die-skin-"]:not(.dead)::after{opacity:1}
 .die{position:relative}
 .die[class*="die-skin-"] svg{position:relative;z-index:1}
-.die[class*="die-skin-"] .die-icon-bg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:28px;opacity:.4;pointer-events:none;z-index:0;filter:drop-shadow(0 0 3px rgba(0,0,0,.3))}
+.die[class*="die-skin-"] .die-icon-bg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:38px;opacity:.9;pointer-events:none;z-index:0;filter:drop-shadow(0 1px 4px rgba(0,0,0,.45));line-height:1}
+.win-die.die[class*="die-skin-"] .die-icon-bg{font-size:30px;opacity:.85}
 
 /* Skin 1 - Neón */
 .die-skin-1::after{border:2px solid rgba(255,255,255,.3);box-shadow:inset 0 0 12px rgba(255,255,255,.15),0 0 12px rgba(255,255,255,.1);animation:skinPulse 1.5s ease-in-out infinite}
@@ -1361,6 +1362,7 @@ input[type=number]{-moz-appearance:textfield}
 @media(max-width:420px){
   .die{width:48px;height:48px}
   .die svg{width:38px;height:38px}
+  .die[class*="die-skin-"] .die-icon-bg{font-size:30px}
   .dice-tray{min-width:auto;padding:10px 12px}
   .action-zone{max-width:100%}
   .lobby-content{gap:14px;padding:12px}
@@ -1396,6 +1398,7 @@ input[type=number]{-moz-appearance:textfield}
   .shop-grid{grid-template-columns:repeat(3,1fr)}
   .die{width:56px;height:56px}
   .die svg{width:44px;height:44px}
+  .die[class*="die-skin-"] .die-icon-bg{font-size:34px}
   .lobby-content{max-width:420px}
   .game-table{padding:20px 24px 14px}
 }
@@ -1407,6 +1410,7 @@ input[type=number]{-moz-appearance:textfield}
   .shop-grid{grid-template-columns:repeat(4,1fr)}
   .die{width:68px;height:68px}
   .die svg{width:52px;height:52px}
+  .die[class*="die-skin-"] .die-icon-bg{font-size:42px}
   .dice-tray{padding:22px 28px;min-width:340px}
   .game-table{padding:24px 32px 16px}
   .lobby-content{max-width:400px}
