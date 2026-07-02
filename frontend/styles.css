@@ -518,7 +518,6 @@ html,body{
   100%{transform:scale(1) rotate(0);opacity:1}
 }
 .die.scoring{
-  background:linear-gradient(145deg,#B8E8AC,#76C858) !important;
   box-shadow:
     2px 2px 0 #42A028, 3px 3px 0 #206808,
     0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3),
@@ -526,7 +525,6 @@ html,body{
 }
 .die.scoring .dot{fill:#103808 !important}
 .die.hot{
-  background:linear-gradient(145deg,#F0DC58,#D08000) !important;
   box-shadow:
     2px 2px 0 #B06008, 3px 3px 0 #883800,
     0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3),

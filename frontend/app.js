@@ -160,6 +160,17 @@ const DICE_SKINS = {
   '34': { bg: ['#1A1A1A','#0D0D0D'], dot:'#CC4444', sh:'#000000', name:'Ninja' }
 };
 
+/* ── Mezclar dos colores hex ──────────────────────────── */
+function blendHexColor(hex1, hex2, ratio = 0.4) {
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [r1,g1,b1] = p(hex1);
+  const [r2,g2,b2] = p(hex2);
+  const r = Math.round(r1 * (1-ratio) + r2 * ratio);
+  const g = Math.round(g1 * (1-ratio) + g2 * ratio);
+  const b = Math.round(b1 * (1-ratio) + b2 * ratio);
+  return `rgb(${r},${g},${b})`;
+}
+
 function makeDieSVG(value, hot=false, skinId=null) {
   const dots = DOT_POSITIONS[value] || [];
   const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
@@ -177,11 +188,32 @@ function makeDie(value, state='normal', skinId=null) {
     + (state === 'scoring' ? ' scoring' : '')
     + (state === 'hot'     ? ' hot'     : '')
     + (state === 'dead'    ? ' dead'    : '');
-  if (skin && state !== 'dead') {
-    el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
-    el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 4px 12px rgba(0,0,0,.4)`;
-    el.classList.add('die-skin-' + skinId);
+  
+  // Colores de fondo: skin + estado (scoring=verde, hot=dorado, normal=skin, sin skin=default)
+  if (state !== 'dead') {
+    if (skin) {
+      let bg0 = skin.bg[0], bg1 = skin.bg[1];
+      let sh = skin.sh;
+      if (state === 'scoring') {
+        // Skin con tinte verde (mezcla 60% skin + 40% verde)
+        bg0 = blendHexColor(skin.bg[0], '#76C858', 0.4);
+        bg1 = blendHexColor(skin.bg[1], '#50B038', 0.4);
+      } else if (state === 'hot') {
+        // Skin con tinte dorado (mezcla 60% skin + 40% dorado)
+        bg0 = blendHexColor(skin.bg[0], '#F0DC58', 0.4);
+        bg1 = blendHexColor(skin.bg[1], '#D08000', 0.4);
+      }
+      el.style.background = `linear-gradient(145deg,${bg0},${bg1})`;
+      el.style.boxShadow = `2px 2px 0 ${sh}, 3px 3px 0 ${sh}, 0 4px 12px rgba(0,0,0,.4)`;
+      el.classList.add('die-skin-' + skinId);
+    } else if (state === 'scoring') {
+      el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
+    } else if (state === 'hot') {
+      el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
+    }
+    // Sin skin en estado normal: usa el CSS por defecto (no se pone inline style)
   }
+  
   el.innerHTML = makeDieSVG(value, state === 'hot', skinId);
   el.dataset.val = value;
   return el;
