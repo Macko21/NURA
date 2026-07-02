@@ -449,6 +449,8 @@ function updateUserPanel(name, coins) {
     $('lobby-username').textContent = name;
     $('lobby-avatar').textContent = name.charAt(0).toUpperCase();
     $('lobby-coins').textContent = coins || 0;
+    // Marco Premium en avatar del lobby
+    $('lobby-avatar')?.classList.toggle('avatar-premium', S.specialEquipped === '15');
     
     $('guest-name-field').classList.add('hidden');
     $('btn-logout').classList.remove('hidden');
@@ -1025,6 +1027,10 @@ function renderRoom(room) {
     d.innerHTML = `<div class="p-av">${avContent}</div>
       <span class="p-name">${esc(p.name)}</span>
       <span class="p-tag ${p.ready?'tag-ready':'tag-wait'}">${p.ready?'Listo ✓':'Esperando'}</span>`;
+    // Marco Premium: solo en el avatar del jugador que tiene el item
+    if (S.specialEquipped === '15' && p.id === S.id) {
+      d.querySelector('.p-av')?.classList.add('avatar-premium');
+    }
     list.appendChild(d);
   });
 }
@@ -1041,6 +1047,8 @@ function syncEquippedFromMatch(match) {
   // Aplicar efectos especiales INMEDIATAMENTE (sin esperar loadEquippedItems async)
   // Item 17: Tema Oscuro Ultra
   applyUltraDarkTheme(S.specialEquipped === '17');
+  // Item 15: Marco Premium - aplicar en todos los avatares visibles
+  applyPremiumMarcoToAll();
   // Item 3: Emotes VIP - mostrar/ocultar picker
   const vips = $('vip-emojis');
   if (vips) vips.classList.toggle('hidden', S.specialEquipped !== '3');
@@ -1099,6 +1107,11 @@ function renderSB(match) {
       <span class="sc-sc">${p.score}</span>
       ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
+    // Marco Premium: avatar dorado SOLO en el jugador que tiene el item
+    if (S.specialEquipped === '15' && isMe) {
+      const scAv = chip.querySelector('.sc-av');
+      if (scAv) scAv.classList.add('avatar-premium');
+    }
     sb.appendChild(chip);
   });
 }
@@ -2162,7 +2175,7 @@ async function loadChestStatus() {
       btn.disabled = true;
       const hours = Math.floor(d.remaining / 3600000);
       const mins = Math.floor((d.remaining % 3600000) / 60000);
-      btn.textContent = `⏳${hours}h`;
+      btn.innerHTML = `⏳<span class="btn-chest-timer">${hours}h ${mins}m</span>`;
       btn.title = `Cofre disponible en ${hours}h ${mins}min`;
     }
   } catch (e) {}
@@ -2171,6 +2184,19 @@ async function loadChestStatus() {
 /* ── Aplicar Tema Oscuro Ultra ───────────────────────── */
 function applyUltraDarkTheme(enable) {
   document.body.classList.toggle('ultra-dark', enable);
+}
+
+/* ── Aplicar marco dorado premium en TODOS los avatares ── */
+function applyPremiumMarcoToAll() {
+  const hasPremium = S.specialEquipped === '15';
+  // Perfil
+  const profileAv = $('profile-avatar');
+  if (profileAv) profileAv.classList.toggle('premium-marco', hasPremium);
+  // Lobby avatar
+  const lobbyAv = $('lobby-avatar');
+  if (lobbyAv) lobbyAv.classList.toggle('avatar-premium', hasPremium);
+  // Scoreboard avatars (se actualizan dinamicamente, se aplica en renderSB)
+  // Room players avatars (se actualizan dinamicamente, se aplica en renderRoom)
 }
 
 /* ── Actualizar badge de boost +50% con tiempo restante ── */
@@ -2273,6 +2299,8 @@ async function loadEquippedItems() {
     saveEquippedCache();
     // Aplicar Tema Oscuro Ultra (item 17)
     applyUltraDarkTheme(S.specialEquipped === '17');
+    // Item 15: Marco Premium en todos los avatares
+    applyPremiumMarcoToAll();
     // Mostrar/ocultar picker Emotes VIP (item 3)
     const vipEmojis = $('vip-emojis');
     if (vipEmojis) {

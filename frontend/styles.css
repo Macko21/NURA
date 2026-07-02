@@ -242,14 +242,21 @@ html,body{
 .btn-chest{
   background:linear-gradient(135deg,#F0D060,#C8961E);
   color:#1A1200;border:none;border-radius:8px;
-  width:30px;height:30px;font-size:14px;
-  cursor:pointer;font-family:inherit;
-  display:flex;align-items:center;justify-content:center;
+  width:auto;min-width:36px;height:32px;font-size:13px;font-weight:700;
+  padding:0 8px;
+  cursor:pointer;font-family:'Cinzel',serif;
+  display:flex;align-items:center;justify-content:center;gap:4px;
   transition:filter .18s,transform .12s;
   box-shadow:0 0 10px rgba(212,175,55,.2);
 }
 .btn-chest:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-1px) scale(1.05)}
 .btn-chest:disabled{opacity:.5;cursor:not-allowed}
+.btn-chest-timer{font-size:10px;color:rgba(255,255,255,.7);font-weight:600}
+
+/* Marco dorado premium en cualquier avatar (item 15) */
+.avatar-premium{
+  box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.2),0 0 12px rgba(212,175,55,.3) !important;
+}
 
 .btn-shop{
   background:linear-gradient(135deg,var(--gold),var(--gold-dk));

@@ -717,9 +717,13 @@ async function equipItem(playerId, itemId, category) {
   const col = colMap[category];
   if (!col) throw new Error('Categoria invalida');
   
-  // Verificar que posee el item
-  const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parseInt(itemId)]);
-  if (!redRes.rows.length && itemId !== 'default') throw new Error('No posees este item');
+  // Verificar que posee el item (solo si NO es 'default')
+  if (itemId !== 'default') {
+    const parsedId = parseInt(itemId);
+    if (isNaN(parsedId)) throw new Error('ID de item invalido');
+    const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parsedId]);
+    if (!redRes.rows.length) throw new Error('No posees este item');
+  }
   
   await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [itemId === 'default' ? '' : String(itemId), playerId]);
   
