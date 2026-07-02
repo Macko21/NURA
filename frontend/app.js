@@ -255,19 +255,24 @@ function showDice(dice, mode) {
   row.innerHTML = '';
 
   // Determinar skin de dados del jugador que está tirando (para que TODOS vean el skin)
-  let activeSkinId = S.diceEquipped;
+  let activeSkinId = null;
+  // 1. Intentar del jugador activo en el match state (funciona para TODOS los jugadores)
   if (S.match && S.match.players && S.match.currentPlayerIndex !== undefined) {
     const rollingPlayer = S.match.players[S.match.currentPlayerIndex];
     if (rollingPlayer && rollingPlayer.equippedDice) {
-      activeSkinId = rollingPlayer.equippedDice;
+      activeSkinId = String(rollingPlayer.equippedDice);
     }
   }
-  // Fallback: cache local
+  // 2. Fallback: mi skin local
+  if (!activeSkinId && S.diceEquipped) {
+    activeSkinId = String(S.diceEquipped);
+  }
+  // 3. Fallback: cache local
   if (!activeSkinId) {
     loadEquippedCache();
-    activeSkinId = S.diceEquipped;
+    if (S.diceEquipped) activeSkinId = String(S.diceEquipped);
   }
-  console.log('🎲 Skin activo:', activeSkinId);
+  console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId]);
 
   // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
   let greenIdx = [];

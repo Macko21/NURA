@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -355,12 +355,19 @@ async function checkIfGuest(playerId) {
   }
 }
 
+/* ── Resolver ID de item avatar a su icono (emoji) ──── */
+function resolveAvatarIcon(itemId) {
+  if (!itemId) return '';
+  const item = SHOP_CATALOG.find(i => i.id === parseInt(itemId) && i.category === 'avatares');
+  return item ? item.icon : '';
+}
+
 /* ── Cargar items equipados a un room player ──────────── */
 async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
   try {
     const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special FROM players WHERE id = $1`, [playerId]);
     if (plRes.rows[0]) {
-      roomPlayer.equippedAvatar = plRes.rows[0].equipped_avatar || '';
+      roomPlayer.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
       roomPlayer.equippedDice = plRes.rows[0].equipped_dice || '';
       roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
     }
@@ -669,7 +676,7 @@ wss.on("connection", socket => {
           try {
             const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [data.playerId]);
             if (plRes.rows[0]) {
-              playerState.equippedAvatar = plRes.rows[0].equipped_avatar || null;
+              playerState.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
               playerState.equippedDice = plRes.rows[0].equipped_dice || null;
               playerState.equippedSpecial = plRes.rows[0].equipped_special || null;
               playerState.winStreak = plRes.rows[0].win_streak || 0;
@@ -712,7 +719,7 @@ wss.on("connection", socket => {
               if (p.id) {
                 const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
                 if (plRes.rows[0]) {
-                  p.equippedAvatar = plRes.rows[0].equipped_avatar || null;
+                  p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
                   p.equippedDice = plRes.rows[0].equipped_dice || null;
                   p.equippedSpecial = plRes.rows[0].equipped_special || null;
                   p.winStreak = plRes.rows[0].win_streak || 0;
