@@ -375,9 +375,9 @@ html,body{
 .sc-chip.me{border-color:var(--green);background:rgba(42,154,108,.08)}
 .sc-top{display:flex;align-items:center;gap:3px;justify-content:center}
 .sc-av{
-  width:18px;height:18px;border-radius:50%;
-  background:linear-gradient(135deg,var(--gold2),var(--gold-dk));
-  color:#1A1200;font-size:11px;font-weight:800;
+  width:28px;height:28px;border-radius:50%;
+  background:transparent;
+  color:var(--text);font-size:15px;font-weight:600;
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
   line-height:1;

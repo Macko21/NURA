@@ -148,7 +148,7 @@ const DICE_SKINS = {
   '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón' },
   '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego' },
   '4':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite' },
-  '5':  { bg: ['#D0C8E8','#B8AED8'], dot:'#2a1a3e', sh:'#988EC8', name:'Fantasma' },
+  '5':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma' },
   '6':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo' },
   '18': { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser' },
   '19': { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados' },
