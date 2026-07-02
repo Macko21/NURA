@@ -93,6 +93,7 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_dice TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_special TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_expires BIGINT DEFAULT 0`,
     ];
     // Migración para tabla missions_reset (timestamps de reseteo)
     try {
@@ -344,26 +345,71 @@ function getShopCatalog() {
   }));
 }
 
+// ── Verificar si el jugador tiene boost de +50% activo ──
+async function checkBoostActive(playerId) {
+  try {
+    const res = await pool.query(`SELECT equipped_special, boost_expires FROM players WHERE id = $1`, [playerId]);
+    if (!res.rows[0]) return false;
+    const { equipped_special, boost_expires } = res.rows[0];
+    if (equipped_special !== '31') return false;
+    if (!boost_expires || Date.now() > Number(boost_expires)) return false;
+    return true;
+  } catch (e) {
+    console.error('Error checking boost:', e.message);
+    return false;
+  }
+}
+
+// ── Obtener estado del boost (para el frontend) ────────
+async function getBoostStatus(playerId) {
+  try {
+    const res = await pool.query(`SELECT equipped_special, boost_expires FROM players WHERE id = $1`, [playerId]);
+    if (!res.rows[0]) return { active: false, remaining: 0 };
+    const { equipped_special, boost_expires } = res.rows[0];
+    if (equipped_special !== '31' || !boost_expires) return { active: false, remaining: 0 };
+    const remaining = Number(boost_expires) - Date.now();
+    if (remaining <= 0) return { active: false, remaining: 0 };
+    return { active: true, remaining };
+  } catch (e) {
+    return { active: false, remaining: 0 };
+  }
+}
+
 // --- SISTEMA DE RECOMPENSAS ---
 async function rewardWinner(playerId, coinsAmount) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     
+    // Verificar boost de +50% (item 31) antes de sumar
+    const boostRes = await client.query(`SELECT equipped_special, boost_expires FROM players WHERE id = $1`, [playerId]);
+    let finalAmount = coinsAmount;
+    let boostNote = '';
+    if (boostRes.rows[0]) {
+      const { equipped_special, boost_expires } = boostRes.rows[0];
+      if (equipped_special === '31' && boost_expires && Date.now() < Number(boost_expires)) {
+        finalAmount = Math.round(coinsAmount * 1.5);
+        boostNote = ' (+50% boost)';
+      }
+    }
+    
     // Sumar las monedas al jugador
     await client.query(
       `UPDATE players SET coins = coins + $1 WHERE id = $2`,
-      [coinsAmount, playerId]
+      [finalAmount, playerId]
     );
 
     // Guardar en el historial de transacciones
     await client.query(
       `INSERT INTO transactions (player_id, amount, reason, created_at) 
        VALUES ($1, $2, $3, $4)`,
-      [playerId, coinsAmount, 'Victoria en partida', Date.now()]
+      [playerId, finalAmount, 'Victoria en partida' + boostNote, Date.now()]
     );
 
     await client.query("COMMIT");
+    if (boostNote) {
+      console.log(`💰 ${finalAmount} monedas (${coinsAmount}x1.5) → ${playerId} (boost +50% activo)`);
+    }
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("Error al entregar recompensa:", err);
@@ -676,6 +722,14 @@ async function equipItem(playerId, itemId, category) {
   if (!redRes.rows.length && itemId !== 'default') throw new Error('No posees este item');
   
   await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [itemId === 'default' ? '' : String(itemId), playerId]);
+  
+  // Si se equipa el item 31 (+50% Monedas x 1d), activar el boost por 24h
+  if (itemId === '31') {
+    const expires = Date.now() + 24 * 60 * 60 * 1000; // 24h desde ahora
+    await pool.query(`UPDATE players SET boost_expires = $1 WHERE id = $2`, [expires, playerId]);
+    console.log(`⏫ Boost +50% activado para ${playerId} - expira ${new Date(expires).toISOString()}`);
+  }
+  
   return { success: true };
 }
 
@@ -718,5 +772,6 @@ module.exports = {
   getUserProfile, awardXP, getLevel, getRank,
   getPlayerMissions, claimMissionReward, checkMissionsCompleted,
   MISSIONS, RANKS, SHOP_CATALOG, getOwnedItems, equipItem,
-  claimDailyChest, getChestStatus, getPlayerTransactions
+  claimDailyChest, getChestStatus, getPlayerTransactions,
+  checkBoostActive, getBoostStatus
 };

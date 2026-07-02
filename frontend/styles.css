@@ -288,6 +288,16 @@ html,body{
 }
 .logo-sub{font-size:11px;color:var(--text3);margin-top:6px;letter-spacing:.6px}
 .app-version{font-size:9px;color:var(--text3);margin-top:3px;letter-spacing:1px}
+/* Boost badge (+50% Monedas item 31) */
+.boost-badge{
+  display:inline-block;font-size:10px;font-weight:700;
+  color:#1A1200;background:linear-gradient(135deg,var(--gold2),var(--gold-dk));
+  border-radius:6px;padding:4px 10px;margin-top:6px;
+  animation:boostPulse 1.5s ease-in-out infinite;
+  box-shadow:0 0 16px rgba(212,175,55,.3);
+}
+.boost-badge.hidden{display:none}
+@keyframes boostPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05);box-shadow:0 0 24px rgba(212,175,55,.5)}}
 
 .lobby-form{width:100%;display:flex;flex-direction:column;gap:10px}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -376,6 +386,8 @@ html,body{
 .sc-sc{font-family:'Cinzel',serif;font-size:14px;color:var(--gold);font-weight:700}
 .sc-sb{font-size:8px;color:var(--text3);margin-top:1px;text-align:center}
 .sc-yo{font-size:7px;font-weight:700;background:var(--green);color:#fff;border-radius:3px;padding:1px 5px;letter-spacing:.5px;flex-shrink:0}
+.sc-streak{font-size:9px;color:var(--red-lt);font-weight:700;text-shadow:0 0 8px rgba(200,60,48,.3);animation:streakPulse 1.2s ease-in-out infinite;font-family:'Cinzel',serif}
+@keyframes streakPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.8;transform:scale(1.05)}}
 
 /* ══════════════════════════════════════
    GAME
@@ -511,6 +523,20 @@ html,body{
 }
 .die.hot .dot{fill:#582000 !important}
 .die.dead{opacity:.25;filter:grayscale(1);transform:scale(.95)}
+
+/* Dado Mag. Animado (item 29): brillo rotatorio extra */
+.die.magic-dice::after{
+  content:'';position:absolute;inset:-3px;border-radius:13px;
+  background:linear-gradient(135deg,transparent 30%,rgba(212,175,55,.4),transparent 70%);
+  animation:magicGlow 1.5s ease-in-out infinite;
+  pointer-events:none;
+  z-index:-1;
+}
+@keyframes magicGlow{
+  0%{opacity:.3;transform:rotate(0deg)}
+  50%{opacity:.8;transform:rotate(180deg) scale(1.08)}
+  100%{opacity:.3;transform:rotate(360deg)}
+}
 .die svg{width:48px;height:48px}
 .dot{fill:#1A1810}
 @keyframes dieScale{0%{transform:scale(1)}50%{transform:scale(1.12)}100%{transform:scale(1)}}
@@ -636,6 +662,34 @@ html,body{
   transition:all .2s;color:var(--text2);
 }
 .chat-mic-btn:hover{border-color:var(--gold);color:var(--gold)}
+
+/* VIP Emojis picker (item 3) */
+.vip-emojis{
+  display:flex;gap:3px;align-items:center;
+  padding:2px 2px;background:var(--bg-input);
+  border:1px solid var(--border2);border-radius:8px;
+  flex-shrink:0;
+}
+.vip-emojis.hidden{display:none}
+.vip-emoji-btn{
+  background:none;border:none;cursor:pointer;
+  font-size:14px;padding:3px 2px;border-radius:4px;
+  transition:all .15s;opacity:.6;line-height:1;
+}
+.vip-emoji-btn:hover{opacity:1;background:var(--gold-bg);transform:scale(1.15)}
+
+/* Tema Oscuro Ultra (item 17) */
+body.ultra-dark{
+  --bg-dark:#050510;
+  --bg-card:rgba(8,8,16,.92);
+  --bg-card2:rgba(10,10,18,.8);
+  --text2:#7A7460;
+  --text3:#3A3420;
+}
+body.ultra-dark .auth-bg{background:radial-gradient(ellipse at 50% 0%, #0A0820 0%, #050510 70%)}
+body.ultra-dark #screen-lobby::before{background:radial-gradient(ellipse at 50% 0%, #0A0818 0%, #050510 70%)}
+body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #020208 100%)}
+
 .chat-mic-btn.recording{
   background:rgba(200,60,48,.15);border-color:var(--red);
   color:var(--red-lt);animation:micPulse .8s ease-in-out infinite;
@@ -963,6 +1017,11 @@ html,body{
   cursor:pointer;transition:transform .2s;
 }
 .profile-avatar:hover{transform:scale(1.05)}
+.profile-avatar.premium-marco{
+  box-shadow:0 0 0 3px var(--gold),0 0 0 6px rgba(212,175,55,.2),0 0 24px rgba(212,175,55,.4);
+  animation:marcoPulse 2s ease-in-out infinite;
+}
+@keyframes marcoPulse{0%,100%{box-shadow:0 0 0 3px var(--gold),0 0 0 6px rgba(212,175,55,.2),0 0 24px rgba(212,175,55,.4)}50%{box-shadow:0 0 0 4px var(--gold2),0 0 0 8px rgba(212,175,55,.3),0 0 40px rgba(212,175,55,.6)}}
 .profile-info{display:flex;flex-direction:column;gap:4px;min-width:0}
 .profile-name{font-family:'Cinzel',serif;font-size:20px;font-weight:700;color:var(--gold)}
 .profile-email{font-size:12px;color:var(--text3);word-break:break-all}
@@ -1065,6 +1124,38 @@ html,body{
   box-shadow:0 0 8px rgba(212,175,55,.4);
 }
 .inv-empty{font-size:12px;color:var(--text3);text-align:center;padding:16px 0}
+
+/* Destello al equipar item en el inventario */
+.inv-item.equip-flash{
+  animation:equipGlow .6s ease;
+}
+@keyframes equipGlow{
+  0%{box-shadow:0 0 0 0 rgba(212,175,55,.6);transform:scale(1)}
+  50%{box-shadow:0 0 20px 6px rgba(212,175,55,.4);transform:scale(1.08);border-color:var(--gold2)}
+  100%{box-shadow:0 0 0 0 rgba(212,175,55,0);transform:scale(1)}
+}
+
+/* Destello al comprar item en la tienda */
+.shop-item-bought{
+  animation:buyFlash .5s ease forwards;
+}
+@keyframes buyFlash{
+  0%{box-shadow:0 0 0 0 rgba(212,175,55,.8);transform:scale(1)}
+  30%{box-shadow:0 0 30px 10px rgba(212,175,55,.5);transform:scale(1.06);border-color:var(--gold)}
+  70%{box-shadow:0 0 15px 5px rgba(212,175,55,.3);transform:scale(1.02)}
+  100%{box-shadow:0 0 0 0 transparent;transform:scale(1)}
+}
+
+/* Partículas al comprar */
+.buy-sparkle{
+  position:fixed;width:6px;height:6px;border-radius:50%;
+  pointer-events:none;z-index:500;
+  animation:sparkleFly var(--duration,.6s) ease-out forwards;
+}
+@keyframes sparkleFly{
+  0%{transform:translate(0,0) scale(1);opacity:1}
+  100%{transform:translate(var(--tx,60px),var(--ty,-60px)) scale(0);opacity:0}
+}
 
 @media(max-width:420px){
   .inv-items{grid-template-columns:repeat(3,1fr)}

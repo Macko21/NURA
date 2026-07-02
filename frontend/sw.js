@@ -6,7 +6,7 @@
  * ══════════════════════════════════════════════
  */
 
-const CACHE_NAME = 'macko-v1';
+const CACHE_NAME = 'macko-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -15,8 +15,9 @@ const ASSETS = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
+  '/icon-1024.png',
   '/apple-touch-icon.png',
-  'https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap'
+  'https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap'
 ];
 
 /* Instalar — cachear todos los assets */

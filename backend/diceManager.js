@@ -82,7 +82,11 @@ function snapshotMatch(match) {
       mustStop:          p.mustStop,
       lastRoll:          p.lastRoll,
       entryAttemptsUsed: p.entryAttemptsUsed,
-      isHotDiceTurn:     p.isHotDiceTurn
+      isHotDiceTurn:     p.isHotDiceTurn,
+      equippedAvatar:    p.equippedAvatar || null,
+      equippedDice:      p.equippedDice || null,
+      equippedSpecial:   p.equippedSpecial || null,
+      winStreak:         p.winStreak || 0
     }))
   };
 }

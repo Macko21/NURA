@@ -21,7 +21,7 @@ const S = {
   ws:null,
   joiningRoom:false,
   isOwner:false,
-  rolling:false,
+
   banking:false,
 
   avatarEquipped: null, // Icono del avatar equipado
@@ -61,14 +61,18 @@ window.addEventListener('beforeinstallprompt', e => {
   if (bar) {
     bar.classList.remove('hidden');
     updatePwaOffset();
-    // Auto-ocultar después de 8s para no molestar
-    clearTimeout(_pwaAutoTimer);
-    _pwaAutoTimer = setTimeout(() => {
-      bar.classList.add('hidden');
-      updatePwaOffset();
-    }, 8000);
   }
-});
+});  // También mostrar la barra como recordatorio si el usuario está logueado y no se ha instalado
+  // (útil en Android Chrome donde beforeinstallprompt puede tardar en dispararse)
+  setTimeout(() => {
+    if (!_deferredInstall && !_pwaDismissed && isLogged()) {
+      const bar = $('pwa-install-bar');
+      if (bar && bar.classList.contains('hidden')) {
+        // Mostrar un mensaje más sutil: solo si estamos en lobby y no hay barra
+      }
+    }
+  }, 5000);
+
 
 /* Esconder banner si ya se instaló */
 window.addEventListener('appinstalled', () => {
@@ -197,8 +201,20 @@ function scoringIndices(dice) {
 }
 
 function showDice(dice, mode) {
+  console.log('🎲 Skin:', S.diceEquipped);
   const row = $('dice-row');
   row.innerHTML = '';
+
+  // SIEMPRE sincronizar skin de dados desde cualquier fuente disponible
+  // 1. Match state (datos más frescos del servidor)
+  if (!S.diceEquipped && S.match) {
+    const me = S.match.players.find(p => p.id === S.id);
+    if (me && me.equippedDice) S.diceEquipped = me.equippedDice;
+  }
+  // 2. Cache local (fallback)
+  if (!S.diceEquipped) {
+    loadEquippedCache();
+  }
 
   // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
   let greenIdx = [];
@@ -221,6 +237,10 @@ function showDice(dice, mode) {
     if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
     const die = makeDie(val, state, S.diceEquipped);
     die.style.animationDelay = (i * 55) + 'ms';
+    // Dado Mag. Animado (item 29): animación extra al tirar
+    if (S.specialEquipped === '29' && mode !== 'dead') {
+      die.classList.add('magic-dice');
+    }
     row.appendChild(die);
   });
 }
@@ -394,7 +414,9 @@ const SFX = {
   win:   ()=>{ [523,659,784,1047,1318].forEach((f,i)=>tone(f,'triangle',.35,.45,i*.12)); },
   chat:  ()=>tone(880,'sine',.06,.1),
   enter: ()=>{ tone(440,'sine',.12,.3); tone(659,'sine',.18,.35,.15); },
-  tick:  ()=>tone(1200,'sine',.04,.08)
+  tick:  ()=>tone(1200,'sine',.04,.08),
+  equip: ()=>{ tone(660,'sine',.08,.25); tone(880,'sine',.08,.2,.08); tone(1100,'sine',.12,.18,.16); },
+  purchase: ()=>{ tone(600,'triangle',.1,.25); tone(800,'triangle',.08,.2,.08); tone(1000,'triangle',.15,.3,.2); }
 };
 
 /* ── Helpers ─────────────────────────────────────────── */
@@ -619,6 +641,7 @@ function handle(type, data) {
       S.entered     = data.match.players.find(p=>p.id===S.id)?.entered || false;
       S.joiningRoom = false;
       resetJoinBtn();
+      syncEquippedFromMatch(data.match);
       saveSession();
       showScreen('screen-game');
       renderSB(data.match);
@@ -660,6 +683,8 @@ function handle(type, data) {
       S.entered     = false;
       S.isOwner     = false;
       S.joiningRoom = false;
+      S.banking     = false;
+      syncEquippedFromMatch(data.match);
       saveSession();
       showScreen('screen-game');
       renderSB(data.match);
@@ -672,6 +697,7 @@ function handle(type, data) {
 
     case 'PLAYER_JOINED_GAME':
       S.match = data.match;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       sys(`${data.playerName} se unió a la partida`);
       toast(`➕ ${data.playerName} se unió`, 2500);
@@ -718,13 +744,13 @@ function handle(type, data) {
     /* ── Inicio de partida ───────────────────────────── */
     case 'GAME_STARTED':
       S.match=data.match; S.entered=false;
-      S.rolling = false;
       S.banking = false;
       saveSession();
       showScreen('screen-game');
       // Resetear botones al iniciar partida nueva
       $('btn-roll').disabled = false;
       $('btn-bank').disabled = true;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       updateTurnUI(data.match);
       clearDice();
@@ -733,11 +759,16 @@ function handle(type, data) {
       sys('¡La partida comenzó!');
       SFX.score();
       if (data.firstPlayer?.id === S.id) startTimer(TURN_SECS);
+      // Cargar items equipados: primero del cache local (instantáneo), luego API
+      loadEquippedCache();
+      loadEquippedItems();
       break;
 
     /* ── Entrada al juego ────────────────────────────── */
     case 'PLAYER_ENTERED':
       S.match=data.match;
+      S.banking = false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       setMsg(`Sacó ${data.rollScore} pts → Costo 1000 → Queda con ${data.gained} pts`, 'good');
@@ -754,6 +785,7 @@ function handle(type, data) {
 
     case 'ENTRY_FAILED':
       S.match=data.match;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
       setMsg(
@@ -775,9 +807,7 @@ function handle(type, data) {
     /* ── Tiradas ─────────────────────────────────────── */
     case 'ROLL_RESULT':
       S.match=data.match;
-      if (data.playerId===S.id) {
-        S.rolling = false; // Liberar flag anti-click
-      }
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'scored');
       setMsg(
@@ -793,14 +823,17 @@ function handle(type, data) {
         if (data.autoBank) stopTimer();
         else startTimer(TURN_SECS);
       }
-      if (!data.autoBank) updateTurnUI(data.match);
+      if (!data.autoBank) {
+        updateTurnUI(data.match);
+      }
       syncMyScore(data.match);
       if (data.playerId===S.id) SFX.score();
       break;
 
     case 'DEAD_ROLL':
       S.match=data.match;
-      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
+      S.banking=false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
       setMsg('¡Sin puntos! Turno perdido 💀','bad');
@@ -812,7 +845,8 @@ function handle(type, data) {
 
     case 'BUST':
       S.match=data.match;
-      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
+      S.banking=false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
       setMsg('¡Te pasaste de 10.000! 💥','bad');
@@ -824,7 +858,8 @@ function handle(type, data) {
 
     case 'HOT_DICE':
       S.match=data.match;
-      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
+      S.banking=false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       setMsg('🔥 DADOS CALIENTES — Tiro extra. Si saca algo, suma y termina','hot');
@@ -839,9 +874,8 @@ function handle(type, data) {
 
     case 'BANKED':
       S.match=data.match;
-      if (data.playerId===S.id) {
-        S.banking = false; // Liberar flag anti-click
-      }
+      S.banking = false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       updateTurnUI(data.match);
       syncMyScore(data.match);
@@ -857,10 +891,10 @@ function handle(type, data) {
     /* ── Cambio de turno ─────────────────────────────── */
     case 'TURN_START':
       S.match=data.match;
-      S.rolling = false; // Reset anti-click al cambiar turno
       S.banking = false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
-      // Siempre resetear el botón tirar al cambiar de turno
+      // SIEMPRE resetear el botón tirar al cambiar de turno
       $('btn-roll').disabled = false;
       updateTurnUI(data.match);
       $('turn-points').textContent = '0';
@@ -886,7 +920,8 @@ function handle(type, data) {
     /* ── Victorias ───────────────────────────────────── */
     case 'INSTANT_WIN':
       S.match=data.match;
-      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
+      S.banking=false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
@@ -896,7 +931,8 @@ function handle(type, data) {
 
     case 'WIN':
       S.match=data.match;
-      if (data.playerId===S.id) { S.rolling=false; S.banking=false; }
+      S.banking=false;
+      syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
@@ -905,8 +941,8 @@ function handle(type, data) {
       break;
 
     case 'GAME_OVER':
-      S.rolling = false;
       S.banking = false;
+      $('btn-roll').disabled = true;
       stopTimer();
       updateGameCoins();
       // Verificar misiones completadas
@@ -979,12 +1015,35 @@ function renderRoom(room) {
   room.players.forEach(p => {
     const d = document.createElement('div');
     d.className = 'p-item';
-    const avInitial = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
-    d.innerHTML = `<div class="p-av">${avInitial}</div>
+    let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
+    // Mostrar avatar equipado para el jugador local
+    if (p.id === S.id && S.avatarEquipped) {
+      avContent = S.avatarEquipped;
+    }
+    d.innerHTML = `<div class="p-av">${avContent}</div>
       <span class="p-name">${esc(p.name)}</span>
       <span class="p-tag ${p.ready?'tag-ready':'tag-wait'}">${p.ready?'Listo ✓':'Esperando'}</span>`;
     list.appendChild(d);
   });
+}
+
+/* ── Sincronizar items equipados desde match state ──── */
+function syncEquippedFromMatch(match) {
+  if (!match || !match.players) return;
+  const me = match.players.find(p => p.id === S.id);
+  if (!me) return;
+  if (me.equippedDice)    S.diceEquipped    = me.equippedDice;
+  if (me.equippedAvatar)  S.avatarEquipped  = me.equippedAvatar;
+  if (me.equippedSpecial) S.specialEquipped = me.equippedSpecial;
+  saveEquippedCache();
+  // Aplicar efectos especiales INMEDIATAMENTE (sin esperar loadEquippedItems async)
+  // Item 17: Tema Oscuro Ultra
+  applyUltraDarkTheme(S.specialEquipped === '17');
+  // Item 3: Emotes VIP - mostrar/ocultar picker
+  const vips = $('vip-emojis');
+  if (vips) vips.classList.toggle('hidden', S.specialEquipped !== '3');
+  // Item 31: +50% Monedas - actualizar badge de boost con tiempo restante
+  updateBoostBadge();
 }
 
 /* ── Scoreboard ──────────────────────────────────────── */
@@ -1014,14 +1073,25 @@ function renderSB(match) {
       sub = '✅ en juego';
     }
     const yoTag = isMe ? '<span class="sc-yo">YO</span>' : '';
-    // Mostrar avatar equipado o inicial
+    // Mostrar avatar equipado (del match state para todos, o local si es el jugador actual)
     let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
-    if (isMe && S.avatarEquipped) {
+    if (p.equippedAvatar) {
+      avContent = p.equippedAvatar;
+    } else if (isMe && S.avatarEquipped) {
       avContent = S.avatarEquipped;
+    }
+    // Racha Visible (item 30): mostrar racha de victorias en scoreboard
+    let rachaHtml = '';
+    if (p.equippedSpecial === '30' && p.entered) {
+      const streakVal = p.winStreak || 0;
+      if (streakVal > 0) {
+        rachaHtml = `<span class="sc-streak">🔥${streakVal}</span>`;
+      }
     }
     chip.innerHTML = `
       <div class="sc-top">${yoTag}<span class="sc-av">${avContent}</span><span class="sc-nm">${esc(p.name)}</span></div>
       <span class="sc-sc">${p.score}</span>
+      ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
     sb.appendChild(chip);
   });
@@ -1626,33 +1696,17 @@ function initUI() {
     $('btn-ready').textContent = 'Esperando...';
   };
 
-  /* Juego */
+  /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
   $('btn-roll').onclick = () => {
-    if (!S.myTurn || $('btn-roll').disabled || S.rolling) return;
-    S.rolling = true;
-    $('btn-roll').disabled = true;
+    wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
     clearDice();
     setMsg('','');
     SFX.roll();
-    wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
-    // Safety timeout: rehabilitar botón si no hay respuesta en 10s
-    setTimeout(() => {
-      S.rolling = false;
-      if (S.myTurn && $('btn-roll') && $('btn-roll').disabled) {
-        $('btn-roll').disabled = false;
-      }
-    }, 10000);
   };
   
+  /* ── Botón BANCO: SIN NINGÚN BLOQUEO ──────────────── */
   $('btn-bank').onclick = () => {
-    if (!S.myTurn || $('btn-bank').disabled || S.banking) return;
-    S.banking = true;
-    $('btn-bank').disabled = true;
     wsSend('BANK', { roomId:S.roomId, playerId:S.id });
-    // Safety timeout
-    setTimeout(() => {
-      S.banking = false;
-    }, 5000);
   };
 
   /* Salir de partida — modal propio, va al lobby inmediatamente */
@@ -1668,6 +1722,31 @@ function initUI() {
   $('chat-send').onclick     = sendChat;
   $('chat-input').onkeydown  = e => { if (e.key==='Enter') sendChat(); };
   $('btn-chat-mic').onclick  = toggleRecording;
+  
+  // Emotes VIP (item 3): picker de emojis en el chat
+  const vipEmojis = $('vip-emojis');
+  if (vipEmojis) {
+    ['🔥','🎲','💀','👏','😂','😱','🎉','💯'].forEach(emo => {
+      const btn = document.createElement('button');
+      btn.textContent = emo;
+      btn.className = 'vip-emoji-btn';
+      btn.onclick = () => {
+        if (S.roomId) {
+          wsSend('CHAT_MESSAGE', { roomId:S.roomId, playerId:S.id, playerName:S.name, message: emo });
+          SFX.chat();
+        }
+      };
+      vipEmojis.appendChild(btn);
+    });
+  }
+  // Mostrar/ocultar picker VIP según item equipado
+  function updateVIPPicker() {
+    if (vipEmojis) {
+      vipEmojis.classList.toggle('hidden', S.specialEquipped !== '3');
+    }
+  }
+  updateVIPPicker();
+  // NOTA: updateVIPPicker también se llama desde loadEquippedItems() directamente
 
   /* Ranking */
 /* Ranking */
@@ -1713,11 +1792,23 @@ async function loadProfile() {
 
     // Avatar y header — mostrar icono equipado si tiene
     let avatarDisplay = (p.alias || '?').charAt(0).toUpperCase();
+    S.avatarEquipped = null;
     if (inv?.equipped?.avatar) {
       const equippedItem = inv.owned.find(i => i.id === parseInt(inv.equipped.avatar));
       if (equippedItem) avatarDisplay = equippedItem.icon;
     }
     $('profile-avatar').textContent = avatarDisplay;
+    // Marco Premium (item 15): agregar borde dorado al avatar del perfil
+    if (inv?.equipped?.special === '15') {
+      $('profile-avatar').classList.add('premium-marco');
+    } else {
+      $('profile-avatar').classList.remove('premium-marco');
+    }
+    // +50% Monedas x 1d (item 31): mostrar badge de boost activo
+    const boostBadge = $('boost-badge');
+    if (boostBadge) {
+      boostBadge.classList.toggle('hidden', inv?.equipped?.special !== '31');
+    }
     S.avatarEquipped = (avatarDisplay.length > 1 && !(/^[A-Z]$/.test(avatarDisplay))) ? avatarDisplay : null;
     $('profile-name').textContent = p.alias || '—';
     $('profile-email').textContent = p.email || '—';
@@ -1856,9 +1947,26 @@ async function equipItemFromProfile(itemId, category) {
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error);
+    // Efecto de sonido al equipar
+    SFX.equip();
+    // Efecto visual: flash en el item clickeado
+    const allItems = document.querySelectorAll('.inv-item');
+    allItems.forEach(el => {
+      el.classList.remove('equip-flash');
+      void el.offsetWidth; // Forzar reflow
+    });
+    // Encontrar el item clickeado por el toast que sigue
+    setTimeout(() => {
+      const equippedItem = document.querySelector('.inv-item.equipped');
+      if (equippedItem) {
+        equippedItem.classList.add('equip-flash');
+        setTimeout(() => equippedItem.classList.remove('equip-flash'), 800);
+      }
+    }, 100);
     toast('✔ Equipado correctamente');
     loadProfile(); // Recargar perfil (usa loadInventoryData internamente)
     loadEquippedItems(); // Actualizar items equipados en S
+    saveEquippedCache(); // Guardar inmediatamente en cache local
   } catch (err) {
     toast('⚠ ' + err.message);
   }
@@ -2053,16 +2161,99 @@ async function loadChestStatus() {
   } catch (e) {}
 }
 
+/* ── Aplicar Tema Oscuro Ultra ───────────────────────── */
+function applyUltraDarkTheme(enable) {
+  document.body.classList.toggle('ultra-dark', enable);
+}
+
+/* ── Actualizar badge de boost +50% con tiempo restante ── */
+let _boostTimer = null;
+
+async function updateBoostBadge() {
+  const badge = $('boost-badge');
+  if (!badge) return;
+  const token = localStorage.getItem('gameToken');
+  if (!token || S.specialEquipped !== '31') {
+    badge.classList.add('hidden');
+    if (_boostTimer) { clearInterval(_boostTimer); _boostTimer = null; }
+    return;
+  }
+  try {
+    const res = await fetch('/api/user/boost-status', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { badge.classList.add('hidden'); return; }
+    const data = await res.json();
+    if (!data.active) {
+      badge.classList.add('hidden');
+      if (_boostTimer) { clearInterval(_boostTimer); _boostTimer = null; }
+      return;
+    }
+    badge.classList.remove('hidden');
+    // Actualizar tiempo restante cada segundo
+    const updateTime = () => {
+      const remaining = data.remaining - (Date.now() - _boostLastFetch);
+      if (remaining <= 0) {
+        badge.classList.add('hidden');
+        if (_boostTimer) { clearInterval(_boostTimer); _boostTimer = null; }
+        return;
+      }
+      const hours = Math.floor(remaining / 3600000);
+      const mins = Math.floor((remaining % 3600000) / 60000);
+      badge.textContent = `⏫ +50% - ${hours}h ${mins}m`;
+    };
+    const _boostLastFetch = Date.now();
+    updateTime();
+    if (_boostTimer) clearInterval(_boostTimer);
+    _boostTimer = setInterval(updateTime, 10000); // actualizar cada 10s
+  } catch (e) {
+    badge.classList.add('hidden');
+  }
+}
+
+/* ── Cache local de items equipados (fallback si match state no tiene datos) ── */
+function saveEquippedCache() {
+  try {
+    localStorage.setItem('macko_equipped', JSON.stringify({
+      dice: S.diceEquipped,
+      avatar: S.avatarEquipped,
+      special: S.specialEquipped,
+      ts: Date.now()
+    }));
+  } catch(e) {}
+}
+
+function loadEquippedCache() {
+  try {
+    const raw = localStorage.getItem('macko_equipped');
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    // Cache válido por 1 hora
+    if (Date.now() - d.ts > 3600000) {
+      localStorage.removeItem('macko_equipped');
+      return false;
+    }
+    if (d.dice && !S.diceEquipped) S.diceEquipped = d.dice;
+    if (d.avatar && !S.avatarEquipped) S.avatarEquipped = d.avatar;
+    if (d.special && !S.specialEquipped) S.specialEquipped = d.special;
+    return true;
+  } catch(e) { return false; }
+}
+
 /* ── Cargar items equipados del usuario ─────────────── */
 async function loadEquippedItems() {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
   try {
-    const res = await fetch('/api/user/inventory', {
+    const invRes = await fetch('/api/user/inventory', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    if (!res.ok) return;
-    const inv = await res.json();
+    if (!invRes.ok) {
+      // Fallback: cargar del cache local
+      loadEquippedCache();
+      return;
+    }
+    const inv = await invRes.json();
     if (!inv || !inv.equipped) return;
     S.diceEquipped = inv.equipped.dice || null;
     S.specialEquipped = inv.equipped.special || null;
@@ -2071,7 +2262,22 @@ async function loadEquippedItems() {
       const item = inv.owned.find(i => i.id === parseInt(inv.equipped.avatar));
       if (item) S.avatarEquipped = item.icon;
     }
-  } catch (e) { console.error('Error loading equipped:', e); }
+    // Guardar en cache local
+    saveEquippedCache();
+    // Aplicar Tema Oscuro Ultra (item 17)
+    applyUltraDarkTheme(S.specialEquipped === '17');
+    // Mostrar/ocultar picker Emotes VIP (item 3)
+    const vipEmojis = $('vip-emojis');
+    if (vipEmojis) {
+      vipEmojis.classList.toggle('hidden', S.specialEquipped !== '3');
+    }
+    // Actualizar badge de boost +50% con tiempo restante
+    updateBoostBadge();
+  } catch (e) { 
+    console.error('Error loading equipped:', e);
+    // Fallback: cargar del cache local
+    loadEquippedCache();
+  }
 }
 
 /* ── Cargar saldo real del usuario ───────────────────── */
@@ -2217,12 +2423,40 @@ async function loadShopCatalog() {
           });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error);
+          // Efecto de sonido de compra
+          SFX.purchase();
+          // Efecto visual: destello en el item comprado antes de recargar
+          const boughtItem = e.target.closest('.shop-item');
+          if (boughtItem) {
+            boughtItem.classList.add('shop-item-bought');
+            // Mini confetti localizado
+            const rect = boughtItem.getBoundingClientRect();
+            for (let i = 0; i < 12; i++) {
+              const spark = document.createElement('div');
+              spark.className = 'buy-sparkle';
+              spark.style.cssText = `
+                left:${rect.left + rect.width/2}px;
+                top:${rect.top + rect.height/2}px;
+                --tx:${(Math.random() - .5) * 120}px;
+                --ty:${(Math.random() - .5) * 120}px;
+                background:${['#D4AF37','#F0D060','#fff','#52c87a'][Math.floor(Math.random()*4)]};
+                animation-duration:${.4 + Math.random() * .4}s;
+              `;
+              document.body.appendChild(spark);
+              setTimeout(() => spark.remove(), 1000);
+            }
+          }
           toast('¡Compra exitosa! 🎉');
           $('lobby-coins').textContent = d.newBalance;
           $('game-coins-amount').textContent = d.newBalance;
-          // Recargar el catálogo para mostrar "✔ Tuyo"
-          loadShopCatalog();
+          // Recargar el catálogo para mostrar "✔ Tuyo" (con delay para animación)
+          setTimeout(async () => {
+            await loadShopCatalog();
+            e.target.disabled = false;
+            e.target.textContent = originalText;
+          }, 500);
           loadUserBalance();
+          return; // evitar el finally que re-habilita el botón
         } catch (err) {
           toast('⚠ ' + err.message);
           e.target.textContent = originalText;

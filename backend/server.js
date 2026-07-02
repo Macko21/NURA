@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus } = require("./database");
 const path      = require("path");
 const http      = require("http");
 const express   = require("express");
@@ -208,6 +208,18 @@ app.get("/api/user/transactions", requireAuth, async (req, res) => {
     res.json({ transactions: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── BOOST +50% MONEDAS ──────────────────────────────────
+app.get("/api/user/boost-status", requireAuth, async (req, res) => {
+  try {
+    const player = await getUserProfile(req.user.userId);
+    if (!player) return res.json({ active: false, remaining: 0 });
+    const status = await getBoostStatus(player.id);
+    res.json(status);
+  } catch (err) {
+    res.json({ active: false, remaining: 0 });
   }
 });
 
@@ -616,6 +628,16 @@ wss.on("connection", socket => {
 
           const playerState = createPlayerState(newPlayer);
           match.players.push(playerState);
+          // Cargar items equipados y racha del jugador que se une
+          try {
+            const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [data.playerId]);
+            if (plRes.rows[0]) {
+              playerState.equippedAvatar = plRes.rows[0].equipped_avatar || null;
+              playerState.equippedDice = plRes.rows[0].equipped_dice || null;
+              playerState.equippedSpecial = plRes.rows[0].equipped_special || null;
+              playerState.winStreak = plRes.rows[0].win_streak || 0;
+            }
+          } catch(e) { console.error('Error loading equipped for joining player:', e.message); }
 
           clients.set(data.playerId, socket);
           socket.playerId = data.playerId;
@@ -647,6 +669,20 @@ wss.on("connection", socket => {
           const firstPlayer = startGame(data.roomId);
           const room  = getRoom(data.roomId);
           const match = createMatch(room);
+          // Cargar items equipados y racha de cada jugador desde la BD
+          try {
+            for (const p of match.players) {
+              if (p.id) {
+                const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
+                if (plRes.rows[0]) {
+                  p.equippedAvatar = plRes.rows[0].equipped_avatar || null;
+                  p.equippedDice = plRes.rows[0].equipped_dice || null;
+                  p.equippedSpecial = plRes.rows[0].equipped_special || null;
+                  p.winStreak = plRes.rows[0].win_streak || 0;
+                }
+              }
+            }
+          } catch(e) { console.error('Error loading equipped items:', e.message); }
           broadcastRoom(data.roomId, "GAME_STARTED", {
             firstPlayer, match: snapshotMatch(match)
           });

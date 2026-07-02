@@ -75,7 +75,19 @@ function createPlayerState(player) {
 
     isHotDiceTurn: false,
 
-    turnExpired: false
+    turnExpired: false,
+
+    /**
+     * Items equipados (se cargan desde la BD al crear la partida)
+     */
+    equippedAvatar: null,
+    equippedDice: null,
+    equippedSpecial: null,
+
+    /**
+     * Racha de victorias (cargada desde BD)
+     */
+    winStreak: 0
   };
 }
 
