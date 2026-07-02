@@ -177,14 +177,15 @@ function makeDieSVG(value, state='normal', skinId=null) {
 
   let dotColor = '#1a1a2e';
   if (skin) {
-    if (state === 'scoring') {
-      dotColor = blendHexColor(skin.dot, '#1a6a0a', 0.45);
-    } else if (state === 'hot') {
-      dotColor = blendHexColor(skin.dot, '#6b3400', 0.4);
-    } else if (state === 'dead') {
-      dotColor = blendHexColor(skin.dot, '#888888', 0.5);
+    if (state === 'dead') {
+      // Dados muertos: puntos grises
+      dotColor = '#666666';
+    } else if (state === 'scoring' || state === 'hot') {
+      // Scoring/hot: puntos blancos brillantes para que se distingan del icono
+      dotColor = '#FFFFFF';
     } else {
-      dotColor = skin.dot;
+      // Normal con skin: puntos blancos semi-transparentes para que el icono se vea
+      dotColor = 'rgba(255,255,255,0.85)';
     }
   } else {
     if (state === 'scoring') dotColor = '#103808';
@@ -207,24 +208,12 @@ function makeDie(value, state='normal', skinId=null) {
     + (state === 'hot'     ? ' hot'     : '')
     + (state === 'dead'    ? ' dead'    : '');
 
-  // Colores de fondo: skin + estado (scoring=verde, hot=dorado, normal=skin, sin skin=default)
+  // Colores de fondo: skin mantiene sus colores originales, scoring/hot se indican con BORDE
   if (state !== 'dead') {
     if (skin) {
-      let bg0 = skin.bg[0], bg1 = skin.bg[1];
-      let sh = skin.sh;
-      if (state === 'scoring') {
-        // Mezcla más intensa con verde para que se note claramente
-        bg0 = blendHexColor(skin.bg[0], '#4ADE40', 0.7);
-        bg1 = blendHexColor(skin.bg[1], '#22C55E', 0.7);
-        sh = '#15803D';
-      } else if (state === 'hot') {
-        // Mezcla más intensa con dorado para que se note claramente
-        bg0 = blendHexColor(skin.bg[0], '#FBBF24', 0.7);
-        bg1 = blendHexColor(skin.bg[1], '#F59E0B', 0.7);
-        sh = '#B45309';
-      }
-      el.style.background = `linear-gradient(145deg,${bg0},${bg1})`;
-      el.style.boxShadow = `2px 2px 0 ${sh}, 3px 3px 0 ${sh}, 0 4px 12px rgba(0,0,0,.4)`;
+      // Skin: mantener fondo original de la skin, sin mezclar
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 4px 12px rgba(0,0,0,.4)`;
       el.classList.add('die-skin-' + skinId);
       // Ícono de la skin como elemento visual principal que REEMPLAZA el dado
       // Los puntos se superponen encima para mostrar el valor
