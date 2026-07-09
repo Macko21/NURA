@@ -39,7 +39,7 @@ function addNotification(title, message, type, extra) {
   const now = Date.now();
   // Deduplicar por mensaje
   for (let i = 0; i < _notifications.length; i++) {
-    if (_notifications[i].message === message && (now - _notifications[i].ts) < 5000) return;
+    if (_notifications[i].msg === message && (now - _notifications[i].ts) < 5000) return;
   }
   _notifications.unshift({
     id: extra.id || ('n' + now + Math.random().toString(36).slice(2,6)),
@@ -252,7 +252,7 @@ if ('serviceWorker' in navigator) {
     }
   });
 /* ── Push Notifications ─────────────────────────────── */
-let _pushSubscribed = false;
+let _pushSubscribed = localStorage.getItem('macko_push') === 'subscribed';
 
 // Convertir VAPID key de base64 a Uint8Array (requerido por Push API)
 function urlBase64ToUint8Array(base64String) {
@@ -315,17 +315,20 @@ async function checkPushStatus() {
   if (!_swRegistration || !isLogged()) return;
   try {
     const sub = await _swRegistration.pushManager.getSubscription();
-    _pushSubscribed = !!sub;
-    updatePushBtn();
+    const browserSubscribed = !!sub;
+    const savedPref = localStorage.getItem('macko_push') === 'subscribed';
+    if (savedPref && !browserSubscribed) {
+      subscribeToPush();
+    } else {
+      _pushSubscribed = browserSubscribed;
+      updatePushBtn();
+    }
   } catch(e) {}
 }
 
 function updatePushBtn() {
   const sw = $('notif-push-switch');
   if (sw) sw.checked = _pushSubscribed;
-  // Persistir estado en localStorage
-  if (_pushSubscribed) localStorage.setItem('macko_push', 'subscribed');
-  else localStorage.removeItem('macko_push');
 }
 
 // También llamar al login y después de register SW
@@ -3078,6 +3081,7 @@ function initUI() {
       if (pushSwitch.checked) subscribeToPush();
       else unsubscribeFromPush();
     });
+    updatePushBtn();
   }
 
   /* ── Centro de notificaciones ────────────────────── */
