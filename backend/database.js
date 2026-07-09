@@ -95,6 +95,8 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_expires BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen BIGINT DEFAULT 0`,
+      `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS is_scheduled BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS schedule_interval TEXT DEFAULT NULL`,
     ];
     // Migración para tabla missions_reset (timestamps de reseteo)
     try {
@@ -546,10 +548,24 @@ async function getShopCatalog() {
       }));
     }
   } catch(e) {}
+  // Fallback: solo si la tabla shop_items no existe aún
   return SHOP_CATALOG.map(item => ({
     ...item,
     priceDisplay: item.price.toLocaleString('es-AR')
   }));
+}
+
+async function getShopItemById(itemId) {
+  // Buscar primero en la DB
+  try {
+    const res = await pool.query(`SELECT * FROM shop_items WHERE id = $1 AND enabled = TRUE`, [itemId]);
+    if (res.rows[0]) {
+      const item = res.rows[0];
+      return { id: item.id, category: item.category, name: item.name, icon: item.icon, price: item.price, desc: item.description };
+    }
+  } catch(e) {}
+  // Fallback al hardcode
+  return SHOP_CATALOG.find(i => i.id === parseInt(itemId)) || null;
 }
 
 // ── Verificar si el jugador tiene boost de +50% activo ──
@@ -628,8 +644,8 @@ async function rewardWinner(playerId, coinsAmount) {
 async function buyShopItem(userId, itemId) {
   const client = await pool.connect();
   
-  // Buscar el ítem en el catálogo
-  const item = SHOP_CATALOG.find(i => i.id === parseInt(itemId));
+  // Buscar el ítem en la DB o en el catálogo hardcodeado
+  const item = await getShopItemById(itemId);
   if (!item) throw new Error("Ítem no válido");
   const cost = item.price;
 
@@ -899,13 +915,32 @@ async function getOwnedItems(userId) {
   try {
     const playerRes = await pool.query(`SELECT * FROM players WHERE user_id = $1`, [userId]);
     if (!playerRes.rows[0]) {
-      console.warn("getOwnedItems: No player found for userId", userId);
       return { owned: [], equipped: {} };
     }
     const p = playerRes.rows[0];
+    // Obtener items comprados desde redemptions
     const redRes = await pool.query(`SELECT reward_id FROM redemptions WHERE player_id = $1 AND status = 'completed'`, [p.id]);
-    const ownedIds = redRes.rows.map(r => Number(r.reward_id)); // Forzar a number
-    const owned = SHOP_CATALOG.filter(item => ownedIds.includes(item.id));
+    const ownedIds = new Set(redRes.rows.map(r => Number(r.reward_id)));
+    
+    // Construir catálogo unificado: DB items + hardcoded items
+    let allItems = [];
+    try {
+      const dbRes = await pool.query(`SELECT * FROM shop_items WHERE enabled = TRUE`);
+      if (dbRes.rows.length > 0) {
+        allItems = dbRes.rows.map(item => ({
+          id: item.id, category: item.category, name: item.name,
+          icon: item.icon, price: item.price, desc: item.description
+        }));
+      }
+    } catch(e) {}
+    // Agregar items del catálogo hardcodeado que no estén en DB
+    for (const item of SHOP_CATALOG) {
+      if (!allItems.find(i => i.id === item.id)) {
+        allItems.push(item);
+      }
+    }
+    
+    const owned = allItems.filter(item => ownedIds.has(item.id));
     const equipped = {
       avatar: String(p.equipped_avatar || ''),
       dice: String(p.equipped_dice || ''),
@@ -913,7 +948,7 @@ async function getOwnedItems(userId) {
     };
     return { owned, equipped };
   } catch (err) {
-    console.error("getOwnedItems error:", err.message, err.stack);
+    console.error("getOwnedItems error:", err.message);
     return { owned: [], equipped: {} };
   }
 }
@@ -983,17 +1018,58 @@ async function getFriends(playerId) {
 }
 
 async function addFriend(playerId, friendId) {
+  if (playerId === friendId) throw new Error('No podés agregarte a vos mismo');
+  // Verificar si ya existe una relación (en cualquier dirección)
   const exists = await pool.query(
-    `SELECT id FROM friends WHERE player_id = $1 AND friend_id = $2`,
+    `SELECT id, status FROM friends WHERE (player_id = $1 AND friend_id = $2) OR (player_id = $2 AND friend_id = $1)`,
     [playerId, friendId]
   );
-  if (exists.rows.length > 0) throw new Error('Ya son amigos');
-  if (playerId === friendId) throw new Error('No podés agregarte a vos mismo');
+  if (exists.rows.length > 0) {
+    const row = exists.rows[0];
+    if (row.status === 'accepted') throw new Error('Ya son amigos');
+    if (row.status === 'pending') {
+      // Si la solicitud viene del otro lado, aceptarla automáticamente
+      if (exists.rows[0]) {
+        await pool.query(`UPDATE friends SET status = 'accepted' WHERE id = $1`, [row.id]);
+        return { success: true, accepted: true };
+      }
+      throw new Error('Solicitud ya enviada');
+    }
+  }
   await pool.query(
-    `INSERT INTO friends (player_id, friend_id, status, created_at) VALUES ($1, $2, 'accepted', $3)`,
+    `INSERT INTO friends (player_id, friend_id, status, created_at) VALUES ($1, $2, 'pending', $3)`,
     [playerId, friendId, Date.now()]
   );
+  return { success: true, pending: true };
+}
+
+async function acceptFriendRequest(requestId, playerId) {
+  const res = await pool.query(
+    `UPDATE friends SET status = 'accepted' WHERE id = $1 AND friend_id = $2 AND status = 'pending' RETURNING *`,
+    [requestId, playerId]
+  );
+  if (res.rows.length === 0) throw new Error('Solicitud no encontrada');
   return { success: true };
+}
+
+async function rejectFriendRequest(requestId, playerId) {
+  await pool.query(
+    `DELETE FROM friends WHERE id = $1 AND friend_id = $2 AND status = 'pending'`,
+    [requestId, playerId]
+  );
+  return { success: true };
+}
+
+async function getPendingFriendRequests(playerId) {
+  const res = await pool.query(`
+    SELECT f.id as request_id, f.player_id as from_id, f.created_at,
+           p.alias as from_name, p.equipped_avatar
+    FROM friends f
+    JOIN players p ON p.id = f.player_id
+    WHERE f.friend_id = $1 AND f.status = 'pending'
+    ORDER BY f.created_at DESC
+  `, [playerId]);
+  return res.rows;
 }
 
 async function removeFriend(playerId, friendId) {
@@ -2026,6 +2102,7 @@ module.exports = {
   claimDailyChest, getChestStatus, getPlayerTransactions,
   checkBoostActive, getBoostStatus,
   getFriends, addFriend, removeFriend, searchPlayers,
+  acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests,
   saveGlobalMessage, getGlobalMessages, cleanupGlobalChat,
   savePrivateMessage, getPrivateMessages, cleanupPrivateMessages,
   updateLastSeen,

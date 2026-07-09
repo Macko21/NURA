@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, saveGlobalMessage, getGlobalMessages, updateLastSeen, savePrivateMessage, getPrivateMessages, cleanupGlobalChat, cleanupPrivateMessages, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, savePrivateMessage, getPrivateMessages, cleanupGlobalChat, cleanupPrivateMessages, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const path      = require("path");
@@ -51,6 +51,10 @@ const {
   startTournament: startTournamentBracket,
   completeMatch: completeTournamentMatch,
   cleanupTournament: cleanupTournamentData,
+  checkAndAutoStartTournaments,
+  checkAndCreateScheduledTournaments,
+  sendTournamentPushNotifications,
+  setWsClients,
 } = require("./tournamentManager");
 
 /* ── Express ─────────────────────────────────────────────── */
@@ -315,11 +319,83 @@ app.get("/api/friends/search", requireAuth, async (req, res) => {
   }
 });
 
+// ── SOLICITUDES DE AMISTAD ────────────────────────────────────
+app.get("/api/friends/pending", requireAuth, async (req, res) => {
+  try {
+    const requests = await getPendingFriendRequests(req.user.playerId);
+    res.json({ requests });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/friends/accept", requireAuth, async (req, res) => {
+  try {
+    const { requestId } = req.body;
+    await acceptFriendRequest(requestId, req.user.playerId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/friends/reject", requireAuth, async (req, res) => {
+  try {
+    const { requestId } = req.body;
+    await rejectFriendRequest(requestId, req.user.playerId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── INVITACIONES A PARTIDA ────────────────────────────────────
+app.post("/api/games/invite", requireAuth, async (req, res) => {
+  try {
+    const { targetPlayerId, roomId } = req.body;
+    if (!targetPlayerId || !roomId) return res.status(400).json({ error: 'Faltan datos' });
+    const room = rooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'Sala no encontrada' });
+    // Enviar notificación WebSocket al jugador objetivo
+    const targetSock = clients.get(targetPlayerId);
+    const fromPlayer = await getUserProfile(req.user.userId);
+    if (targetSock && targetSock.readyState === WebSocket.OPEN) {
+      send(targetSock, 'GAME_INVITE', {
+        inviteId: Date.now().toString(),
+        fromName: fromPlayer?.alias || req.user.username,
+        fromAvatar: fromPlayer?.equipped_avatar || '👤',
+        roomId: room.id,
+        roomCode: room.code,
+        playerCount: room.players.length,
+        maxPlayers: room.maxPlayers
+      });
+      res.json({ success: true, sent: true });
+    } else {
+      // Jugador no conectado - enviar push si tiene suscripción
+      res.json({ success: true, sent: false, offline: true });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── CHAT GLOBAL ──────────────────────────────────────────────
 app.get("/api/global-chat", requireAuth, async (req, res) => {
   try {
     const messages = await getGlobalMessages(30);
     res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── NOTIFICACIONES RECIENTES (broadcasts del CEO) ────────────
+app.get("/api/notifications", requireAuth, async (req, res) => {
+  try {
+    const messages = await getGlobalMessages(20);
+    // Filtrar solo los mensajes del CEO (broadcasts)
+    const broadcasts = messages.filter(m => m.player_id === 'ceo');
+    res.json({ notifications: broadcasts });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -352,7 +428,36 @@ app.get("/api/tournaments", requireAuth, async (req, res) => {
     // También incluir torneos completados recientes (últimos 5)
     const { getTournaments } = require("./database");
     const allTourneys = await getTournaments(10);
-    res.json({ tournaments: allTourneys, brackets: tournaments });
+    
+    // Agregar is_registered para cada torneo según el jugador actual
+    const playerId = req.user.playerId || req.user.username;
+    const regRes = await pool.query(
+      `SELECT tournament_id FROM tournament_participants WHERE player_id = $1`,
+      [playerId]
+    );
+    const registeredIds = new Set(regRes.rows.map(r => String(r.tournament_id)));
+    const tourneysWithReg = allTourneys.map(t => ({
+      ...t,
+      is_registered: registeredIds.has(String(t.id))
+    }));
+    
+    res.json({ tournaments: tourneysWithReg, brackets: tournaments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PRÓXIMO TORNEO PROGRAMADO (debe ir ANTES de /:id) ────
+app.get("/api/tournaments/next", requireAuth, async (req, res) => {
+  try {
+    const { getActiveTournaments } = require("./database");
+    const all = await getActiveTournaments();
+    const now = Date.now();
+    const upcoming = all
+      .filter(t => t.status === 'registration' && t.start_time > now)
+      .sort((a, b) => parseInt(a.start_time) - parseInt(b.start_time));
+    const next = upcoming[0] || null;
+    res.json({ next, upcoming: upcoming.slice(0, 5) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -401,6 +506,16 @@ app.get("/api/tournaments/:id/participants", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/tournaments/:id/bracket", requireAuth, async (req, res) => {
+  try {
+    const { getTournamentBracketData } = require("./database");
+    const bracket = await getTournamentBracketData(req.params.id);
+    res.json(bracket || {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/tournaments/history", requireAuth, async (req, res) => {
   try {
     const { getTournamentHistoryByPlayer } = require("./database");
@@ -444,7 +559,7 @@ app.get("/ceo-panel/api/tournaments", requireCeoAuth, requireCeoRole('editor'), 
 app.post("/ceo-panel/api/tournaments/create", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
   try {
     const { createTournament } = require("./database");
-    const { name, description, maxPlayers, fee, prizes, startTime, registrationUntil } = req.body;
+    const { name, description, maxPlayers, fee, prizes, startTime, registrationUntil, isScheduled, scheduleInterval } = req.body;
     if (!name || !maxPlayers || !startTime) {
       return res.status(400).json({ error: 'Nombre, maxPlayers y startTime requeridos' });
     }
@@ -454,7 +569,16 @@ app.post("/ceo-panel/api/tournaments/create", requireCeoAuth, requireCeoRole('ad
       registrationUntil ? new Date(registrationUntil).getTime() : null,
       req.admin.username
     );
-    logAudit(req.admin.username, 'tournament_create', String(tourney.id), `${name} (${maxPlayers} players, fee: ${fee || 0})`).catch(e => {});
+    // Si es torneo programado/recurrente, marcar en DB
+    if (isScheduled && scheduleInterval) {
+      try {
+        await pool.query(
+          `UPDATE tournaments SET is_scheduled = TRUE, schedule_interval = $1 WHERE id = $2`,
+          [scheduleInterval, tourney.id]
+        );
+      } catch(e) { console.error('Error marking scheduled tournament:', e.message); }
+    }
+    logAudit(req.admin.username, 'tournament_create', String(tourney.id), `${name} (${maxPlayers} players, fee: ${fee || 0})${isScheduled ? ' scheduled:'+scheduleInterval : ''}`).catch(e => {});
     res.json({ tournament: tourney });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -503,6 +627,33 @@ app.get("/ceo-panel/api/tournaments/:id/bracket", requireCeoAuth, requireCeoRole
     const { getTournamentBracketData } = require("./database");
     const bracket = await getTournamentBracketData(req.params.id);
     res.json(bracket || {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CEO: Enviar notificación push a participantes de un torneo (editor+) ──
+app.post("/ceo-panel/api/tournaments/:id/push", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { title, body, url } = req.body;
+    if (!title || !body) return res.status(400).json({ error: 'title y body requeridos' });
+    
+    const { getTournamentById } = require("./database");
+    const tournament = await getTournamentById(req.params.id);
+    if (!tournament) return res.status(404).json({ error: 'Torneo no encontrado' });
+    
+    const result = await sendTournamentPushNotifications(
+      req.params.id,
+      tournament.name,
+      String(title).slice(0, 120),
+      String(body).slice(0, 250),
+      url || '/'
+    );
+    
+    logAudit(req.admin.username, 'push_tournament', String(req.params.id), 
+      `Torneo: ${tournament.name} · sent: ${result.sent} failed: ${result.failed}`).catch(e => {});
+    
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1230,6 +1381,9 @@ function send(socket, type, data = {}) {
     socket.send(JSON.stringify({ type, data }));
 }
 
+// Pasar clientes WebSocket al tournament manager para notificaciones
+setWsClients(clients, send);
+
 function broadcastRoom(roomId, type, data) {
   const room = getRoom(roomId);
   if (!room) return;
@@ -1727,6 +1881,121 @@ wss.on("connection", socket => {
         const bracket = await getTournamentBracketData(data.tournamentId);
         if (bracket) {
           send(socket, "TOURNAMENT_BRACKET", { bracket });
+        }
+        return;
+      }
+
+      /* ── SOLICITUD DE AMISTAD ────────────────────────── */
+      if (type === "FRIEND_REQUEST") {
+        const { targetId } = data;
+        if (!targetId) return;
+        const fromProfile = await getUserProfile(
+          (await pool.query('SELECT id FROM players WHERE id = $1', [data.playerId])).rows[0] ?
+          (await pool.query('SELECT user_id FROM players WHERE id = $1', [data.playerId])).rows[0]?.user_id : null
+        );
+        const fromName = fromProfile?.alias || data.playerName || 'Jugador';
+        const fromAvatar = fromProfile?.equipped_avatar || '👤';
+        // Enviar al objetivo
+        const targetSock = clients.get(targetId);
+        if (targetSock && targetSock.readyState === WebSocket.OPEN) {
+          send(targetSock, 'FRIEND_REQUEST', {
+            fromId: data.playerId,
+            fromName,
+            fromAvatar,
+            timestamp: Date.now()
+          });
+        }
+        // Guardar solicitud pendiente en DB
+        try {
+          await addFriend(data.playerId, targetId);
+        } catch(e) { console.error('Friend request save:', e.message); }
+        send(socket, 'FRIEND_REQUEST_SENT', { targetId });
+        return;
+      }
+
+      /* ── ACEPTAR/RECHAZAR AMISTAD ─────────────────── */
+      if (type === "FRIEND_ACCEPT") {
+        const { requestId, fromId } = data;
+        try {
+          await acceptFriendRequest(requestId, data.playerId);
+          // Notificar al remitente
+          const fromSock = clients.get(fromId);
+          if (fromSock && fromSock.readyState === WebSocket.OPEN) {
+            send(fromSock, 'FRIEND_ACCEPTED', {
+              byId: data.playerId,
+              byName: data.playerName
+            });
+          }
+          send(socket, 'FRIEND_ACCEPTED_OK', { fromId });
+        } catch(e) { console.error('Friend accept:', e.message); }
+        return;
+      }
+
+      if (type === "FRIEND_REJECT") {
+        const { requestId } = data;
+        try {
+          await rejectFriendRequest(requestId, data.playerId);
+          send(socket, 'FRIEND_REJECTED_OK', {});
+        } catch(e) { console.error('Friend reject:', e.message); }
+        return;
+      }
+
+      /* ── INVITACIÓN A PARTIDA ───────────────────────── */
+      if (type === "GAME_INVITE") {
+        const { targetId, roomId, roomCode } = data;
+        if (!targetId || !roomId) return;
+        const fromProfile = await getUserProfile(
+          (await pool.query('SELECT user_id FROM players WHERE id = $1', [data.playerId])).rows[0]?.user_id
+        );
+        const room = rooms.get(roomId);
+        const targetSock = clients.get(targetId);
+        if (targetSock && targetSock.readyState === WebSocket.OPEN) {
+          send(targetSock, 'GAME_INVITE', {
+            inviteId: Date.now().toString(),
+            fromId: data.playerId,
+            fromName: fromProfile?.alias || data.playerName || 'Jugador',
+            fromAvatar: fromProfile?.equipped_avatar || '👤',
+            roomId,
+            roomCode: roomCode || room?.code || '',
+            playerCount: room?.players?.length || 0,
+            maxPlayers: room?.maxPlayers || 10
+          });
+        }
+        send(socket, 'GAME_INVITE_SENT', { targetId });
+        return;
+      }
+
+      if (type === "GAME_INVITE_ACCEPT") {
+        const { roomId, roomCode } = data;
+        const room = rooms.get(roomId);
+        if (!room) { send(socket, 'ERROR', { message: 'Sala no encontrada' }); return; }
+        if (room.players.length >= room.maxPlayers) {
+          send(socket, 'ERROR', { message: 'Sala llena' }); return;
+        }
+        // Unir al jugador a la sala
+        const newPlayer = addPlayer(room, {
+          id: data.playerId,
+          name: data.playerName
+        });
+        if (newPlayer) {
+          await loadEquippedToRoomPlayer(newPlayer, data.playerId);
+          clients.set(data.playerId, socket);
+          socket.playerId = data.playerId;
+          socket.roomId = roomId;
+          send(socket, 'JOIN_SUCCESS', { room });
+          broadcastRoomState(roomId);
+        }
+        return;
+      }
+
+      if (type === "GAME_INVITE_REJECT") {
+        const { inviteId, fromId } = data;
+        const fromSock = clients.get(fromId);
+        if (fromSock && fromSock.readyState === WebSocket.OPEN) {
+          send(fromSock, 'GAME_INVITE_REJECTED', {
+            byId: data.playerId,
+            byName: data.playerName
+          });
         }
         return;
       }

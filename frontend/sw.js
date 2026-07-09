@@ -11,7 +11,7 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '2.2.0';
+const GAME_VERSION = '3.0.0';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [
@@ -21,6 +21,9 @@ const ASSETS = [
   '/styles.css',
   '/version.js',
   '/manifest.json',
+  '/ceo-panel.html',
+  '/ceo-panel.js',
+  '/ceo-panel.css',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-1024.png',
@@ -70,7 +73,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-/* ── Push event: mostrar notificación ────────────────── */
+/* ── Push event: mostrar notificación + avisar a la app ── */
 self.addEventListener('push', event => {
   if (!event.data) return;
   try {
@@ -85,7 +88,20 @@ self.addEventListener('push', event => {
       timestamp: data.timestamp || Date.now()
     };
     event.waitUntil(
-      self.registration.showNotification(title, options)
+      self.registration.showNotification(title, options).then(() => {
+        // Notificar a todas las ventanas abiertas que llegó un push
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'PUSH_RECEIVED',
+              title: title,
+              body: data.body || '',
+              url: data.url || '/',
+              timestamp: data.timestamp || Date.now()
+            });
+          });
+        });
+      })
     );
   } catch(e) {
     event.waitUntil(

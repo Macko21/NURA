@@ -10,26 +10,36 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.0.0";
+const GAME_VERSION = "3.1.0";
 
 const CHANGELOG = [
-  // scope: 'game' = visible para jugadores, 'ceo' = solo CEO Panel, 'all' = ambos
+  {
+    version: "3.1.0",
+    date: "2026-07-10",
+    title: "⏰ Torneos automáticos programados + countdown",
+    scope: "game",
+    changes: [
+      "⏰ Auto-inicio: cuando la inscripción vence, el torneo arranca automáticamente",
+      "❌ Auto-cancelación: si no hay suficientes jugadores, se cancela solo",
+      "🔄 Torneos recurrentes: 1h, 2h, 4h, 8h, 12h, diarios y semanales",
+      "👑 CEO Panel: nuevo campo 'Programación' al crear torneos",
+      "⏳ Lobby: banner con countdown del próximo torneo programado",
+      "📡 Endpoint /api/tournaments/next para consultar próximos torneos",
+      "🔄 Auto-creación del siguiente torneo al completarse el anterior",
+    ]
+  },
   {
     version: "3.0.0",
     date: "2026-07-10",
-    title: "🏆 Torneos automáticos + CEO Panel expandido",
-    scope: "all",
+    title: "🏆 Torneos automáticos con bracket single-elimination",
+    scope: "game",
     changes: [
       "🏆 Sistema de torneos automáticos con bracket single-elimination",
       "📝 Jugadores pueden inscribirse en torneos con fee de monedas",
       "🔀 Bracket generado automáticamente con seeds aleatorios",
-      "👑 CEO Panel: crear torneos, generar brackets, avanzar matches",
       "🏆 Visualización de brackets en vivo con rondas y ganadores",
       "💰 Prize pool dinámico calculado automáticamente",
-      "📋 CEO Panel: pestaña de Torneos con CRUD completo",
       "🔔 Notificaciones en tiempo real de avances de torneo via WebSocket",
-      "📊 CEO Panel: estadísticas de torneos activos y completados",
-      "🧹 Eliminados archivos basura (nul, server_log.txt)",
     ]
   },
   {
@@ -100,6 +110,10 @@ const CHANGELOG = [
       "🔑 Reseteo de contraseña para usuarios y admines desde el panel",
       "🔍 Buscador de items en la pestaña Tienda del CEO Panel",
       "🔄 Limpieza automática de invitados fantasma",
+      "👑 CEO Panel: crear torneos, generar brackets, avanzar matches",
+      "📋 CEO Panel: pestaña de Torneos con CRUD completo",
+      "📊 CEO Panel: estadísticas de torneos activos y completados",
+      "🧹 Eliminados archivos basura (nul, server_log.txt)",
     ]
   },
   {

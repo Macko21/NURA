@@ -14,16 +14,29 @@ const {
   getTournamentParticipants,
   getTournamentMatches,
   advanceTournamentMatch,
-  generateBracket,
   getTournamentBracketData,
   getActiveTournaments,
   registerForTournament,
+  cancelTournament,
+  createTournament,
+  getAllPushSubscriptions,
+  removePushSubscription,
 } = require("./database");
+const { isPushReady, sendPushNotification } = require("./pushManager");
 
 // Torneos activos en memoria: tournamentId → { status, matches, roomIds, etc }
 const activeTournaments = new Map();
 
 // Mapa de roomId → tournamentMatchId para saber qué match se juega en cada sala
+
+// Referencia a clientes WebSocket del server principal
+let _wsClients = null;
+let _wsSend = null;
+
+function setWsClients(clients, sendFn) {
+  _wsClients = clients;
+  _wsSend = sendFn;
+}
 const matchRooms = new Map();
 
 // Intervalo para verificar matches pendientes cada 30s
@@ -35,6 +48,7 @@ let _checkInterval = null;
 function initTournamentManager() {
   _checkInterval = setInterval(checkPendingMatches, 30000);
   console.log("🏆 Tournament Manager iniciado");
+  startAutoTournamentLoop();
 }
 
 /**
@@ -306,6 +320,339 @@ function stopTournamentManager() {
   }
 }
 
+
+
+/**
+ * ═══════════════════════════════════════════════════════════
+ * SISTEMA DE TORNEOS AUTOMÁTICOS Y PROGRAMADOS
+ * ═══════════════════════════════════════════════════════════
+ */
+
+/** Intervalo de chequeo principal (cada 30s) */
+let _autoCheckInterval = null;
+
+/** Set de IDs de torneos ya notificados como "próximos" para evitar duplicados */
+const _notifiedUpcoming = new Set();
+
+/**
+ * Inicializar el sistema automático de torneos
+ */
+function initAutoTournaments() {
+  // Ya existe el checkPendingMatches cada 30s, agregamos lógica extra
+  console.log("⏰ Sistema de torneos automáticos iniciado");
+}
+
+/**
+ * Verificar y auto-iniciar torneos cuya registration_until venció
+ */
+/**
+ * Enviar notificaciones push a los participantes de un torneo
+ * También envía por WebSocket a los conectados
+ */
+async function sendTournamentPushNotifications(tournamentId, tournamentName, title, body, url, wsClients, wsSend) {
+  const clients = wsClients || _wsClients;
+  const sendFn = wsSend || _wsSend;
+  let pushSent = 0, pushFailed = 0, wsSent = 0;
+  
+  // 1) Enviar por WebSocket a todos los conectados que son participantes
+  if (wsClients && wsSend) {
+    try {
+      const participants = await getTournamentParticipants(tournamentId);
+      const participantIds = new Set(participants.map(p => String(p.player_id)));
+      for (const [pid, sock] of wsClients) {
+        if (sock?.readyState === 1 && participantIds.has(String(pid))) {
+          try {
+            wsSend(sock, "NOTIFICATION", {
+              title: title,
+              message: body,
+              icon: '🏆',
+              notifType: 'tournament',
+              url: url || '/'
+            });
+            wsSent++;
+          } catch(e) {}
+        }
+      }
+      console.log(`📡 WS torneo #${tournamentId}: ${wsSent} notificaciones enviadas`);
+    } catch(e) { console.error('Error enviando WS torneo:', e.message); }
+  }
+  
+  // 2) Enviar push notification (navegador cerrado /sin sesión)
+  if (!isPushReady()) {
+    console.log("🔕 Push no configurado — omitiendo notificaciones push del torneo");
+    return { sent: pushSent, failed: pushFailed, wsSent };
+  }
+  try {
+    const participants = await getTournamentParticipants(tournamentId);
+    if (!participants.length) return { sent: pushSent, failed: pushFailed, wsSent };
+    
+    const allSubs = await getAllPushSubscriptions(); // [{ playerId, subscription }]
+    if (!allSubs.length) return { sent: pushSent, failed: pushFailed, wsSent };
+    
+    // Mapa de playerId → subscription para lookup rápido
+    const subMap = new Map();
+    for (const s of allSubs) {
+      subMap.set(s.playerId, s.subscription);
+    }
+    
+    for (const p of participants) {
+      const sub = subMap.get(p.player_id);
+      if (!sub) continue;
+      
+      try {
+        const result = await sendPushNotification(
+          sub,
+          title,
+          body,
+          url || '/'
+        );
+        if (result.success) {
+          pushSent++;
+        } else {
+          pushFailed++;
+          if (result.expired) {
+            await removePushSubscription(p.player_id).catch(e => {});
+          }
+        }
+      } catch(e) {
+        pushFailed++;
+      }
+    }
+    
+    console.log(`📬 Push torneo #${tournamentId} "${tournamentName}": ${pushSent} enviados, ${pushFailed} fallidos`);
+    return { sent: pushSent, failed: pushFailed, wsSent };
+  } catch (e) {
+    console.error(`❌ Error enviando push para torneo #${tournamentId}:`, e.message);
+    return { sent: pushSent, failed: pushFailed, wsSent };
+  }
+}
+
+async function checkAndAutoStartTournaments() {
+  try {
+    const { pool } = require("./database");
+    const now = Date.now();
+    
+    // Buscar torneos en registration con registration_until vencido
+    const res = await pool.query(`
+      SELECT * FROM tournaments 
+      WHERE status = 'registration' 
+        AND registration_until IS NOT NULL 
+        AND registration_until < $1
+    `, [now]);
+    
+    for (const t of res.rows) {
+      const partsRes = await pool.query(
+        'SELECT COUNT(*) as count FROM tournament_participants WHERE tournament_id = $1',
+        [t.id]
+      );
+      const playerCount = parseInt(partsRes.rows[0].count);
+      
+      if (playerCount >= t.min_players) {
+        // Suficientes jugadores → auto-iniciar y LUEGO notificar
+        try {
+          console.log(`⏰ Auto-iniciando torneo #${t.id} (${t.name}) con ${playerCount} jugadores`);
+          await generateBracket(t.id);
+          console.log(`✅ Torneo #${t.id} iniciado automáticamente`);
+          
+          // Notificar push DESPUÉS del bracket exitoso
+          await sendTournamentPushNotifications(
+            t.id, t.name,
+            `🏆 ¡${t.name} está por comenzar!`,
+            `El torneo con ${playerCount} jugadores ya tiene bracket generado. ¡Entrá a ver los matches!`,
+            '/?tab=tournaments'
+          );
+        } catch (e) {
+          console.error(`❌ Error auto-iniciando torneo #${t.id}:`, e.message);
+        }
+      } else {
+        // No suficientes jugadores → auto-cancelar y LUEGO notificar
+        try {
+          console.log(`⏰ Auto-cancelando torneo #${t.id} (${t.name}) - solo ${playerCount}/${t.min_players} jugadores`);
+          await cancelTournament(t.id);
+          console.log(`✅ Torneo #${t.id} cancelado automáticamente`);
+          
+          // Notificar push DESPUÉS de la cancelación exitosa
+          await sendTournamentPushNotifications(
+            t.id, t.name,
+            `❌ ${t.name} cancelado`,
+            `No se alcanzaron los jugadores mínimos (${playerCount}/${t.min_players}). El torneo fue cancelado.`,
+            '/?tab=tournaments'
+          );
+        } catch (e) {
+          console.error(`❌ Error auto-cancelando torneo #${t.id}:`, e.message);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error en auto-start tournaments:", e.message);
+  }
+}
+
+/**
+ * Notificar a participantes de torneos que están por comenzar pronto
+ * (solo una vez por torneo, evitando duplicados con _notifiedUpcoming)
+ */
+async function checkAndNotifyUpcomingTournaments() {
+  try {
+    if (!isPushReady()) return;
+    const { pool } = require("./database");
+    const now = Date.now();
+    
+    // Buscar torneos en registration que comienzan en menos de 15 minutos
+    const fifteenMin = 15 * 60 * 1000;
+    const res = await pool.query(`
+      SELECT * FROM tournaments 
+      WHERE status = 'registration' 
+        AND start_time > $1 
+        AND start_time <= $2
+    `, [now, now + fifteenMin]);
+    
+    for (const t of res.rows) {
+      // Saltar si ya notificamos este torneo como "próximo"
+      if (_notifiedUpcoming.has(String(t.id))) continue;
+      
+      const timeUntilStart = parseInt(t.start_time) - now;
+      const minsLeft = Math.max(1, Math.floor(timeUntilStart / 60000));
+      
+      const partsRes = await pool.query(
+        'SELECT COUNT(*) as count FROM tournament_participants WHERE tournament_id = $1',
+        [t.id]
+      );
+      const playerCount = parseInt(partsRes.rows[0].count);
+      
+      // Si tiene al menos 2 jugadores, notificar (solo una vez)
+      if (playerCount >= 2) {
+        _notifiedUpcoming.add(String(t.id));
+        await sendTournamentPushNotifications(
+          t.id, t.name,
+          `⏰ ${t.name} comienza en ${minsLeft} min`,
+          `${playerCount} jugador${playerCount !== 1 ? 'es' : ''} inscripto${playerCount !== 1 ? 's' : ''}. ¡Preparate para la partida!`,
+          '/?tab=tournaments'
+        );
+        console.log(`🔔 Notificado torneo #${t.id} (${t.name}) - comienza en ${minsLeft} min`);
+      }
+    }
+    
+    // Limpiar del Set torneos que ya no están en registration (empezaron o se cancelaron)
+    if (_notifiedUpcoming.size > 0) {
+      const stillActive = await pool.query(`
+        SELECT id FROM tournaments WHERE id = ANY($1) AND status = 'registration'
+      `, [Array.from(_notifiedUpcoming)]);
+      const activeIds = new Set(stillActive.rows.map(r => String(r.id)));
+      for (const id of _notifiedUpcoming) {
+        if (!activeIds.has(id)) _notifiedUpcoming.delete(id);
+      }
+    }
+  } catch (e) {
+    console.error("Error notificando torneos próximos:", e.message);
+  }
+}
+
+/**
+ * Auto-crear el próximo torneo programado (si hay uno schedule recurrente vencido)
+ */
+async function checkAndCreateScheduledTournaments() {
+  try {
+    const { pool, createTournament } = require("./database");
+    const now = Date.now();
+    
+    // Buscar torneos programados completados/cancelados que necesitan crear el siguiente
+    // Un torneo programado tiene is_scheduled = TRUE y schedule_interval no nulo
+    // Solo crear el siguiente si NO hay ya un torneo en registration con el mismo schedule_interval
+    const existingScheduled = await pool.query(`
+      SELECT DISTINCT schedule_interval FROM tournaments 
+      WHERE is_scheduled = TRUE AND status = 'registration'
+    `);
+    const existingIntervals = existingScheduled.rows.map(r => r.schedule_interval).filter(Boolean);
+    
+    const res = await pool.query(`
+      SELECT * FROM tournaments 
+      WHERE is_scheduled = TRUE 
+        AND schedule_interval IS NOT NULL 
+        AND status IN ('completed', 'cancelled')
+        ORDER BY created_at DESC
+    `);
+    
+    for (const parent of res.rows) {
+      // Si ya hay un torneo en registration con este schedule_interval, no crear otro
+      if (existingIntervals.includes(parent.schedule_interval)) continue;
+      try {
+        // Calcular próximo start_time según el intervalo
+        let intervalMs = 0;
+        switch (parent.schedule_interval) {
+          case '1h': intervalMs = 60 * 60 * 1000; break;
+          case '2h': intervalMs = 2 * 60 * 60 * 1000; break;
+          case '4h': intervalMs = 4 * 60 * 60 * 1000; break;
+          case '8h': intervalMs = 8 * 60 * 60 * 1000; break;
+          case '12h': intervalMs = 12 * 60 * 60 * 1000; break;
+          case 'daily': intervalMs = 24 * 60 * 60 * 1000; break;
+          case 'weekly': intervalMs = 7 * 24 * 60 * 60 * 1000; break;
+          default: continue; // intervalo no reconocido
+        }
+        
+        const nextStart = parent.start_time + intervalMs;
+        const nextRegUntil = parent.registration_until 
+          ? parent.registration_until + intervalMs 
+          : nextStart - 3600000; // 1h antes del start
+        
+        const nextName = parent.name.replace(
+          /#\d+|\d+/g,
+          (m) => {
+            if (m.startsWith('#')) return '#' + (parseInt(m.slice(1)) + 1);
+            const num = parseInt(m);
+            return isNaN(num) ? m : String(num + 1);
+          }
+        ) || `${parent.name} #${Math.floor(Math.random() * 1000)}`;
+        
+        const newTourney = await createTournament(
+          nextName,
+          parent.description || '',
+          parent.max_players,
+          parent.fee || 0,
+          (() => { try { return JSON.parse(parent.prizes || '[]'); } catch(e) { return []; } })(),
+          nextStart,
+          nextRegUntil,
+          'system'
+        );
+        
+        // Marcar como programado también
+        await pool.query(`
+          UPDATE tournaments SET is_scheduled = TRUE, schedule_interval = $1 WHERE id = $2
+        `, [parent.schedule_interval, newTourney.id]);
+        
+        console.log(`✅ Auto-creado torneo #${newTourney.id} (${nextName}) - programado ${parent.schedule_interval}`);
+      } catch (e) {
+        console.error(`Error auto-creando torneo desde #${parent.id}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error("Error en scheduled tournaments:", e.message);
+  }
+}
+
+/**
+ * Iniciar el loop de verificación automática
+ */
+function startAutoTournamentLoop() {
+  // Ejecutar inmediatamente
+  setTimeout(() => {
+    checkAndAutoStartTournaments();
+    checkAndCreateScheduledTournaments();
+    checkAndNotifyUpcomingTournaments();
+  }, 5000);
+  
+  // Luego cada 60 segundos
+  if (_autoCheckInterval) clearInterval(_autoCheckInterval);
+  _autoCheckInterval = setInterval(async () => {
+    await checkAndAutoStartTournaments().catch(e => console.error('Auto-start error:', e.message));
+    await checkAndCreateScheduledTournaments().catch(e => console.error('Scheduled create error:', e.message));
+    await checkAndNotifyUpcomingTournaments().catch(e => console.error('Upcoming notify error:', e.message));
+  }, 60000);
+  console.log("⏰ Loop de torneos automáticos cada 60s");
+}
+
+// Parchear el initTournamentManager para también iniciar auto tournaments
+
 module.exports = {
   initTournamentManager,
   getActiveTournamentsData,
@@ -317,6 +664,12 @@ module.exports = {
   notifyBracketUpdate,
   cleanupTournament,
   stopTournamentManager,
+  checkAndAutoStartTournaments,
+  checkAndCreateScheduledTournaments,
+  checkAndNotifyUpcomingTournaments,
+  sendTournamentPushNotifications,
+  setWsClients,
+  startAutoTournamentLoop,
   activeTournaments,
   matchRooms,
 };

@@ -28,6 +28,182 @@ const S = {
   diceEquipped: null,   // ID del skin de dados equipado
   specialEquipped: null  // ID del item especial equipado
 };
+
+/* ── Sistema de notificaciones ───────────────────────── */
+let _notifications = [];
+const MAX_NOTIFICATIONS = 50;
+
+function addNotification(title, message, type, extra) {
+  type = type || 'broadcast';
+  extra = extra || {};
+  const now = Date.now();
+  // Deduplicar por mensaje
+  for (let i = 0; i < _notifications.length; i++) {
+    if (_notifications[i].message === message && (now - _notifications[i].ts) < 5000) return;
+  }
+  _notifications.unshift({
+    id: extra.id || ('n' + now + Math.random().toString(36).slice(2,6)),
+    title: title,
+    msg: message,
+    type: type,
+    ts: extra.timestamp || now,
+    read: false,
+    actions: extra.actions || null,
+    data: extra.notifData || null
+  });
+  if (_notifications.length > MAX_NOTIFICATIONS) _notifications.length = MAX_NOTIFICATIONS;
+  _saveNotifs();
+  _updateBadge();
+}
+
+function _saveNotifs() {
+  try { localStorage.setItem('macko_notifs', JSON.stringify(_notifications)); } catch(e) {}
+}
+
+function _loadNotifs() {
+  try {
+    // Cargar del key nuevo, o migrar del viejo
+    let raw = localStorage.getItem('macko_notifs');
+    if (!raw) {
+      raw = localStorage.getItem('macko_notifications');
+      if (raw) {
+        localStorage.setItem('macko_notifs', raw);
+        localStorage.removeItem('macko_notifications');
+      }
+    }
+    _notifications = raw ? JSON.parse(raw) : [];
+  } catch(e) { _notifications = []; }
+  // Limpiar formato viejo
+  let changed = false;
+  _notifications = _notifications.filter(n => {
+    if (!n && n !== 0) return false;
+    if (typeof n !== 'object') return false;
+    if (!n.msg && n.message) { n.msg = n.message; delete n.message; changed = true; }
+    if (!n.ts && n.timestamp) { n.ts = n.timestamp; delete n.timestamp; changed = true; }
+    return n.msg;
+  });
+  if (changed) _saveNotifs();
+  _updateBadge();
+}
+
+function markAllRead() {
+  _notifications.forEach(n => n.read = true);
+  _saveNotifs();
+  _updateBadge();
+}
+
+function _updateBadge() {
+  const badge = $('notif-badge');
+  if (!badge) return;
+  const count = _notifications.filter(n => !n.read).length;
+  badge.textContent = count;
+  badge.classList.toggle('hidden', count === 0);
+}
+
+function renderNotifPanel() {
+  const list = $('notif-list');
+  if (!list) return;
+  if (!_notifications.length) {
+    list.innerHTML = '<div class="notif-empty">Sin notificaciones</div>';
+    return;
+  }
+  list.innerHTML = _notifications.slice(0, 30).map(n => {
+    const icon = n.type === 'tournament' ? '🏆' : n.type === 'friend_request' ? '👤' :
+                 n.type === 'game_invite' ? '🎮' : n.type === 'system' ? '⚙️' : '📢';
+    const time = _timeAgo(n.ts);
+    let actionsHtml = '';
+    if (n.actions && n.actions.length) {
+      actionsHtml = '<div class="notif-actions">' + n.actions.map(a =>
+        '<button class="notif-action-btn ' + (a.style || '') + '" data-nid="' + n.id + '" data-action="' + a.action + '">' + a.label + '</button>'
+      ).join('') + '</div>';
+    }
+    return '<div class="notif-item ' + (n.read ? '' : 'unread') + '">' +
+      '<span class="notif-icon">' + icon + '</span>' +
+      '<div class="notif-body">' +
+        '<div class="notif-title">' + esc(n.title) + '</div>' +
+        '<div class="notif-msg">' + esc(n.msg) + '</div>' +
+        '<div class="notif-time">' + time + '</div>' +
+        actionsHtml +
+      '</div></div>';
+  }).join('');
+
+  // Bind action buttons
+  list.querySelectorAll('.notif-action-btn').forEach(btn => {
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      _handleNotifAction(this.dataset.nid, this.dataset.action);
+    };
+  });
+}
+
+function _timeAgo(ts) {
+  const num = Number(ts);
+  if (!num || isNaN(num)) return '';
+  const diff = Date.now() - num;
+  if (diff < 0 || diff > 31536000000) return ''; // futuro o >1 año
+  if (diff < 60000) return 'Ahora';
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
+  return new Date(num).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+function _handleNotifAction(notifId, action) {
+  const notif = _notifications.find(n => n.id === notifId);
+  if (!notif) return;
+  if (action === 'accept_friend' && notif.data) {
+    wsSend('FRIEND_ACCEPT', { requestId: notif.data.requestId, fromId: notif.data.fromId });
+    toast('Amistad aceptada', 'success');
+  } else if (action === 'reject_friend' && notif.data) {
+    wsSend('FRIEND_REJECT', { requestId: notif.data.requestId });
+    toast('Solicitud rechazada', 'info');
+  } else if (action === 'accept_invite' && notif.data) {
+    wsSend('GAME_INVITE_ACCEPT', { roomId: notif.data.roomId, roomCode: notif.data.roomCode });
+    toast('Uniéndote a la partida...', 'success');
+  } else if (action === 'reject_invite' && notif.data) {
+    wsSend('GAME_INVITE_REJECT', { inviteId: notif.data.inviteId, fromId: notif.data.fromId });
+    toast('Invitación rechazada', 'info');
+  }
+  notif.read = true;
+  _saveNotifs();
+  _updateBadge();
+  renderNotifPanel();
+}
+
+/* Cargar notificaciones del servidor (broadcasts recientes) */
+async function loadServerNotifications() {
+  if (!isLogged()) return;
+  try {
+    const token = localStorage.getItem('gameToken');
+    const res = await fetch('/api/notifications', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const notifications = data.notifications;
+    if (!notifications || !notifications.length) return;
+    const existingMsgs = new Set(_notifications.map(n => n.msg));
+    let added = 0;
+    for (const n of notifications) {
+      if (!existingMsgs.has(n.message)) {
+        _notifications.unshift({
+          id: 'srv_' + new Date(n.created_at).getTime(),
+          title: n.username || '📢 CEO',
+          msg: n.message,
+          type: 'broadcast',
+          ts: new Date(n.created_at).getTime(),
+          read: true
+        });
+        added++;
+      }
+    }
+    if (added > 0) {
+      _notifications.sort((a, b) => b.ts - a.ts);
+      if (_notifications.length > MAX_NOTIFICATIONS) _notifications.length = MAX_NOTIFICATIONS;
+      _saveNotifs();
+      _updateBadge();
+    }
+  } catch(e) {}
+}
 let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
 
@@ -44,6 +220,37 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+  // Escuchar mensajes del Service Worker (push recibidos, actualizaciones, etc.)
+  navigator.serviceWorker.addEventListener('message', event => {
+    const msg = event.data;
+    if (!msg || !msg.type) return;
+    if (msg.type === 'PUSH_RECEIVED') {
+      // Mostrar badge en el botón de torneos
+      const badge = document.getElementById('tournament-push-badge');
+      if (badge) {
+        badge.classList.remove('hidden');
+        badge.textContent = '🔔';
+        clearTimeout(badge._hideTimer);
+        badge._hideTimer = setTimeout(() => {
+          badge.classList.add('hidden');
+        }, 12000);
+      }
+      // Mostrar toast con el mensaje (truncar body si es muy largo)
+      if (msg.title || msg.body) {
+        const bodyText = msg.body ? (msg.body.length > 80 ? msg.body.slice(0, 80) + '…' : msg.body) : '';
+        const prefix = msg.title ? msg.title + (bodyText ? ': ' : '') : '';
+        const fullText = '📫 ' + prefix + bodyText;
+        // Use the same _toastT timer variable as toast() for coordination
+        const el = document.getElementById('toast');
+        if (el) {
+          el.textContent = fullText;
+          el.classList.remove('hidden');
+          clearTimeout(_toastT);
+          _toastT = setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+      }
+    }
+  });
 /* ── Push Notifications ─────────────────────────────── */
 let _pushSubscribed = false;
 
@@ -114,21 +321,11 @@ async function checkPushStatus() {
 }
 
 function updatePushBtn() {
-  // Actualizar botón de notificaciones en la topbar
-  const btns = ['btn-push-topbar'];
-  btns.forEach(id => {
-    const btn = $(id);
-    if (!btn) return;
-    if (_pushSubscribed) {
-      btn.textContent = '🔔';
-      btn.classList.add('push-active');
-      btn.title = 'Desactivar notificaciones';
-    } else {
-      btn.textContent = '🔕';
-      btn.classList.remove('push-active');
-      btn.title = 'Activar notificaciones';
-    }
-  });
+  const sw = $('notif-push-switch');
+  if (sw) sw.checked = _pushSubscribed;
+  // Persistir estado en localStorage
+  if (_pushSubscribed) localStorage.setItem('macko_push', 'subscribed');
+  else localStorage.removeItem('macko_push');
 }
 
 // También llamar al login y después de register SW
@@ -710,6 +907,7 @@ function playSkinHot() {
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const uid = () => 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
+const formatNum = n => Number(n).toLocaleString('es-AR');
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -749,13 +947,17 @@ function updateUserPanel(name, coins) {
     // Mostrar logout en topbar, ocultar volver al login
     $('btn-logout-topbar')?.classList.remove('hidden');
     $('btn-back-to-auth')?.classList.add('hidden');
+    // Mostrar botón de notificaciones
+    const notifWrapper = document.querySelector('.notif-wrapper');
+    if (notifWrapper) notifWrapper.classList.remove('hidden');
     $('btn-changelog-outside')?.classList.remove('hidden');
     $('btn-logout')?.classList.add('hidden'); // ocultar el viejo del form
   } else {
     // No logueado: ocultar topbar, mostrar campo nombre
     topBar.classList.add('hidden');
     $('btn-logout-topbar')?.classList.add('hidden');
-    $('btn-push-topbar')?.classList.add('hidden');
+    const notifWrapper = document.querySelector('.notif-wrapper');
+    if (notifWrapper) notifWrapper.classList.add('hidden');
     $('btn-back-to-auth')?.classList.remove('hidden');
     $('btn-changelog-outside')?.classList.remove('hidden');
     $('guest-name-field').classList.remove('hidden');
@@ -819,6 +1021,9 @@ function goLobby(msg) {
   if(isLogged()){
    showScreen('screen-lobby');
    loadLobbyMissions();
+   // Recargar items equipados al volver al lobby (skins, avatares)
+   loadEquippedCache();
+   loadEquippedItems();
 }else{
    showScreen('screen-auth');
 }
@@ -926,6 +1131,13 @@ function connect(cb) {
 function wsSend(type, data={}) {
   if (S.ws?.readyState === WebSocket.OPEN)
     S.ws.send(JSON.stringify({type,data}));
+}
+
+function sendGameInvite(targetId, targetName) {
+  if (!S.roomId) { toast('No estás en una sala'); return; }
+  wsSend('GAME_INVITE', { targetId, roomId: S.roomId, roomCode: S.roomCode });
+  toast(`Invitación enviada a ${targetName}`, 'success');
+  $('modal-invite')?.classList.add('hidden');
 }
 
 /* ════════════════════════════════════════════════════════
@@ -1335,6 +1547,56 @@ function handle(type, data) {
       }
       break;
 
+    /* ── Solicitudes de amistad ────────────────────────── */
+    case 'FRIEND_REQUEST':
+      toast(`👤 ${data.fromName} quiere ser tu amigo`, 5000);
+      addNotification(`${data.fromName}`, 'Te envió una solicitud de amistad', 'friend_request', {
+        id: 'fr_' + data.fromId,
+        actions: [
+          { label: 'Aceptar', action: 'accept_friend', style: 'notif-accept' },
+          { label: 'Rechazar', action: 'reject_friend', style: 'notif-reject' }
+        ],
+        notifData: { fromId: data.fromId, fromName: data.fromName }
+      });
+      break;
+
+    case 'FRIEND_REQUEST_SENT':
+      toast('Solicitud de amistad enviada', 'success');
+      break;
+
+    case 'FRIEND_ACCEPTED':
+      toast(`✅ ${data.byName} aceptó tu solicitud de amistad`, 4000);
+      addNotification(`${data.byName}`, 'Aceptó tu solicitud de amistad', 'system');
+      break;
+
+    case 'FRIEND_ACCEPTED_OK':
+      toast('✅ Amigo agregado', 'success');
+      break;
+
+    case 'FRIEND_REJECTED_OK':
+      break;
+
+    /* ── Invitaciones a partida ────────────────────────── */
+    case 'GAME_INVITE':
+      toast(`🎮 ${data.fromName} te invitó a jugar`, 6000);
+      addNotification(`${data.fromName}`, `Te invitó a una partida (${data.playerCount}/${data.maxPlayers} jugadores)`, 'game_invite', {
+        id: 'gi_' + data.inviteId,
+        actions: [
+          { label: 'Unirse', action: 'accept_invite', style: 'notif-accept' },
+          { label: 'Rechazar', action: 'reject_invite', style: 'notif-reject' }
+        ],
+        notifData: { roomId: data.roomId, roomCode: data.roomCode, inviteId: data.inviteId, fromId: data.fromId }
+      });
+      break;
+
+    case 'GAME_INVITE_SENT':
+      toast('Invitación enviada', 'success');
+      break;
+
+    case 'GAME_INVITE_REJECTED':
+      toast(`${data.byName} rechazó la invitación`, 'info');
+      break;
+
     /* ── Chat de sala ─────────────────────────────────── */
     case 'CHAT_MESSAGE':
       addChat(data.playerName, data.message);
@@ -1354,6 +1616,47 @@ function handle(type, data) {
       break;
 
     /* ── Error ───────────────────────────────────────── */
+
+    /* ── Torneo: bracket update ─────────────────────── */
+    case 'TOURNAMENT_BRACKET_UPDATE':
+      if ($('modal-tournament') && !$('modal-tournament').classList.contains('hidden')) {
+        loadTournaments();
+      }
+      toast('🏆 Brackets actualizados', 2000);
+      break;
+
+    /* ── Torneo: match listo ────────────────────────── */
+    case 'TOURNAMENT_MATCH_READY':
+      toast('🔥 Tu match de torneo esta listo! Sala: ' + data.roomId, 5000);
+      if (S.name && data.roomId) {
+        S.roomId = data.roomId;
+        saveSession();
+      }
+      break;
+
+    /* ── Torneo: campeon ────────────────────────────── */
+    case 'TOURNAMENT_CHAMPION':
+      toast('👑 SOS EL CAMPEON del torneo ' + data.tournamentName + '! Premio: ' + (data.prizePool || 0) + ' monedas!', 6000);
+      launchConfetti();
+      break;
+
+    /* ── Torneo: completado ─────────────────────────── */
+    case 'TOURNAMENT_COMPLETED':
+      toast('🏆 Torneo ' + data.tournamentName + ' finalizado!', 4000);
+      break;
+
+    /* ── Broadcast del CEO ──────────────────────────── */
+    case 'BROADCAST':
+      toast('📢 ' + data.message, 6000);
+      addNotification('📢 CEO', data.message, 'broadcast');
+      break;
+
+    /* ── Notificación de sistema ───────────────────── */
+    case 'NOTIFICATION':
+      toast((data.icon || '🔔') + ' ' + data.message, 5000);
+      addNotification(data.title || 'Notificación', data.message, data.notifType || 'system');
+      break;
+
     case 'ERROR':
       S.joiningRoom = false;
       const joinBtn = $('btn-join-confirm');
@@ -1912,6 +2215,316 @@ async function loadPortalGames() {
   }
 }
 
+/* ── Cargar torneos disponibles para el jugador ──────────── */
+let _tournamentCache = [];
+
+async function loadTournaments() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const list = $('tournament-list');
+  if (!list) return;
+  try {
+    // Primero intentar cache
+    if (_tournamentCache.length) {
+      renderTournaments(_tournamentCache);
+    }
+    const res = await fetch('/api/tournaments', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      if (!_tournamentCache.length) {
+        list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Sin torneos activos</p>';
+      }
+      return;
+    }
+    const data = await res.json();
+    const tournaments = data.tournaments || [];
+    _tournamentCache = tournaments;
+    renderTournaments(tournaments);
+  } catch(e) {
+    if (!_tournamentCache.length) {
+      list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Error al cargar torneos</p>';
+    }
+  }
+}
+
+function renderTournaments(tournaments) {
+  const list = $('tournament-list');
+  if (!list) return;
+  if (!tournaments.length) {
+    list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--text3);font-size:13px">No hay torneos activos ahora</p>';
+    return;
+  }
+  list.innerHTML = tournaments.map(t => {
+    const statusIcon = t.status === 'active' ? '⚔️' : t.status === 'registration' ? '📝' : t.status === 'completed' ? '✅' : '❌';
+    const feeText = parseInt(t.fee) > 0 ? `Fee: ${formatNum(parseInt(t.fee))} 🪙` : 'Gratis';
+    const prizeText = parseInt(t.prize_pool) > 0 ? `Premios: ${formatNum(parseInt(t.prize_pool))} 🪙` : '';
+    return `<div class="tournament-card" style="
+      background:var(--bg-card2);border:1px solid var(--border2);border-radius:10px;
+      padding:14px;margin-bottom:8px;cursor:pointer;
+      transition:border-color .2s
+    " onclick="showTournamentBracket('${t.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--text)">${statusIcon} ${esc(t.name)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(t.description || '')}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--text2);white-space:nowrap">
+          <div>${parseInt(t.registered_count || 0)}/${t.max_players}</div>
+          <div style="font-size:10px;color:var(--gold)">${feeText}</div>
+          ${prizeText ? `<div style="font-size:10px;color:var(--gold)">${prizeText}</div>` : ''}
+        </div>
+      </div>
+      <div style="margin-top:6px;display:flex;gap:6px;font-size:11px">
+        <span style="color:var(--text3);margin-right:auto">Ronda ${t.current_round || 0}/${t.rounds || '?'}</span>
+        <button class="btn-ghost-sm" style="padding:2px 8px;font-size:10px;width:auto;color:var(--text2);border-color:rgba(255,255,255,.08)" 
+          onclick="event.stopPropagation();showTournamentParticipantsModal('${t.id}','${esc(t.name).replace(/'/g,"\\'")}')">👥 Ver participantes</button>
+        ${t.status === 'registration' ? `<button class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();registerTournament('${t.id}')">Inscribirme</button>` : ''}
+        ${t.status === 'active' ? `<button class="btn btn-ghost" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();showTournamentBracket('${t.id}')">Ver bracket</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function registerTournament(tournamentId) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) { toast('Debés iniciar sesión'); return; }
+  try {
+    const res = await fetch('/api/tournaments/' + tournamentId + '/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast('✅ Te inscribiste al torneo!', 'success');
+    _tournamentCache = [];
+    loadTournaments();
+    loadUserBalance();
+    loadNextTournament();
+  } catch(err) {
+    toast('⚠ ' + err.message);
+  }
+}
+
+async function unregisterTournament(tournamentId) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) { toast('Debés iniciar sesión'); return; }
+  // Confirmar antes de cancelar
+  if (!confirm('¿Cancelar tu inscripción al torneo? Perdés tu lugar.')) return;
+  try {
+    const res = await fetch('/api/tournaments/' + tournamentId + '/unregister', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast('❌ Cancelaste tu inscripción al torneo', 'info');
+    _tournamentCache = [];
+    loadTournaments();
+    loadNextTournament();
+  } catch(err) {
+    toast('⚠ ' + err.message);
+  }
+}
+
+
+
+async function showTournamentParticipantsModal(tournamentId, tournamentName) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) { toast('Debés iniciar sesión'); return; }
+  try {
+    const res = await fetch('/api/tournaments/' + tournamentId + '/participants', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Error');
+    const data = await res.json();
+    const participants = data.participants || [];
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-card2);border:1px solid var(--border2);border-radius:12px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;padding:20px;';
+    
+    modal.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:16px;font-weight:700;color:var(--text)">👥 ${tournamentName || 'Participantes'}</div>
+        <button class="btn-ghost-sm" style="font-size:18px;width:32px;height:32px;padding:0;line-height:1" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      ${participants.length === 0 ? '<p style="color:var(--text3);text-align:center;padding:20px;font-size:13px">Sin participantes aún</p>' : `
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${participants.length} inscripto${participants.length !== 1 ? 's' : ''}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${participants.map(p => {
+            const avHtml = p.equipped_avatar ? esc(p.equipped_avatar) : '👤';
+            const isChamp = p.final_position === 1;
+            const isSecond = p.final_position === 2;
+            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isChamp ? 'rgba(212,175,55,.08)' : isSecond ? 'rgba(200,200,200,.05)' : 'rgba(255,255,255,.02)'};border-radius:8px;border:1px solid ${isChamp ? 'var(--gold)' : isSecond ? 'rgba(200,200,200,.12)' : 'transparent'};">
+              <span style="font-size:20px">${avHtml}</span>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(p.player_name)} ${isChamp ? '👑' : ''}${isSecond ? '🥈' : ''}</div>
+                ${p.seed ? `<div style="font-size:10px;color:var(--text3)">Seed #${p.seed}</div>` : ''}
+              </div>
+              ${p.eliminated_round ? `<span style="font-size:10px;color:var(--red);padding:2px 6px;background:rgba(255,80,80,.1);border-radius:4px">Elim. ronda ${p.eliminated_round}</span>` : (isChamp ? '<span style="font-size:10px;color:var(--gold);padding:2px 6px;background:rgba(212,175,55,.1);border-radius:4px">🏆 Campeón</span>' : (p.final_position ? '<span style="font-size:10px;color:var(--text2);padding:2px 6px;background:rgba(255,255,255,.04);border-radius:4px">Finalista</span>' : '<span style="font-size:10px;color:var(--green);padding:2px 6px;background:rgba(80,200,120,.1);border-radius:4px">Activo</span>'))}
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  } catch(e) {
+    toast('⚠ Error al cargar participantes');
+  }
+}
+
+async function showTournamentBracket(tournamentId) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) { toast('Debés iniciar sesión'); return; }
+  try {
+    const res = await fetch('/api/tournaments/' + tournamentId + '/bracket', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Error al cargar bracket');
+    const data = await res.json();
+    const t = data.tournament || {};
+    const participants = data.participants || [];
+    const rounds = data.rounds || [];
+    
+    $('tb-name').textContent = '🏆 ' + (t.name || '');
+    $('tb-info').textContent = `${participants.length} jugadores · Premios: ${formatNum(parseInt(t.prize_pool)||0)} 🪙`;
+    $('tournament-bracket-view').classList.remove('hidden');
+    $('tournament-list').classList.add('hidden');
+    
+    
+    // ── Mostrar participantes en el bracket ──
+    const bracketEl = $('tournament-bracket');
+    const pSection = document.createElement('div');
+    pSection.id = 'tb-participants';
+    pSection.style.cssText = 'margin:8px 0 12px 0;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:8px;border:1px solid rgba(255,255,255,.04);';
+    pSection.innerHTML = `
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between">
+        <span>👥 Participantes (${participants.length})</span>
+        <span style="font-size:10px;color:var(--text3)">${participants.length} jugador${participants.length !== 1 ? 'es' : ''}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${participants.map(p => {
+          const avHtml = p.equipped_avatar ? esc(p.equipped_avatar) : '👤';
+          return `<div style="display:flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(255,255,255,.04);border-radius:20px;font-size:11px;border:1px solid rgba(255,255,255,.04)">
+            <span style="font-size:15px">${avHtml}</span>
+            <span style="color:var(--text);font-weight:500">${esc(p.player_name)}</span>
+            ${p.seed ? `<span style="font-size:9px;color:var(--text3);padding:0 4px">#${p.seed}</span>` : ''}
+            ${p.final_position === 1 ? '<span style="font-size:11px;margin-left:2px">👑</span>' : ''}
+            ${p.final_position === 2 ? '<span style="font-size:11px;margin-left:2px">🥈</span>' : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+    bracketEl.parentNode.insertBefore(pSection, bracketEl);
+    
+
+    if (!rounds.length) {
+      bracketEl.innerHTML = '<p style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Bracket no disponible aún</p>';
+      return;
+    }
+    
+    bracketEl.innerHTML = rounds.map(round => {
+      return `<div class="bracket-round" style="margin-bottom:14px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border2);padding-bottom:4px;margin-bottom:6px">Ronda ${round.round}</div>
+        ${(round.matches || []).map(m => {
+          const isCompleted = m.status === 'completed';
+          const isBye = !m.player1_id || !m.player2_id;
+          return `<div style="display:flex;gap:8px;padding:8px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:4px;font-size:12px;border-left:3px solid ${isCompleted ? 'var(--green)' : (isBye ? 'var(--text3)' : 'var(--gold)')}">
+            <div style="flex:1">
+              <div style="color:${m.winner_id === m.player1_id ? 'var(--green)' : 'var(--text2)'};font-weight:${m.winner_id === m.player1_id ? '600' : '400'}">${esc(m.player1_name || 'BYE')} ${m.player1_score > 0 ? '<span style="color:var(--gold)">(' + m.player1_score + ')</span>' : ''}</div>
+              <div style="color:${m.winner_id === m.player2_id ? 'var(--green)' : 'var(--text2)'};font-weight:${m.winner_id === m.player2_id ? '600' : '400'}">${esc(m.player2_name || 'BYE')} ${m.player2_score > 0 ? '<span style="color:var(--gold)">(' + m.player2_score + ')</span>' : ''}</div>
+            </div>
+            ${isCompleted ? '<span style="color:var(--green);font-size:10px">✅</span>' : (isBye ? '<span style="color:var(--text3);font-size:10px">—</span>' : '<span style="color:var(--gold);font-size:10px">⏳</span>')}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    toast('⚠ Error al cargar bracket: ' + e.message);
+  }
+}
+
+// Back button from bracket view
+$('tb-back').onclick = () => {
+  $('tournament-bracket-view').classList.add('hidden');
+  $('tournament-list').classList.remove('hidden');
+};
+
+// ── Mostrar banner del próximo torneo programado ────────────
+let _nextTourneyInterval = null;
+
+async function loadNextTournament() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const banner = $('next-tournament-banner');
+  if (!banner) return;
+  try {
+    const res = await fetch('/api/tournaments/next', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { banner.classList.add('hidden'); return; }
+    const data = await res.json();
+    if (!data.next) {
+      banner.classList.add('hidden');
+      return;
+    }
+    const t = data.next;
+    const now = Date.now();
+    const startsIn = parseInt(t.start_time) - now;
+    const regUntil = parseInt(t.registration_until) || 0;
+    const regEndsIn = regUntil > 0 ? regUntil - now : 0;
+    
+    if (startsIn <= 0) { banner.classList.add('hidden'); return; }
+    
+    banner.classList.remove('hidden');
+    const hours = Math.floor(startsIn / 3600000);
+    const mins = Math.floor((startsIn % 3600000) / 60000);
+    const secs = Math.floor((startsIn % 60000) / 1000);
+    const regHours = Math.floor(regEndsIn / 3600000);
+    const regMins = Math.floor((regEndsIn % 3600000) / 60000);
+    const regStr = regEndsIn > 0 ? `· Inscripción cierra en ${regHours}h ${regMins}m` : '';
+    
+    banner.innerHTML = `
+      <div class="next-tourney-inner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:16px">⏰</span>
+        <span style="font-weight:600;font-size:13px">${esc(t.name)}</span>
+        <span style="color:var(--gold);font-size:12px;font-family:'Cinzel',serif">
+          ⏳ ${hours}h ${mins}m ${secs}s
+        </span>
+        <span style="color:var(--text3);font-size:11px">${regStr}</span>
+        <span style="font-size:11px;color:var(--text2)">${parseInt(t.registered_count||0)}/${t.max_players} jugadores</span>
+        <button class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" 
+          onclick="showScreen('screen-lobby');document.querySelector('.ceo-tab[data-tab=\'tournaments\']')?.click();$('btn-tournaments')?.click();">
+          Ver torneo
+        </button>
+      </div>
+    `;
+  } catch(e) {
+    banner.classList.add('hidden');
+  }
+}
+
+function startNextTournamentTimer() {
+  loadNextTournament();
+  if (_nextTourneyInterval) clearInterval(_nextTourneyInterval);
+  _nextTourneyInterval = setInterval(loadNextTournament, 30000);
+}
+
+function stopNextTournamentTimer() {
+  if (_nextTourneyInterval) {
+    clearInterval(_nextTourneyInterval);
+    _nextTourneyInterval = null;
+  }
+}
+
+
 /* ── Cargar misiones diarias en el lobby (vista principal) ── */
 async function loadLobbyMissions() {
   const token = localStorage.getItem('gameToken');
@@ -1990,14 +2603,14 @@ async function loadChangelog() {
     return;
   }
   try {
-  try {
     const res = await fetch('/api/version');
     const data = await res.json();
     const version = data.version || '—';
     const changelog = data.changelog || [];
     
     // Cachear para próxima vez
-    const gameEntries = changelog.filter(e => e.scope === 'game' || e.scope === 'all');
+    // Solo game para jugadores — CEO entries van solo al CEO Panel
+    const gameEntries = changelog.filter(e => e.scope === 'game');
     _changelogCache = { version, entries: gameEntries };
     
     renderChangelog(version, gameEntries);
@@ -2191,6 +2804,51 @@ function initUI() {
   };
   $('btn-close-shop').onclick = () => $('modal-shop').classList.add('hidden');
 
+  /* ── Modal invitar jugador ──────────────────────────── */
+  $('btn-invite-player')?.addEventListener('click', () => {
+    $('modal-invite').classList.remove('hidden');
+    $('invite-search-input').value = '';
+    $('invite-search-results').innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px">Escribí un nombre para buscar</div>';
+    setTimeout(() => $('invite-search-input').focus(), 100);
+  });
+  $('btn-close-invite')?.addEventListener('click', () => $('modal-invite').classList.add('hidden'));
+
+  let _inviteSearchTimer = null;
+  $('invite-search-input')?.addEventListener('input', (e) => {
+    clearTimeout(_inviteSearchTimer);
+    const q = e.target.value.trim();
+    if (q.length < 2) {
+      $('invite-search-results').innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px">Escribí un nombre para buscar</div>';
+      return;
+    }
+    _inviteSearchTimer = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('gameToken');
+        const res = await fetch('/api/friends/search?q=' + encodeURIComponent(q), {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const { players } = await res.json();
+        if (!players?.length) {
+          $('invite-search-results').innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px">No se encontraron jugadores</div>';
+          return;
+        }
+        $('invite-search-results').innerHTML = players.map(p => {
+          const av = p.equipped_avatar || (p.alias ? p.alias.charAt(0).toUpperCase() : '?');
+          return `<div class="invite-player-item">
+            <div class="invite-player-av">${av}</div>
+            <div class="invite-player-info">
+              <div class="invite-player-name">${esc(p.alias || p.name || 'Jugador')}</div>
+              <div class="invite-player-meta">${p.games_played || 0} partidas · ${p.games_won || 0} victorias</div>
+            </div>
+            <button class="invite-send-btn" onclick="sendGameInvite('${p.id}','${esc(p.alias || p.name || 'Jugador')}')">Invitar</button>
+          </div>`;
+        }).join('');
+      } catch(e) {
+        $('invite-search-results').innerHTML = '<div style="text-align:center;color:var(--red);padding:20px;font-size:13px">Error al buscar</div>';
+      }
+    }, 300);
+  });
+
   // Tabs de tienda
   document.querySelectorAll('.shop-tab').forEach(tab => {
     tab.onclick = () => {
@@ -2371,6 +3029,9 @@ function initUI() {
 
   /* ── Torneos ────────────────────────────────────────── */
   $('btn-tournaments').onclick = async () => {
+    // Limpiar badge de notificación push al abrir torneos
+    const pb = document.getElementById('tournament-push-badge');
+    if (pb) pb.classList.add('hidden');
     const token = localStorage.getItem('gameToken');
     if (!token) { toast('Debés iniciar sesión'); return; }
     $('modal-tournament').classList.remove('hidden');
@@ -2410,16 +3071,39 @@ function initUI() {
   };
 
 /* Logout */
-  /* ── Push notifications toggle (ambos botones) ──── */
-  function setupPushToggle(btnId) {
-    const btn = $(btnId);
-    if (!btn) return;
-    btn.onclick = () => {
-      if (_pushSubscribed) unsubscribeFromPush();
-      else subscribeToPush();
-    };
+  /* ── Push notifications toggle via switch ──── */
+  const pushSwitch = $('notif-push-switch');
+  if (pushSwitch) {
+    pushSwitch.addEventListener('change', () => {
+      if (pushSwitch.checked) subscribeToPush();
+      else unsubscribeFromPush();
+    });
   }
-  setupPushToggle('btn-push-topbar');
+
+  /* ── Centro de notificaciones ────────────────────── */
+  _loadNotifs();
+  loadServerNotifications();
+  $('btn-notif')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = $('notif-panel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      renderNotifPanel();
+      markAllRead();
+      updatePushBtn(); // Sync switch cada vez que se abre
+    }
+  });
+  $('btn-notif-mark-read')?.addEventListener('click', () => {
+    markAllRead();
+    renderNotifPanel();
+  });
+  // Cerrar panel al hacer click afuera
+  document.addEventListener('click', (e) => {
+    const panel = $('notif-panel');
+    const wrapper = e.target.closest('.notif-wrapper');
+    if (panel && !wrapper) panel.classList.add('hidden');
+  });
+
   // Check push status after login — also triggered reliably inside btn-login's handler
 
   function doLogout() {
@@ -2431,7 +3115,6 @@ function initUI() {
     S.name = null;
     $('input-name').value = '';
     $('btn-logout-topbar')?.classList.add('hidden');
-    $('btn-push-topbar')?.classList.add('hidden');
     $('btn-back-to-auth')?.classList.remove('hidden');
     showScreen('screen-auth');
     toast('Sesión cerrada');
@@ -2545,27 +3228,39 @@ function initUI() {
         entered: false, ts: Date.now()
       }));
       
-      updateUserPanel(data.player.alias, data.player.coins);
-      
       const inp = $('input-name');
       if (inp) inp.value = S.name;
 
       $('btn-login').textContent = 'Ingresar';
-      
-      // Cargar items equipados
-      loadEquippedItems();
+
+      // Mostrar panel de usuario inmediatamente (nombre, monedas)
+      // loadEquippedCache() después actualizará el avatar/icono cuando estén listos
+      updateUserPanel(S.name, data.player.coins);
+      // Cargar cache local de items equipados
+      loadEquippedCache();
+      // Actualizar items equipados desde la API (async)
+      loadEquippedItems().then(() => {
+        // Actualizar panel de usuario con avatar/iconos recién cargados
+        updateUserPanel(S.name, data.player.coins);
+        loadChestStatus();
+      }).catch(() => {
+        // Si falla la API, el panel ya se mostró con el primer updateUserPanel
+        loadChestStatus();
+      });
       // Comprobar misiones completadas
       setTimeout(checkPendingMissions, 2000);
-      // Mostrar botones de push y ocultar volver al login
-      const pushTopbar = $('btn-push-topbar');
-      if (pushTopbar) { pushTopbar.classList.remove('hidden'); checkPushStatus(); }
+      // Mostrar panel de notificaciones y sincronizar switch de push
+      const notifWrapper = document.querySelector('.notif-wrapper');
+      if (notifWrapper) notifWrapper.classList.remove('hidden');
+      checkPushStatus();
       $('btn-back-to-auth')?.classList.add('hidden');
       $('btn-changelog-outside')?.classList.remove('hidden');
       loadChestStatus();
       loadLobbyMissions();
       showScreen('screen-lobby');
       toast('¡Bienvenido, ' + S.name + '!');
-      
+      // Cargar notificaciones/broadcasts del servidor
+      loadServerNotifications();
     } catch (err) {
       toast('⚠ ' + err.message);
       $('btn-login').textContent = 'Ingresar';
@@ -3521,6 +4216,18 @@ document.addEventListener('DOMContentLoaded', () => {
     S.name = session.name;
     const inp = $('input-name');
     if (inp) inp.value = session.name || '';
+    if(isLogged()){
+      loadEquippedCache();
+      showScreen('screen-lobby');
+      loadLobbyMissions();
+      updateUserPanel(S.name, 0);
+    }
+  } else if (isLogged()) {
+    // Usuario logueado sin sesion de sala: mostrar lobby directamente
+    loadEquippedCache();
+    showScreen('screen-lobby');
+    loadLobbyMissions();
+    updateUserPanel(S.name, 0);
   }
 });
 
@@ -3528,6 +4235,12 @@ document.addEventListener('DOMContentLoaded', () => {
 function navigateToLobbyOrAuth() {
   if (isLogged()) {
     showScreen('screen-lobby');
+    // Recargar items equipados al navegar al lobby
+    loadEquippedCache();
+    loadEquippedItems().then(() => {
+      const coins = parseInt($('lobby-coins')?.textContent) || 0;
+      updateUserPanel(S.name, coins);
+    }).catch(() => {});
   } else {
     clearAuth();
     clearSession();

@@ -318,6 +318,25 @@
               <input id="ceo-tournament-f-reg" type="date" class="ceo-input">
             </div>
           </div>
+          <div class="ceo-shop-form-row">
+            <div class="ceo-shop-form-group" style="flex:1">
+              <label>Programación</label>
+              <select id="ceo-tournament-f-schedule" class="ceo-input" style="padding:8px 10px">
+                <option value="">No programado</option>
+                <option value="1h">Cada 1 hora</option>
+                <option value="2h">Cada 2 horas</option>
+                <option value="4h">Cada 4 horas</option>
+                <option value="8h">Cada 8 horas</option>
+                <option value="12h">Cada 12 horas</option>
+                <option value="daily">Diario</option>
+                <option value="weekly">Semanal</option>
+              </select>
+            </div>
+            <div class="ceo-shop-form-group" style="flex:1">
+              <label>&nbsp;</label>
+              <p style="font-size:10px;color:var(--text3);margin:0;line-height:1.3">Se crea el siguiente torneo automáticamente al completarse</p>
+            </div>
+          </div>
           <div class="ceo-modal-btns">
             <button id="ceo-tournament-save" class="ceo-btn ceo-btn-gold">Crear torneo</button>
             <button id="ceo-tournament-cancel" class="ceo-btn ceo-btn-ghost">Cancelar</button>
@@ -511,8 +530,6 @@
   </div>
 </div>
 
-<script src="ceo-panel.js"></script>
-
 <!-- Changelog Modal -->
 <div id="ceo-modal-changelog" class="ceo-modal hidden">
   <div class="ceo-modal-box" style="max-width:520px;width:90%;text-align:left;padding:24px 20px">
@@ -524,4 +541,6 @@
     <div id="ceo-changelog-list" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:12px"></div>
   </div>
 </div>
+
+<script src="ceo-panel.js"></script>
 </html>

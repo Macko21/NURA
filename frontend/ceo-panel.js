@@ -1541,14 +1541,18 @@ async function loadTournamentsList() {
       const statusClass = status === 'active' ? 'ceo-badge-playing' : status === 'completed' ? 'ceo-badge-ok' : status === 'cancelled' ? 'ceo-badge-banned' : 'ceo-badge-waiting';
       
       let actions = '';
+      const pushBtn = `<button class="ceo-action-btn ceo-action-view" onclick="ceoSendTournamentPush('${t.id}','${esc(t.name)}','${status}')" title="Enviar notificación push a participantes">🔔</button>`;
       if (status === 'registration') {
-        actions = `<button class="ceo-action-btn ceo-action-unban" onclick="ceoStartTournament('${t.id}')">🚀 Iniciar</button>
-                    <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${esc(t.name)}')">❌ Cancelar</button>`;
+        actions = `${pushBtn}
+          <button class="ceo-action-btn ceo-action-unban" onclick="ceoStartTournament('${t.id}')">🚀 Iniciar</button>
+          <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${esc(t.name)}')">❌ Cancelar</button>`;
       } else if (status === 'active') {
-        actions = `<button class="ceo-action-btn ceo-action-view" onclick="ceoViewBracket('${t.id}')">🔍 Ver bracket</button>
-                    <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${esc(t.name)}')">❌ Cancelar</button>`;
+        actions = `${pushBtn}
+          <button class="ceo-action-btn ceo-action-view" onclick="ceoViewBracket('${t.id}')">🔍 Ver bracket</button>
+          <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${esc(t.name)}')">❌ Cancelar</button>`;
       } else if (status === 'completed') {
-        actions = `<button class="ceo-action-btn ceo-action-view" onclick="ceoViewBracket('${t.id}')">🔍 Ver bracket</button>`;
+        actions = `${pushBtn}
+          <button class="ceo-action-btn ceo-action-view" onclick="ceoViewBracket('${t.id}')">🔍 Ver bracket</button>`;
       }
       
       return `<tr>
@@ -1578,6 +1582,7 @@ $('ceo-tournament-create-btn').onclick = () => {
   $('ceo-tournament-f-fee').value = '0';
   $('ceo-tournament-f-start').value = tomorrow;
   $('ceo-tournament-f-reg').value = tomorrow;
+  if ($('ceo-tournament-f-schedule')) $('ceo-tournament-f-schedule').value = '';
   $('ceo-tournament-form-error').classList.add('hidden');
   $('ceo-tournament-modal-title').textContent = '🏆 Nuevo torneo';
   $('ceo-tournament-save').textContent = 'Crear torneo';
@@ -1609,7 +1614,9 @@ $('ceo-tournament-save').onclick = async () => {
         name, description, maxPlayers, fee,
         prizes: [],
         startTime: new Date(startTime).toISOString(),
-        registrationUntil: regUntil ? new Date(regUntil).toISOString() : null
+        registrationUntil: regUntil ? new Date(regUntil).toISOString() : null,
+        isScheduled: !!($('ceo-tournament-f-schedule')?.value || ''),
+        scheduleInterval: $('ceo-tournament-f-schedule')?.value || ''
       })
     });
     const data = await res.json();
@@ -1654,6 +1661,57 @@ async function ceoCancelTournament(id, name) {
   });
 }
 
+// ── Send Push Notification to Tournament Participants ──
+function ceoSendTournamentPush(id, name, status) {
+  const statusIcon = status === 'registration' ? '📝' : status === 'active' ? '⚔️' : '✅';
+  $('ceo-confirm-title').textContent = '🔔 Notificar participantes';
+  $('ceo-confirm-desc').innerHTML = `
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">${statusIcon} Enviar push a los participantes de <strong>${esc(name)}</strong></p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div>
+        <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">Título *</label>
+        <input id="ceo-push-title" type="text" class="ceo-input" placeholder="Ej: ⏰ Torneo por comenzar" 
+          value="${statusIcon} ${name}" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">Mensaje *</label>
+        <textarea id="ceo-push-body" class="ceo-input ceo-textarea" placeholder="Ej: El torneo está por arrancar. ¡Preparate!" 
+          rows="2" style="width:100%">El torneo "${esc(name)}" te espera. Revisá los matches disponibles.</textarea>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">URL (opcional)</label>
+        <input id="ceo-push-url" type="text" class="ceo-input" placeholder="/?tab=tournaments" value="/?tab=tournaments" style="width:100%">
+      </div>
+    </div>
+  `;
+  $('ceo-confirm-yes').textContent = '📬 Enviar notificación';
+  $('ceo-confirm-yes').className = 'ceo-btn ceo-btn-gold';
+  _confirmCallback = async (ok) => {
+    if (!ok) return;
+    const title = document.getElementById('ceo-push-title')?.value?.trim();
+    const body = document.getElementById('ceo-push-body')?.value?.trim();
+    const url = document.getElementById('ceo-push-url')?.value?.trim() || '/?tab=tournaments';
+    if (!title || !body) { toast('Completá título y mensaje', 'error'); return; }
+    const btn = $('ceo-confirm-yes');
+    btn.disabled = true;
+    btn.textContent = '📬 Enviando...';
+    try {
+      const res = await apiFetch(API + '/tournaments/' + id + '/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body, url })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast(`🔔 Notificación enviada a ${data.sent} participantes`, 'success');
+      $('ceo-modal-confirm').classList.add('hidden');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+    btn.disabled = false;
+    btn.textContent = '📬 Enviar notificación';
+  };
+  $('ceo-modal-confirm').classList.remove('hidden');
+  setTimeout(() => document.getElementById('ceo-push-title')?.focus(), 100);
+}
+
 // ── View Bracket ────────────────────────────────────────
 async function ceoViewBracket(id) {
   try {
@@ -1691,14 +1749,11 @@ async function ceoViewBracket(id) {
     }
     
     // Show in confirm modal as a viewer (using callback pattern)
-    _confirmCallback = null;
-    // Reset onclick handlers to default before overriding
-    $('ceo-confirm-yes').onclick = null;
     $('ceo-confirm-yes').textContent = 'Cerrar';
     $('ceo-confirm-yes').className = 'ceo-btn ceo-btn-ghost';
-    $('ceo-confirm-yes').onclick = () => { $('ceo-modal-confirm').classList.add('hidden'); };
     $('ceo-confirm-no').textContent = 'Cerrar';
-    $('ceo-confirm-no').onclick = () => { $('ceo-modal-confirm').classList.add('hidden'); };
+    $('ceo-confirm-no').className = 'ceo-btn ceo-btn-ghost';
+    _confirmCallback = () => { $('ceo-modal-confirm').classList.add('hidden'); };
     $('ceo-confirm-title').textContent = '🔍 Bracket: ' + esc(t.name);
     $('ceo-confirm-desc').innerHTML = html;
     $('ceo-modal-confirm').classList.remove('hidden');
