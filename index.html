@@ -133,7 +133,12 @@
   <script>
     function initApp() {
       if (!window._FB_READY) { document.addEventListener('fb-ready', initApp, { once:true }); return; }
-      if (window._nuraInit) window._nuraInit();
+      if (window._nuraInit) { window._nuraInit(); return; }
+      // Si _nuraInit no está listo aún, esperar a que db.js lo setee
+      const check = setInterval(() => {
+        if (window._nuraInit) { clearInterval(check); window._nuraInit(); }
+      }, 50);
+      setTimeout(() => clearInterval(check), 5000);
     }
     initApp();
 
