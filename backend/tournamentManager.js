@@ -354,15 +354,13 @@ async function sendTournamentPushNotifications(tournamentId, tournamentName, tit
   const sendFn = wsSend || _wsSend;
   let pushSent = 0, pushFailed = 0, wsSent = 0;
   
-  // 1) Enviar por WebSocket a todos los conectados que son participantes
-  if (wsClients && wsSend) {
+  // 1) Enviar por WebSocket a TODOS los conectados (no solo participantes)
+  if (clients && sendFn) {
     try {
-      const participants = await getTournamentParticipants(tournamentId);
-      const participantIds = new Set(participants.map(p => String(p.player_id)));
-      for (const [pid, sock] of wsClients) {
-        if (sock?.readyState === 1 && participantIds.has(String(pid))) {
+      for (const [pid, sock] of clients) {
+        if (sock?.readyState === 1) {
           try {
-            wsSend(sock, "NOTIFICATION", {
+            sendFn(sock, "NOTIFICATION", {
               title: title,
               message: body,
               icon: '🏆',
@@ -383,25 +381,13 @@ async function sendTournamentPushNotifications(tournamentId, tournamentName, tit
     return { sent: pushSent, failed: pushFailed, wsSent };
   }
   try {
-    const participants = await getTournamentParticipants(tournamentId);
-    if (!participants.length) return { sent: pushSent, failed: pushFailed, wsSent };
-    
     const allSubs = await getAllPushSubscriptions(); // [{ playerId, subscription }]
     if (!allSubs.length) return { sent: pushSent, failed: pushFailed, wsSent };
     
-    // Mapa de playerId → subscription para lookup rápido
-    const subMap = new Map();
     for (const s of allSubs) {
-      subMap.set(s.playerId, s.subscription);
-    }
-    
-    for (const p of participants) {
-      const sub = subMap.get(p.player_id);
-      if (!sub) continue;
-      
       try {
         const result = await sendPushNotification(
-          sub,
+          s.subscription,
           title,
           body,
           url || '/'
@@ -498,14 +484,14 @@ async function checkAndNotifyUpcomingTournaments() {
     const { pool } = require("./database");
     const now = Date.now();
     
-    // Buscar torneos en registration que comienzan en menos de 15 minutos
-    const fifteenMin = 15 * 60 * 1000;
+    // Buscar torneos en registration que comienzan en menos de 30 minutos
+    const thirtyMin = 30 * 60 * 1000;
     const res = await pool.query(`
       SELECT * FROM tournaments 
       WHERE status = 'registration' 
         AND start_time > $1 
         AND start_time <= $2
-    `, [now, now + fifteenMin]);
+    `, [now, now + thirtyMin]);
     
     for (const t of res.rows) {
       // Saltar si ya notificamos este torneo como "próximo"

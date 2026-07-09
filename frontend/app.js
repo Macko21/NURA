@@ -2279,6 +2279,9 @@ function renderTournaments(tournaments) {
     const statusIcon = t.status === 'active' ? '⚔️' : t.status === 'registration' ? '📝' : t.status === 'completed' ? '✅' : '❌';
     const feeText = parseInt(t.fee) > 0 ? `Fee: ${formatNum(parseInt(t.fee))} 🪙` : 'Gratis';
     const prizeText = parseInt(t.prize_pool) > 0 ? `Premios: ${formatNum(parseInt(t.prize_pool))} 🪙` : '';
+    const startTime = t.start_time ? new Date(Number(t.start_time)) : null;
+    const startTimeStr = startTime && !isNaN(startTime.getTime()) ? startTime.toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+    const isReg = t.is_registered;
     return `<div class="tournament-card" style="
       background:var(--bg-card2);border:1px solid var(--border2);border-radius:10px;
       padding:14px;margin-bottom:8px;cursor:pointer;
@@ -2288,6 +2291,7 @@ function renderTournaments(tournaments) {
         <div>
           <div style="font-size:14px;font-weight:600;color:var(--text)">${statusIcon} ${esc(t.name)}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(t.description || '')}</div>
+          ${startTimeStr ? `<div style="font-size:10px;color:var(--gold);margin-top:3px">🕐 Empieza: ${startTimeStr}</div>` : ''}
         </div>
         <div style="text-align:right;font-size:12px;color:var(--text2);white-space:nowrap">
           <div>${parseInt(t.registered_count || 0)}/${t.max_players}</div>
@@ -2299,7 +2303,8 @@ function renderTournaments(tournaments) {
         <span style="color:var(--text3);margin-right:auto">Ronda ${t.current_round || 0}/${t.rounds || '?'}</span>
         <button class="btn-ghost-sm" style="padding:2px 8px;font-size:10px;width:auto;color:var(--text2);border-color:rgba(255,255,255,.08)" 
           onclick="event.stopPropagation();showTournamentParticipantsModal('${t.id}','${esc(t.name).replace(/'/g,"\\'")}')">👥 Ver participantes</button>
-        ${t.status === 'registration' ? `<button class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();registerTournament('${t.id}')">Inscribirme</button>` : ''}
+        ${t.status === 'registration' && !isReg ? `<button class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();registerTournament('${t.id}')">Inscribirme</button>` : ''}
+        ${t.status === 'registration' && isReg ? `<span class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto;opacity:.7;cursor:default">✅ Inscripto</span>` : ''}
         ${t.status === 'active' ? `<button class="btn btn-ghost" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();showTournamentBracket('${t.id}')">Ver bracket</button>` : ''}
       </div>
     </div>`;

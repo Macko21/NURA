@@ -1326,17 +1326,17 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
   letter-spacing:.5px;
 }
 .profile-section-title span{color:var(--gold)}
-.inventory-grid{display:flex;flex-direction:column;gap:12px}
+.inventory-grid{display:flex;flex-direction:column;gap:6px}
 .inv-cat{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .inv-cat-title{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:2px}
-.inv-items{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.inv-items{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
 .inv-item{
   background:var(--bg-card2);backdrop-filter:blur(8px);
   border:1.5px solid var(--border2);border-radius:10px;
   padding:5px 2px 3px;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:1px;transition:all .2s;
   position:relative;cursor:pointer;
-  aspect-ratio:1/1;width:100%;max-width:72px;overflow:hidden;
+  aspect-ratio:1/1;width:100%;max-width:64px;overflow:hidden;
 }
 .inv-item:hover{border-color:var(--gold);background:var(--bg-hover)}
 .inv-item.equipped{border-color:var(--gold);background:rgba(212,175,55,.08);box-shadow:0 0 6px rgba(212,175,55,.1)}
