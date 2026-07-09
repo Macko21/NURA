@@ -10,9 +10,27 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.1.0";
+const GAME_VERSION = "3.2.0";
 
 const CHANGELOG = [
+  {
+    version: "3.2.0",
+    date: "2026-07-10",
+    title: "Notificaciones + Amistad + Invitaciones + Fix tienda",
+    scope: "game",
+    changes: [
+      "Centro de notificaciones con panel deslizante y badge deunread",
+      "Switch de push notifications con persistencia en localStorage",
+      "Solicitudes de amistad con aceptar/rechazar en notificaciones",
+      "Invitaciones a partida con buscador de jugadores",
+      "Broadcasts del CEO se ven en notificaciones en tiempo real",
+      "Fix: tienda mostraba items comprados incorrectamente (IDs DB vs hardcode)",
+      "Fix: inventario perfil 5 columnas cuadradas compactas",
+      "Fix: invalid date en notificaciones",
+      "Torneos envian push + WebSocket a participantes conectados",
+      "Deduplicacion de mensajes de broadcast"
+    ]
+  },
   {
     version: "3.1.0",
     date: "2026-07-10",
