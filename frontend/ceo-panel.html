@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CEO Panel — Los 10.000 de Macko</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ceo-panel.css">
+</head>
+<body>
+
+<!-- Toast container -->
+<div id="ceo-toast-container"></div>
+
+<div id="ceo-login" class="ceo-screen">
+  <div class="ceo-login-box">
+    <div class="ceo-logo">👑</div>
+    <h1>CEO Panel</h1>
+    <p class="ceo-sub">Los 10.000 de Macko</p>
+    <div class="ceo-login-form">
+      <input id="ceo-user" type="text" placeholder="Usuario" class="ceo-input" autocomplete="username">
+      <input id="ceo-pass" type="password" placeholder="Contraseña" class="ceo-input" autocomplete="current-password">
+      <button id="ceo-login-btn" class="ceo-btn ceo-btn-gold">Ingresar</button>
+      <p id="ceo-login-error" class="ceo-error hidden"></p>
+    </div>
+  </div>
+</div>
+
+<div id="ceo-dashboard" class="ceo-screen hidden">
+  <div class="ceo-topbar">
+    <div class="ceo-topbar-left">
+      <span class="ceo-topbar-logo">👑 CEO Panel</span>
+      <span class="ceo-topbar-user" id="ceo-topbar-user"></span>
+    </div>
+    <div class="ceo-topbar-right">
+      <button id="ceo-changelog-btn" class="ceo-btn-sm" title="Versiones">📋</button>
+      <button id="ceo-broadcast-btn" class="ceo-btn-sm" title="Enviar mensaje global">📢 Broadcast</button>
+      <button id="ceo-logout-btn" class="ceo-btn-sm">Salir</button>
+    </div>
+  </div>
+
+  <div class="ceo-body">
+    <!-- Stats Cards -->
+    <div class="ceo-stats-grid">
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">👥</div><div class="ceo-stat-num" id="stat-users">-</div><div class="ceo-stat-label">Usuarios</div></div>
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">🎲</div><div class="ceo-stat-num" id="stat-games">-</div><div class="ceo-stat-label">Partidas jugadas</div></div>
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">🟢</div><div class="ceo-stat-num" id="stat-online">-</div><div class="ceo-stat-label">Online ahora</div></div>
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">🏠</div><div class="ceo-stat-num" id="stat-rooms">-</div><div class="ceo-stat-label">Salas activas</div></div>
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">⚔️</div><div class="ceo-stat-num" id="stat-matches">-</div><div class="ceo-stat-label">Partidas en curso</div></div>
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">💬</div><div class="ceo-stat-num" id="stat-feedback">-</div><div class="ceo-stat-label">Feedbacks</div></div>
+      <div class="ceo-stat-card"><div class="ceo-stat-icon">💰</div><div class="ceo-stat-num" id="stat-transactions">-</div><div class="ceo-stat-label">Transacciones</div></div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="ceo-tabs">
+      <button class="ceo-tab active" data-tab="users">👥 Usuarios</button>
+      <button class="ceo-tab" data-tab="feedback">💬 Feedback</button>
+      <button class="ceo-tab" data-tab="games">🎮 Partidas</button>
+      <button class="ceo-tab" data-tab="audit">📋 Auditoría</button>
+      <button class="ceo-tab" data-tab="admins">🔐 Admins</button>
+      <button class="ceo-tab" data-tab="analytics">📊 Analytics</button>
+      <button class="ceo-tab" data-tab="shop">🛒 Tienda</button>
+      <button class="ceo-tab" data-tab="tournaments">🏆 Torneos</button>
+      <button class="ceo-tab" data-tab="server">🖥️ Servidor</button>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="ceo-tab-users" class="ceo-tab-content">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-user-count"></span>
+        <input id="ceo-search-users" type="text" class="ceo-input ceo-search" placeholder="🔍 Buscar por nombre o email...">
+        <button id="ceo-refresh-users" class="ceo-btn-sm">🔄</button>
+        <button id="ceo-export-users" class="ceo-btn-sm" title="Exportar CSV">📥 CSV</button>
+      </div>
+      <div class="ceo-table-wrap">
+        <table class="ceo-table">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Email</th>
+              <th>Alias</th>
+              <th>🪙</th>
+              <th>🎲</th>
+              <th>🏆</th>
+              <th>Nivel</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="ceo-users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Feedback Tab -->
+    <div id="ceo-tab-feedback" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-feedback-count"></span>
+        <button id="ceo-refresh-feedback" class="ceo-btn-sm">🔄</button>
+        <button id="ceo-export-feedback" class="ceo-btn-sm" title="Exportar CSV">📥 CSV</button>
+      </div>
+      <div class="ceo-table-wrap">
+        <table class="ceo-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Usuario</th>
+              <th>Categoría</th>
+              <th>Mensaje</th>
+              <th>Respuesta</th>
+              <th>Acc.</th>
+            </tr>
+          </thead>
+          <tbody id="ceo-feedback-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Active Games Tab -->
+    <div id="ceo-tab-games" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-games-count"></span>
+        <button id="ceo-refresh-games" class="ceo-btn-sm">🔄</button>
+      </div>
+      <div class="ceo-table-wrap">
+        <table class="ceo-table">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Estado</th>
+              <th>Jugadores</th>
+              <th>Capacidad</th>
+            </tr>
+          </thead>
+          <tbody id="ceo-games-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Audit Log Tab -->
+    <div id="ceo-tab-audit" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-audit-count"></span>
+        <button id="ceo-refresh-audit" class="ceo-btn-sm">🔄</button>
+      </div>
+      <div class="ceo-table-wrap">
+        <table class="ceo-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Admin</th>
+              <th>Acción</th>
+              <th>Target</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody id="ceo-audit-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Admins Tab -->
+    <div id="ceo-tab-admins" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-admins-count"></span>
+        <button id="ceo-create-admin-btn" class="ceo-btn-sm" style="color:var(--gold)">➕ Nuevo admin</button>
+      </div>
+      <div class="ceo-table-wrap">
+        <table class="ceo-table">
+          <thead>
+            <tr>
+              <th>Admin</th>
+              <th>Rol</th>
+              <th>Creado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="ceo-admins-tbody"></tbody>
+        </table>
+      </div>
+      <div class="ceo-server-section" style="margin-top:12px">
+        <div class="ceo-server-card">
+          <h4>🔑 Cambiar mi contraseña</h4>
+          <div class="ceo-admin-password-row">
+            <input id="ceo-pass-current" type="password" class="ceo-input" placeholder="Contraseña actual" style="flex:1">
+            <input id="ceo-pass-new" type="password" class="ceo-input" placeholder="Nueva contraseña" style="flex:1">
+            <button id="ceo-pass-change-btn" class="ceo-btn-sm" style="color:var(--gold)">Cambiar</button>
+          </div>
+          <p id="ceo-pass-status" class="ceo-error hidden" style="margin-top:6px"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics Tab -->
+    <div id="ceo-tab-analytics" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count">📈 Analytics</span>
+        <select id="ceo-analytics-days" class="ceo-input" style="width:auto;padding:6px 10px;font-size:11px;flex-shrink:0">
+          <option value="7">7 días</option>
+          <option value="14">14 días</option>
+          <option value="30" selected>30 días</option>
+          <option value="60">60 días</option>
+          <option value="90">90 días</option>
+        </select>
+        <button id="ceo-refresh-analytics" class="ceo-btn-sm">🔄</button>
+        <button id="ceo-download-report" class="ceo-btn-sm" style="color:var(--green)">📋 Reporte semanal</button>
+        <button id="ceo-email-report" class="ceo-btn-sm" style="color:var(--green)">📧 Enviar por email</button>
+      </div>
+      <div class="ceo-charts-grid">
+        <div class="ceo-chart-card">
+          <h4>👥 Registros de usuarios</h4>
+          <canvas id="chart-users" height="240"></canvas>
+        </div>
+        <div class="ceo-chart-card">
+          <h4>💰 Transacciones (monedas)</h4>
+          <canvas id="chart-transactions" height="240"></canvas>
+        </div>
+        <div class="ceo-chart-card">
+          <h4>🎮 Jugadores activos</h4>
+          <canvas id="chart-games" height="240"></canvas>
+        </div>
+        <div class="ceo-chart-card">
+          <h4>💳 Revenue (monedas gastadas)</h4>
+          <canvas id="chart-revenue" height="240"></canvas>
+        </div>
+        <div class="ceo-chart-card">
+          <h4>📊 Distribución de niveles</h4>
+          <div id="chart-levels" style="padding:8px 0"></div>
+        </div>
+        <div class="ceo-chart-card">
+          <h4>🕐 Heatmap de actividad</h4>
+          <div id="chart-heatmap" style="padding:8px 0"></div>
+        </div>
+        <div class="ceo-chart-card ceo-chart-full">
+          <h4>🛒 Estadísticas de tienda</h4>
+          <div id="chart-shop-stats" style="padding:4px 0"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shop Catalog Tab -->
+    <div id="ceo-tab-shop" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-shop-count"></span>
+        <input id="ceo-search-shop" type="text" class="ceo-input ceo-search" placeholder="🔍 Buscar por nombre...">
+        <button id="ceo-refresh-shop" class="ceo-btn-sm">🔄</button>
+        <button id="ceo-shop-add" class="ceo-btn-sm" style="color:var(--gold)">➕ Nuevo item</button>
+      </div>
+      <div class="ceo-shop-grid" id="ceo-shop-grid"></div>
+    </div>
+
+    <!-- Torneos Tab -->
+    <div id="ceo-tab-tournaments" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-tournament-count"></span>
+        <button id="ceo-refresh-tournaments" class="ceo-btn-sm">🔄</button>
+        <button id="ceo-tournament-create-btn" class="ceo-btn-sm" style="color:var(--gold)">🏆 Nuevo torneo</button>
+      </div>
+      <div class="ceo-table-wrap">
+        <table class="ceo-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Estado</th>
+              <th>Jugadores</th>
+              <th>Fee</th>
+              <th>Premios</th>
+              <th>Ronda</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="ceo-tournaments-tbody"></tbody>
+        </table>
+      </div>
+      <div class="ceo-tournament-stats" id="ceo-tournament-stats" style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap"></div>
+    </div>
+
+    <!-- Torneo Create/Edit Modal -->
+    <div id="ceo-modal-tournament" class="ceo-modal hidden">
+      <div class="ceo-modal-box">
+        <div class="ceo-modal-header">
+          <h3 id="ceo-tournament-modal-title">🏆 Nuevo torneo</h3>
+          <button id="ceo-tournament-modal-close" class="ceo-btn-sm">✕</button>
+        </div>
+        <div class="ceo-shop-form">
+          <div class="ceo-shop-form-group" style="margin-bottom:8px">
+            <label>Nombre *</label>
+            <input id="ceo-tournament-f-name" type="text" class="ceo-input" placeholder="Ej: Torneo de Verano">
+          </div>
+          <div class="ceo-shop-form-group" style="margin-bottom:8px">
+            <label>Descripción</label>
+            <input id="ceo-tournament-f-desc" type="text" class="ceo-input" placeholder="Torneo semanal...">
+          </div>
+          <div class="ceo-shop-form-row">
+            <div class="ceo-shop-form-group" style="flex:1">
+              <label>Jugadores máx *</label>
+              <select id="ceo-tournament-f-players" class="ceo-input" style="padding:8px 10px">
+                <option value="4">4</option>
+                <option value="8">8</option>
+                <option value="16" selected>16</option>
+                <option value="32">32</option>
+                <option value="64">64</option>
+              </select>
+            </div>
+            <div class="ceo-shop-form-group" style="flex:1">
+              <label>Fee inscripción 🪙</label>
+              <input id="ceo-tournament-f-fee" type="number" class="ceo-input" placeholder="0" value="0" min="0">
+            </div>
+          </div>
+          <div class="ceo-shop-form-row">
+            <div class="ceo-shop-form-group" style="flex:1">
+              <label>Fecha inicio *</label>
+              <input id="ceo-tournament-f-start" type="date" class="ceo-input">
+            </div>
+            <div class="ceo-shop-form-group" style="flex:1">
+              <label>Inscripción hasta</label>
+              <input id="ceo-tournament-f-reg" type="date" class="ceo-input">
+            </div>
+          </div>
+          <div class="ceo-modal-btns">
+            <button id="ceo-tournament-save" class="ceo-btn ceo-btn-gold">Crear torneo</button>
+            <button id="ceo-tournament-cancel" class="ceo-btn ceo-btn-ghost">Cancelar</button>
+          </div>
+          <p id="ceo-tournament-form-error" class="ceo-error hidden"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Server Info Tab -->
+    <div id="ceo-tab-server" class="ceo-tab-content hidden">
+      <div class="ceo-table-header">
+        <span class="ceo-table-count" id="ceo-server-refresh-label"></span>
+        <button id="ceo-refresh-server" class="ceo-btn-sm">🔄</button>
+      </div>
+      <div class="ceo-server-grid">
+        <div class="ceo-server-card">
+          <h4>⏱️ Tiempo activo</h4>
+          <div class="ceo-server-val" id="srv-uptime">-</div>
+        </div>
+        <div class="ceo-server-card">
+          <h4>🟢 Conexiones activas</h4>
+          <div class="ceo-server-val" id="srv-connections">-</div>
+        </div>
+        <div class="ceo-server-card">
+          <h4>🏠 Salas activas</h4>
+          <div class="ceo-server-val" id="srv-rooms">-</div>
+        </div>
+        <div class="ceo-server-card">
+          <h4>📦 Memoria (RSS)</h4>
+          <div class="ceo-server-val" id="srv-memory">-</div>
+        </div>
+        <div class="ceo-server-card">
+          <h4>🟡 Node.js</h4>
+          <div class="ceo-server-val" id="srv-node">-</div>
+        </div>
+        <div class="ceo-server-card">
+          <h4>💻 Plataforma</h4>
+          <div class="ceo-server-val" id="srv-platform">-</div>
+        </div>
+      </div>
+      <div class="ceo-server-section">
+        <h4>🔧 Variables de entorno</h4>
+        <div class="ceo-env-grid" id="ceo-env-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="ceo-modal-confirm" class="ceo-modal hidden">
+  <div class="ceo-modal-box">
+    <h3 id="ceo-confirm-title">Confirmar</h3>
+    <p id="ceo-confirm-desc" class="ceo-modal-desc"></p>
+    <div class="ceo-modal-btns">
+      <button id="ceo-confirm-yes" class="ceo-btn ceo-btn-red">Confirmar</button>
+      <button id="ceo-confirm-no" class="ceo-btn ceo-btn-ghost">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Suspension Modal -->
+<div id="ceo-modal-suspend" class="ceo-modal hidden">
+  <div class="ceo-modal-box">
+    <h3>Suspender usuario</h3>
+    <p id="ceo-suspend-user" class="ceo-modal-desc"></p>
+    <label class="ceo-modal-label">Horas de suspensión:</label>
+    <input id="ceo-suspend-hours" type="number" class="ceo-input" value="24" min="1" max="720">
+    <div class="ceo-modal-btns">
+      <button id="ceo-suspend-confirm" class="ceo-btn ceo-btn-red">Suspender</button>
+      <button id="ceo-suspend-cancel" class="ceo-btn ceo-btn-ghost">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Detail Modal -->
+<div id="ceo-modal-user" class="ceo-modal hidden">
+  <div class="ceo-modal-box ceo-modal-box-lg">
+    <div class="ceo-modal-header">
+      <h3 id="ceo-user-detail-name">Usuario</h3>
+      <button id="ceo-user-detail-close" class="ceo-btn-sm">✕</button>
+    </div>
+    <div class="ceo-user-detail-body">
+      <div class="ceo-user-detail-info">
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">ID</span><span id="ceo-ud-id" class="ceo-field-val"></span></div>
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">Email</span><span id="ceo-ud-email" class="ceo-field-val"></span></div>
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">Alias</span><span id="ceo-ud-alias" class="ceo-field-val"></span></div>
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">Monedas</span><span id="ceo-ud-coins" class="ceo-field-val"></span></div>
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">Nivel</span><span id="ceo-ud-level" class="ceo-field-val"></span></div>
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">Partidas</span><span id="ceo-ud-games" class="ceo-field-val"></span></div>
+        <div class="ceo-user-detail-field"><span class="ceo-field-label">Victorias</span><span id="ceo-ud-wins" class="ceo-field-val"></span></div>
+      </div>
+      <div class="ceo-user-detail-actions">
+        <div class="ceo-user-detail-adjust">
+          <h4>Ajustar monedas</h4>
+          <div class="ceo-adjust-row">
+            <input id="ceo-ud-coin-amount" type="number" class="ceo-input" placeholder="Cantidad" value="100" min="1">
+            <button id="ceo-ud-coin-give" class="ceo-btn-sm" style="color:var(--green)">➕ Dar</button>
+            <button id="ceo-ud-coin-take" class="ceo-btn-sm" style="color:var(--red)">➖ Quitar</button>
+          </div>
+          <input id="ceo-ud-coin-reason" type="text" class="ceo-input" placeholder="Motivo (opcional)" style="margin-top:6px">
+        </div>
+        <div class="ceo-user-detail-adjust" style="margin-top:12px">
+          <h4>🔑 Contraseña</h4>
+          <button id="ceo-ud-reset-pass-btn" class="ceo-btn-sm" style="color:var(--gold)" data-userid="" data-username="">Resetear contraseña</button>
+        </div>
+      </div>
+      <div class="ceo-user-detail-txns">
+        <h4>Últimas transacciones</h4>
+        <div class="ceo-txns-list" id="ceo-ud-txns"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Broadcast Modal -->
+<div id="ceo-modal-broadcast" class="ceo-modal hidden">
+  <div class="ceo-modal-box">
+    <h3>📢 Mensaje global</h3>
+    <p class="ceo-modal-desc">Enviar un anuncio a todos los jugadores conectados.</p>
+    <textarea id="ceo-broadcast-msg" class="ceo-input ceo-textarea" placeholder="Escribí el mensaje..." rows="3"></textarea>
+    <div class="ceo-modal-btns">
+      <button id="ceo-broadcast-send" class="ceo-btn ceo-btn-gold">Enviar</button>
+      <button id="ceo-broadcast-cancel" class="ceo-btn ceo-btn-ghost">Cancelar</button>
+    </div>
+    <p id="ceo-broadcast-status" class="ceo-error hidden" style="margin-top:8px"></p>
+  </div>
+</div>
+
+<!-- Feedback Response Modal -->
+<div id="ceo-modal-feedback-respond" class="ceo-modal hidden">
+  <div class="ceo-modal-box">
+    <div class="ceo-modal-header">
+      <h3>💬 Responder feedback</h3>
+      <button id="ceo-fb-close" class="ceo-btn-sm">✕</button>
+    </div>
+    <div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,.03);border-radius:6px;font-size:12px;color:var(--text2)">
+      <strong id="ceo-fb-user"></strong>: <span id="ceo-fb-msg"></span>
+    </div>
+    <textarea id="ceo-fb-response" class="ceo-input ceo-textarea" placeholder="Escribí tu respuesta..." rows="3"></textarea>
+    <div class="ceo-modal-btns">
+      <button id="ceo-fb-send" class="ceo-btn ceo-btn-gold">Enviar respuesta</button>
+      <button id="ceo-fb-cancel" class="ceo-btn ceo-btn-ghost">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shop Item Modal (Create/Edit) -->
+<div id="ceo-modal-shop-item" class="ceo-modal hidden">
+  <div class="ceo-modal-box">
+    <div class="ceo-modal-header">
+      <h3 id="ceo-shop-modal-title">Nuevo item</h3>
+      <button id="ceo-shop-modal-close" class="ceo-btn-sm">✕</button>
+    </div>
+    <div class="ceo-shop-form">
+      <div class="ceo-shop-form-row">
+        <div class="ceo-shop-form-group" style="flex:1">
+          <label>Nombre *</label>
+          <input id="ceo-shop-f-name" type="text" class="ceo-input" placeholder="Ej: Dados Neón">
+        </div>
+        <div class="ceo-shop-form-group" style="flex:0 0 70px">
+          <label>Icono</label>
+          <input id="ceo-shop-f-icon" type="text" class="ceo-input" placeholder="🎲" maxlength="4" style="text-align:center">
+        </div>
+      </div>
+      <div class="ceo-shop-form-row">
+        <div class="ceo-shop-form-group" style="flex:1">
+          <label>Categoría *</label>
+          <select id="ceo-shop-f-category" class="ceo-input" style="padding:8px 10px">
+            <option value="dados">🎲 Dados</option>
+            <option value="avatares">👤 Avatares</option>
+            <option value="especiales">✨ Especiales</option>
+            <option value="ultra">💎 Ultra Raros</option>
+          </select>
+        </div>
+        <div class="ceo-shop-form-group" style="flex:0 0 120px">
+          <label>Precio *</label>
+          <input id="ceo-shop-f-price" type="number" class="ceo-input" placeholder="500" min="0">
+        </div>
+      </div>
+      <div class="ceo-shop-form-group">
+        <label>Descripción</label>
+        <input id="ceo-shop-f-desc" type="text" class="ceo-input" placeholder="Descripción del item...">
+      </div>
+      <div class="ceo-modal-btns">
+        <button id="ceo-shop-save" class="ceo-btn ceo-btn-gold">Guardar</button>
+        <button id="ceo-shop-cancel" class="ceo-btn ceo-btn-ghost">Cancelar</button>
+      </div>
+      <p id="ceo-shop-form-error" class="ceo-error hidden"></p>
+    </div>
+  </div>
+</div>
+
+<script src="ceo-panel.js"></script>
+
+<!-- Changelog Modal -->
+<div id="ceo-modal-changelog" class="ceo-modal hidden">
+  <div class="ceo-modal-box" style="max-width:520px;width:90%;text-align:left;padding:24px 20px">
+    <div class="ceo-modal-header">
+      <h3 style="margin:0;font-family:'Cinzel',serif;color:var(--gold);font-size:20px">📋 Historial de cambios</h3>
+      <button id="ceo-modal-changelog-close" class="ceo-btn-sm">✕</button>
+    </div>
+    <p style="font-size:11px;color:var(--text3);margin-bottom:14px">Versión actual: <strong id="ceo-changelog-current-version">—</strong></p>
+    <div id="ceo-changelog-list" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:12px"></div>
+  </div>
+</div>
+</html>

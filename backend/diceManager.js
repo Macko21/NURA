@@ -151,6 +151,17 @@ function _bank(match, roomId, broadcast, auto = false) {
   cur.score     += gained;
   cur.turnPoints = 0;
 
+  // Verificar si llegó a 10.000 exactos (victoria por banco)
+  if (cur.score === MAX_SCORE) {
+    setWinner(match, cur);
+    pushHistory(match, "WIN", { playerId: cur.id, gained });
+    broadcast(roomId, "WIN", {
+      playerId: cur.id, playerName: cur.name, dice: [],
+      rollScore: gained, match: snapshotMatch(match)
+    });
+    return; // No avanzar turno, la partida terminó
+  }
+
   pushHistory(match, "BANKED", { playerId: cur.id, gained, totalScore: cur.score, auto });
   broadcast(roomId, "BANKED", {
     playerId:   cur.id,

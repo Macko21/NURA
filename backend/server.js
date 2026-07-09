@@ -6,8 +6,11 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, saveGlobalMessage, getGlobalMessages, updateLastSeen, savePrivateMessage, getPrivateMessages, cleanupGlobalChat, cleanupPrivateMessages, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
+const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
+const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const path      = require("path");
+const fs        = require("fs");
 const http      = require("http");
 const express   = require("express");
 const WebSocket = require("ws");
@@ -40,6 +43,15 @@ const {
 
 const { createPlayerState } = require("./matchState");
 const { register, login, requireAuth, requestPasswordReset } = require("./authManager");
+
+const {
+  initTournamentManager,
+  getActiveTournamentsData,
+  registerPlayer: registerTournamentPlayer,
+  startTournament: startTournamentBracket,
+  completeMatch: completeTournamentMatch,
+  cleanupTournament: cleanupTournamentData,
+} = require("./tournamentManager");
 
 /* ── Express ─────────────────────────────────────────────── */
 const app  = express();
@@ -90,11 +102,15 @@ app.use("/api/login", authLimiter);
 app.use("/api/register", authLimiter);
 app.use("/api/forgot-password", authLimiter);
 app.use("/api/reset-password", authLimiter);
+app.use("/ceo-panel/api/login", authLimiter);
 app.use("/api", generalLimiter);
 
 app.get("/", (req, res) =>
   res.sendFile(path.join(__dirname, "../frontend/index.html"))
 );
+
+// Favicon — evitar 404
+app.get("/favicon.ico", (req, res) => res.status(204).end());
 
 // Nuevas rutas de Autenticación
 app.post("/api/register", register);
@@ -109,7 +125,7 @@ app.get("/ranking", requireAuth, async (req, res) => {
 // Ruta para obtener el catálogo de la tienda (incluye ownership)
 app.get("/api/shop/catalog", requireAuth, async (req, res) => {
   try {
-    const items = getShopCatalog();
+    const items = await getShopCatalog();
     // Obtener items que ya posee el usuario
     const inv = await getOwnedItems(req.user.userId);
     const ownedIds = inv.owned.map(i => i.id);
@@ -253,6 +269,890 @@ app.post("/api/user/missions/claim", requireAuth, async (req, res) => {
   }
 });
 
+// ── AMIGOS ────────────────────────────────────────────────────
+app.get("/api/friends", requireAuth, async (req, res) => {
+  try {
+    const friends = await getFriends(req.user.playerId);
+    // Agregar is_online desde el server (WebSocket activo en clients Map)
+    const friendsWithStatus = friends.map(f => ({
+      ...f,
+      is_online: clients.has(f.id) && clients.get(f.id)?.readyState === WebSocket.OPEN
+    }));
+    res.json({ friends: friendsWithStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/friends/add", requireAuth, async (req, res) => {
+  try {
+    const { friendId } = req.body;
+    const result = await addFriend(req.user.playerId, friendId);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/friends/remove", requireAuth, async (req, res) => {
+  try {
+    const { friendId } = req.body;
+    await removeFriend(req.user.playerId, friendId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/friends/search", requireAuth, async (req, res) => {
+  try {
+    const q = req.query.q || '';
+    if (q.length < 2) return res.json({ players: [] });
+    const players = await searchPlayers(q, req.user.playerId);
+    res.json({ players });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CHAT GLOBAL ──────────────────────────────────────────────
+app.get("/api/global-chat", requireAuth, async (req, res) => {
+  try {
+    const messages = await getGlobalMessages(30);
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PARTIDAS ACTIVAS ────────────────────────────────────────
+app.get("/api/games/active", requireAuth, async (req, res) => {
+  try {
+    const activeGames = [];
+    for (const [id, room] of rooms) {
+      activeGames.push({
+        roomId: id,
+        code: room.code,
+        status: room.status,
+        players: room.players.map(p => ({ id: p.id, name: p.name })),
+        playerCount: room.players.length,
+        maxPlayers: room.maxPlayers
+      });
+    }
+    res.json({ games: activeGames });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── TORNEOS ────────────────────────────────────────────────────
+app.get("/api/tournaments", requireAuth, async (req, res) => {
+  try {
+    const tournaments = await getActiveTournamentsData();
+    // También incluir torneos completados recientes (últimos 5)
+    const { getTournaments } = require("./database");
+    const allTourneys = await getTournaments(10);
+    res.json({ tournaments: allTourneys, brackets: tournaments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/tournaments/:id", requireAuth, async (req, res) => {
+  try {
+    const { getTournamentBracketData } = require("./database");
+    const bracket = await getTournamentBracketData(req.params.id);
+    if (!bracket) return res.status(404).json({ error: "Torneo no encontrado" });
+    res.json(bracket);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/tournaments/:id/register", requireAuth, async (req, res) => {
+  try {
+    const playerId = req.user.playerId || req.user.username;
+    const playerName = req.user.username;
+    const result = await registerTournamentPlayer(req.params.id, playerId, playerName);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/tournaments/:id/unregister", requireAuth, async (req, res) => {
+  try {
+    const { unregisterFromTournament } = require("./database");
+    const playerId = req.user.playerId || req.user.username;
+    await unregisterFromTournament(req.params.id, playerId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/tournaments/:id/participants", requireAuth, async (req, res) => {
+  try {
+    const { getTournamentParticipants } = require("./database");
+    const participants = await getTournamentParticipants(req.params.id);
+    res.json({ participants });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/tournaments/history", requireAuth, async (req, res) => {
+  try {
+    const { getTournamentHistoryByPlayer } = require("./database");
+    const playerId = req.user.playerId || req.user.username;
+    const history = await getTournamentHistoryByPlayer(playerId, 10);
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── VERSIÓN Y CHANGELOG ──────────────────────────────────────
+// Cache de la versión (se actualiza al reiniciar el server)
+let _versionCache = null;
+app.get("/api/version", (req, res) => {
+  try {
+    if (!_versionCache) {
+      const versionData = require(path.join(__dirname, "../frontend/version.js"));
+      _versionCache = { version: versionData.GAME_VERSION, changelog: versionData.CHANGELOG };
+    }
+    res.json(_versionCache);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CEO PANEL — TORNEOS ─────────────────────────────────
+app.get("/ceo-panel/api/tournaments", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { getTournaments, getTournamentStats } = require("./database");
+    const [tournaments, stats] = await Promise.all([
+      getTournaments(50),
+      getTournamentStats()
+    ]);
+    res.json({ tournaments, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/tournaments/create", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const { createTournament } = require("./database");
+    const { name, description, maxPlayers, fee, prizes, startTime, registrationUntil } = req.body;
+    if (!name || !maxPlayers || !startTime) {
+      return res.status(400).json({ error: 'Nombre, maxPlayers y startTime requeridos' });
+    }
+    const tourney = await createTournament(
+      name, description, maxPlayers, fee || 0, prizes || [],
+      new Date(startTime).getTime(),
+      registrationUntil ? new Date(registrationUntil).getTime() : null,
+      req.admin.username
+    );
+    logAudit(req.admin.username, 'tournament_create', String(tourney.id), `${name} (${maxPlayers} players, fee: ${fee || 0})`).catch(e => {});
+    res.json({ tournament: tourney });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/tournaments/:id/start", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const result = await startTournamentBracket(req.params.id);
+    logAudit(req.admin.username, 'tournament_start', req.params.id, 'Bracket generado').catch(e => {});
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/tournaments/:id/cancel", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const { cancelTournament } = require("./database");
+    await cancelTournament(req.params.id);
+    cleanupTournamentData(req.params.id);
+    logAudit(req.admin.username, 'tournament_cancel', req.params.id, 'Cancelado').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/tournaments/:id/advance", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { matchId, winnerId, p1Score, p2Score } = req.body;
+    if (!matchId || !winnerId) return res.status(400).json({ error: 'matchId y winnerId requeridos' });
+    const result = await completeTournamentMatch(
+      req.params.id, matchId, winnerId, p1Score || 0, p2Score || 0,
+      clients, send
+    );
+    logAudit(req.admin.username, 'tournament_advance', String(matchId), `winner: ${winnerId}`).catch(e => {});
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/tournaments/:id/bracket", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const { getTournamentBracketData } = require("./database");
+    const bracket = await getTournamentBracketData(req.params.id);
+    res.json(bracket || {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── FEEDBACK (público, requiere auth) ──────────────────────
+app.post("/api/feedback", requireAuth, async (req, res) => {
+  try {
+    const { category, message } = req.body;
+    if (!category || !message) return res.status(400).json({ error: 'Categoría y mensaje requeridos' });
+    const validCategories = ['sugerencia', 'bug', 'otro'];
+    if (!validCategories.includes(category)) return res.status(400).json({ error: 'Categoría inválida' });
+    await saveFeedback(req.user.playerId, req.user.username, category, message);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// CEO PANEL — RUTAS PROTEGIDAS
+// ════════════════════════════════════════════════════════════
+
+// Middleware de autenticación para CEO panel
+async function requireCeoAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+    const admin = await getAdminByUsername(decoded.username);
+    if (!admin || decoded.secret !== (process.env.CEO_SECRET || 'ceo-default')) {
+      return res.status(401).json({ error: 'Token inválido' });
+    }
+    req.admin = admin;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+}
+
+// Servir HTML del CEO panel
+app.get("/ceo-panel", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/ceo-panel.html"));
+});
+
+// Login del CEO panel
+app.post("/ceo-panel/api/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Credenciales requeridas' });
+    const admin = await getAdminByUsername(username);
+    if (!admin) return res.status(401).json({ error: 'Credenciales inválidas' });
+    const match = await bcrypt.compare(password, admin.password_hash);
+    if (!match) return res.status(401).json({ error: 'Credenciales inválidas' });
+    // Token simple: username + secret env
+    const token = Buffer.from(JSON.stringify({ username: admin.username, ts: Date.now(), secret: process.env.CEO_SECRET || 'ceo-default' })).toString('base64');
+    res.json({ token, username: admin.username, role: admin.role });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Middleware de permisos por rol (viewer < editor < admin)
+function requireCeoRole(minRole) {
+  return (req, res, next) => {
+    const hierarchy = { viewer: 0, editor: 1, admin: 2 };
+    const userLevel = hierarchy[req.admin?.role] ?? -1;
+    const needed = hierarchy[minRole] ?? 99;
+    if (userLevel < needed) {
+      return res.status(403).json({ error: 'No tenés permisos para esta accion' });
+    }
+    next();
+  };
+}
+
+// Stats del CEO panel (viewer+)
+app.get("/ceo-panel/api/stats", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const stats = await getCeoStats();
+    // Agregar salas activas
+    stats.activeRooms = rooms.size;
+    stats.activeMatches = 0;
+    for (const [, room] of rooms) {
+      if (room.status === 'playing') stats.activeMatches++;
+    }
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Listar usuarios (viewer+)
+app.get("/ceo-panel/api/users", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const users = await getAllUsers(200);
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Banear usuario (editor+)
+app.post("/ceo-panel/api/users/ban", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await banPlayer(userId);
+    logAudit(req.admin.username, 'ban', userId, 'Permanente').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Suspender usuario (editor+)
+app.post("/ceo-panel/api/users/suspend", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { userId, hours } = req.body;
+    const result = await suspendPlayer(userId, hours || 24);
+    logAudit(req.admin.username, 'suspend', userId, `${hours || 24}h`).catch(e => {});
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Desbanear usuario (editor+)
+app.post("/ceo-panel/api/users/unban", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await unbanPlayer(userId);
+    logAudit(req.admin.username, 'unban', userId, '').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Obtener feedback (viewer+)
+app.get("/ceo-panel/api/feedback", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const feedback = await getFeedback(100);
+    res.json({ feedback });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Partidas activas (viewer+)
+app.get("/ceo-panel/api/games/active", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const activeGames = [];
+    for (const [id, room] of rooms) {
+      if (room.players.length === 0) continue; // filtrar salas vacías
+      activeGames.push({
+        roomId: id,
+        code: room.code,
+        status: room.status,
+        players: room.players.map(p => ({ id: p.id, name: p.name })),
+        playerCount: room.players.length,
+        maxPlayers: room.maxPlayers
+      });
+    }
+    res.json({ games: activeGames });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transacciones de un usuario (editor+)
+app.get("/ceo-panel/api/users/:id/transactions", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Buscar primero como playerId, luego como userId
+    let rows = await getPlayerTransactions(id, 50);
+    if (!rows.length) {
+      // Intentar buscar el player por userId
+      const player = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [id]);
+      if (player.rows[0]) {
+        rows = await getPlayerTransactions(player.rows[0].id, 50);
+      }
+    }
+    res.json({ transactions: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Ajustar monedas de un usuario (editor+)
+app.post("/ceo-panel/api/users/adjust-coins", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    let { playerId, amount, reason } = req.body;
+    if (!playerId || !amount) return res.status(400).json({ error: 'playerId y amount requeridos' });
+    // Si se envió un userId (UUID) en lugar de playerId, resolver el player
+    if (playerId.includes('-')) {
+      const plRes = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [playerId]);
+      if (plRes.rows[0]) playerId = plRes.rows[0].id;
+    }
+    const result = await adjustPlayerCoins(playerId, parseInt(amount), reason || 'Ajuste manual CEO');
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Resetear contraseña de usuario regular (editor+)
+app.post("/ceo-panel/api/users/reset-password", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+    if (!userId || !newPassword) return res.status(400).json({ error: 'userId y newPassword requeridos' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, userId]);
+    logAudit(req.admin.username, 'reset_user_password', userId, 'Contraseña reseteada por admin').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Broadcast global (editor+)
+app.post("/ceo-panel/api/broadcast", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Mensaje requerido' });
+    const safeMsg = String(message).slice(0, 500);
+    let sent = 0;
+    for (const [pid, sock] of clients) {
+      if (sock?.readyState === WebSocket.OPEN) {
+        send(sock, "BROADCAST", {
+          message: safeMsg,
+          timestamp: Date.now()
+        });
+        sent++;
+      }
+    }
+    // También guardar en global_chat como mensaje del sistema
+    saveGlobalMessage('ceo', '👑 CEO', safeMsg).catch(e => {});
+    // Audit log
+    logAudit(req.admin.username, 'broadcast', null, safeMsg).catch(e => {});
+    res.json({ success: true, sent });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AUDIT LOG (viewer+) ─────────────────────────────────────
+app.get("/ceo-panel/api/audit-log", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const logs = await getAuditLog(limit);
+    res.json({ logs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CAMBIAR CONTRASEÑA DE OTRO ADMIN (admin only) ───────────
+app.post("/ceo-panel/api/admins/change-password/:adminId", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
+    // Buscar el admin por ID
+    const adminRes = await pool.query(`SELECT username FROM admins WHERE id = $1`, [adminId]);
+    if (!adminRes.rows[0]) return res.status(404).json({ error: 'Admin no encontrado' });
+    if (String(adminRes.rows[0].username) === String(req.admin.username)) {
+      return res.status(400).json({ error: 'Usá "Cambiar mi contraseña" para cambiarte a vos mismo' });
+    }
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await changeAdminPassword(adminRes.rows[0].username, newHash);
+    logAudit(req.admin.username, 'admin_change_password', adminRes.rows[0].username, 'Contraseña reseteada por otro admin').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMINS (admin only) ──────────────────────────────────────
+app.get("/ceo-panel/api/admins", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const admins = await getAllAdmins();
+    res.json({ admins });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/admins/create", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
+    if (password.length < 6) return res.status(400).json({ error: 'Contraseña debe tener al menos 6 caracteres' });
+    const hash = await bcrypt.hash(password, 10);
+    await createAdmin(username, hash, role || 'editor');
+    logAudit(req.admin.username, 'admin_create', username, `rol: ${role || 'editor'}`).catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/admins/role", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const { adminId, role } = req.body;
+    if (!adminId || !role) return res.status(400).json({ error: 'adminId y role requeridos' });
+    if (String(req.admin.id) === String(adminId)) {
+      return res.status(400).json({ error: 'No podés cambiar tu propio rol' });
+    }
+    await updateAdminRole(adminId, role);
+    logAudit(req.admin.username, 'admin_change_role', String(adminId), `nuevo rol: ${role}`).catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/admins/delete", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
+  try {
+    const { adminId } = req.body;
+    if (!adminId) return res.status(400).json({ error: 'adminId requerido' });
+    if (String(req.admin.id) === String(adminId)) {
+      return res.status(400).json({ error: 'No podés eliminar tu propio usuario' });
+    }
+    await deleteAdmin(adminId);
+    logAudit(req.admin.username, 'admin_delete', String(adminId), '').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/admins/change-password", requireCeoAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Contraseñas requeridas' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'Nueva contraseña debe tener al menos 6 caracteres' });
+    const admin = await getAdminByUsername(req.admin.username);
+    const match = await bcrypt.compare(currentPassword, admin.password_hash);
+    if (!match) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await changeAdminPassword(req.admin.username, newHash);
+    logAudit(req.admin.username, 'admin_change_password', req.admin.username, '').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ANALYTICS (viewer+) ────────────────────────────────────
+app.get("/ceo-panel/api/analytics/users", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const data = await getUsersPerDay(days);
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/analytics/transactions", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const data = await getTransactionsPerDay(days);
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/analytics/games", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const data = await getGamesPlayedPerDay(days);
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/analytics/revenue", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const data = await getRevenuePerDay(days);
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/analytics/levels", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const data = await getLevelDistribution();
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/analytics/heatmap", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const data = await getActivityHeatmap();
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/analytics/shop", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const data = await getShopStats();
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── FEEDBACK MANAGEMENT (editor+) ──────────────────────────
+app.post("/ceo-panel/api/feedback/:id/respond", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Mensaje requerido' });
+    const result = await respondFeedback(id, req.admin.username, message);
+    logAudit(req.admin.username, 'feedback_respond', String(id), message.slice(0, 100)).catch(e => {});
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/ceo-panel/api/feedback/:id", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteFeedback(id);
+    logAudit(req.admin.username, 'feedback_delete', String(id), '').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── SERVER INFO (viewer+) ──────────────────────────────────
+const SERVER_START_TIME = Date.now();
+app.get("/ceo-panel/api/server", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const info = getServerInfo(SERVER_START_TIME);
+    // Agregar conteos de salas activas y jugadores conectados
+    info.activeRooms = rooms.size;
+    info.connectedPlayers = 0;
+    for (const [, sock] of clients) {
+      if (sock?.readyState === WebSocket.OPEN) info.connectedPlayers++;
+    }
+    res.json(info);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUSH NOTIFICATIONS (viewer+) ─────────────────────────
+app.get("/ceo-panel/api/push/vapid-key", requireCeoAuth, requireCeoRole('viewer'), (req, res) => {
+  res.json({ publicKey: getVapidPublicKey() || '' });
+});
+
+app.post("/ceo-panel/api/push/subscribe", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { playerId, subscription } = req.body;
+    if (!playerId || !subscription) return res.status(400).json({ error: 'playerId y subscription requeridos' });
+    await savePushSubscription(playerId, subscription);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/push/unsubscribe", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { playerId } = req.body;
+    await removePushSubscription(playerId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/push/broadcast", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    if (!isPushReady()) return res.status(400).json({ error: 'Push no configurado - faltan VAPID keys' });
+    const { title, body, url } = req.body;
+    if (!title || !body) return res.status(400).json({ error: 'title y body requeridos' });
+    const subs = await getAllPushSubscriptions();
+    let sent = 0, failed = 0;
+    for (const sub of subs) {
+      try {
+        const result = await sendPushNotification(sub.subscription, title, body, url);
+        if (result.success) sent++;
+        else {
+          failed++;
+          if (result.expired) await removePushSubscription(sub.playerId);
+        }
+      } catch(e) { failed++; }
+    }
+    logAudit(req.admin.username, 'push_broadcast', null, `title:${title} sent:${sent} failed:${failed}`).catch(e => {});
+    res.json({ success: true, sent, failed, total: subs.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/ceo-panel/api/push/stats", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const count = await getPushSubscriptionsCount();
+    res.json({ subscriptions: count, ready: isPushReady() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUSH ENDPOINTS PÚBLICOS (para que los jugadores se suscriban) ──
+app.get("/api/push/vapid-key", (req, res) => {
+  res.json({ publicKey: getVapidPublicKey() || '' });
+});
+
+app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription) return res.status(400).json({ error: 'subscription requerida' });
+    const playerId = req.user.playerId;
+    await savePushSubscription(playerId, subscription);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/push/unsubscribe", requireAuth, async (req, res) => {
+  try {
+    const playerId = req.user.playerId;
+    await removePushSubscription(playerId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── SHOP MANAGEMENT (viewer+ read, editor+ write) ────────
+app.get("/ceo-panel/api/shop/items", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const items = await getShopItemsFromDB();
+    res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/ceo-panel/api/shop/items", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { category, name, icon, price, description } = req.body;
+    if (!category || !name || !price) return res.status(400).json({ error: 'Categoria, nombre y precio requeridos' });
+    const item = await createShopItem(category, name, icon, price, description);
+    logAudit(req.admin.username, 'shop_create', String(item.id), `${name} (${category}) - $${price}`).catch(e => {});
+    res.json({ item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/ceo-panel/api/shop/items/:id", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fields = req.body;
+    const item = await updateShopItemDB(id, fields);
+    if (!item) return res.status(404).json({ error: 'Item no encontrado' });
+    logAudit(req.admin.username, 'shop_update', String(id), fields.name || '').catch(e => {});
+    res.json({ item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/ceo-panel/api/shop/items/:id", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteShopItemDB(id);
+    logAudit(req.admin.username, 'shop_delete', String(id), '').catch(e => {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── WEEKLY REPORT (viewer+) ───────────────────────────────
+app.get("/ceo-panel/api/report/weekly", requireCeoAuth, requireCeoRole('viewer'), async (req, res) => {
+  try {
+    const report = await generateWeeklyReport();
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── SEND REPORT BY EMAIL (editor+) ───────────────────────
+app.post("/ceo-panel/api/report/email", requireCeoAuth, requireCeoRole('editor'), async (req, res) => {
+  try {
+    if (!isEmailReady()) return res.status(400).json({ error: 'Email no configurado - faltan SMTP vars' });
+    const { to } = req.body;
+    if (!to) return res.status(400).json({ error: 'Destinatario (to) requerido' });
+    const report = await generateWeeklyReport();
+    const html = buildReportHtml(report);
+    const result = await sendReportEmail(to, html);
+    logAudit(req.admin.username, 'report_email', to, 'Reporte semanal enviado').catch(e => {});
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper para generar HTML del reporte
+function buildReportHtml(report) {
+  return `<html><head><meta charset="utf-8"><title>Reporte Semanal</title>
+  <style>body{font-family:sans-serif;background:#0A0A12;color:#EDE8DC;padding:20px}
+  h1{color:#D4AF37;font-size:24px}h2{color:#D4AF37;font-size:18px;margin-top:24px}
+  .stat{display:inline-block;padding:16px;margin:8px;background:rgba(18,18,30,.9);border-radius:8px;border:1px solid rgba(212,175,55,.15);text-align:center;min-width:120px}
+  .num{font-size:32px;color:#D4AF37;font-weight:700}.lbl{font-size:11px;color:#5A5440;margin-top:4px}
+  .footer{margin-top:30px;color:#5A5440;font-size:11px;border-top:1px solid rgba(255,255,255,.05);padding-top:12px}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{padding:8px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px}
+  th{color:#D4AF37;font-size:11px;text-transform:uppercase}</style></head><body>
+  <h1>📊 Reporte Semanal</h1>
+  <p style="color:#5A5440">${new Date(report.generatedAt).toLocaleDateString('es-AR', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
+  <div style="margin-top:16px">
+    <div class="stat"><div class="num">${report.newUsers}</div><div class="lbl">Nuevos usuarios</div></div>
+    <div class="stat"><div class="num">${report.newPlayers}</div><div class="lbl">Nuevos jugadores</div></div>
+    <div class="stat"><div class="num">${report.totalRevenue.toLocaleString('es-AR')}</div><div class="lbl">Monedas gastadas</div></div>
+    <div class="stat"><div class="num">${report.feedbackCount}</div><div class="lbl">Feedbacks recibidos</div></div>
+    <div class="stat"><div class="num">${report.activePlayers}</div><div class="lbl">Jugadores activos</div></div>
+  </div>
+  <h2>📈 Totales acumulados</h2>
+  <div>
+    <div class="stat"><div class="num">${report.totalUsers.toLocaleString('es-AR')}</div><div class="lbl">Total usuarios</div></div>
+    <div class="stat"><div class="num">${report.totalPlayers.toLocaleString('es-AR')}</div><div class="lbl">Total jugadores</div></div>
+  </div>
+  <div class="footer">📈 Los 10.000 de Macko — Reporte generado automáticamente por el CEO Panel</div>
+  </body></html>`;
+}
+
 // ── STRIPE ──────────────────────────────────────────────────
 
 // Ruta para obtener paquetes de monedas (protegida)
@@ -370,8 +1270,11 @@ async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
       roomPlayer.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
       roomPlayer.equippedDice = plRes.rows[0].equipped_dice || '';
       roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
+      console.log(`📦 loadEquipped(${playerId}): dice=${roomPlayer.equippedDice} av=${roomPlayer.equippedAvatar} sp=${roomPlayer.equippedSpecial}`);
+    } else {
+      console.log(`📦 loadEquipped(${playerId}): NO ROW found in players table`);
     }
-  } catch(e) {}
+  } catch(e) { console.error(`📦 loadEquipped ERROR for ${playerId}:`, e.message); }
 }
 
 /* ── Post-victoria ───────────────────────────────────────── */
@@ -533,6 +1436,9 @@ wss.on("connection", socket => {
         try {
           await createOrLoadPlayer({ id: playerId, alias: playerName, name: playerName });
         } catch (e) { console.error("DB identify:", e.message); }
+        
+        // Actualizar last_seen para tracking online/offline
+        updateLastSeen(playerId).catch(e => {});
 
         // Intentar reconectar si viene con roomId
         if (roomId) {
@@ -747,7 +1653,15 @@ wss.on("connection", socket => {
               } catch(e) {
                 console.error(`Error loading equipped for ${p.id}:`, e.message);
               }
-              // Fallback: usar valores del frontend si este es el jugador que clickeó listo
+              // Fallback: usar valores de la sala (room player) para TODOS los jugadores
+              // Si la BD no tenía datos (ej: invitados), conservar lo que ya tenía el room player
+              const roomP = room.players.find(rp => rp.id === p.id);
+              if (roomP) {
+                if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
+                if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
+                if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
+              }
+              // Fallback del frontend para el que clickeó listo
               if (p.id === data.playerId) {
                 if (!p.equippedDice && data.equippedDice) p.equippedDice = data.equippedDice;
                 if (!p.equippedAvatar && data.equippedAvatar) p.equippedAvatar = data.equippedAvatar;
@@ -755,6 +1669,8 @@ wss.on("connection", socket => {
               }
             }
           }
+          console.log(`📤 GAME_STARTED match: ${match.players.map(p => `${p.name}[${p.id}] dice=${p.equippedDice} av=${p.equippedAvatar} ws=${p.winStreak}`).join(' | ')}`);
+          console.log(`📤 GAME_STARTED room: ${room.players.map(p => `${p.name}[${p.id}] dice=${p.equippedDice} av=${p.equippedAvatar}`).join(' | ')}`);
           broadcastRoom(data.roomId, "GAME_STARTED", {
             firstPlayer, match: snapshotMatch(match)
           });
@@ -793,6 +1709,28 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── TOURNAMENT: REGISTER ───────────────────────── */
+      if (type === "TOURNAMENT_REGISTER") {
+        const { tournamentId, playerId, playerName } = data;
+        try {
+          await registerTournamentPlayer(tournamentId, playerId, playerName);
+          send(socket, "TOURNAMENT_REGISTERED", { tournamentId });
+        } catch (err) {
+          send(socket, "ERROR", { message: err.message });
+        }
+        return;
+      }
+
+      /* ── TOURNAMENT: GET BRACKET ────────────────────── */
+      if (type === "TOURNAMENT_GET_BRACKET") {
+        const { getTournamentBracketData } = require("./database");
+        const bracket = await getTournamentBracketData(data.tournamentId);
+        if (bracket) {
+          send(socket, "TOURNAMENT_BRACKET", { bracket });
+        }
+        return;
+      }
+
       /* ── CHAT ──────────────────────────────────────────── */
       if (type === "CHAT_MESSAGE") {
         broadcastRoom(data.roomId, "CHAT_MESSAGE", {
@@ -803,6 +1741,63 @@ wss.on("connection", socket => {
         });
         // Incrementar contador de mensajes de chat para las misiones
         try { await pool.query("UPDATE players SET chat_messages = chat_messages + 1 WHERE id = $1", [data.playerId]); } catch(e) {}
+        return;
+      }
+
+      /* ── CHAT PRIVADO (entre amigos) ────────────────── */
+      if (type === "PRIVATE_CHAT") {
+        const msg = String(data.message || "").slice(0, 500);
+        if (!msg || !data.toId) return;
+        // Guardar en DB
+        savePrivateMessage(data.playerId, data.toId, data.playerName, msg).catch(e => console.warn('Private chat save failed:', e.message));
+        // Enviar al destinatario si está conectado
+        const targetSocket = clients.get(data.toId);
+        if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+          send(targetSocket, "PRIVATE_CHAT", {
+            fromId: data.playerId,
+            fromName: data.playerName,
+            message: msg,
+            timestamp: Date.now()
+          });
+        }
+        // Confirmar al remitente
+        send(socket, "PRIVATE_CHAT_SENT", {
+          toId: data.toId,
+          message: msg,
+          timestamp: Date.now()
+        });
+        return;
+      }
+
+      /* ── OBTENER HISTORIAL DE CHAT PRIVADO ───────────── */
+      if (type === "GET_PRIVATE_CHAT") {
+        const { friendId } = data;
+        if (!friendId) return;
+        const messages = await getPrivateMessages(socket.playerId || data.playerId, friendId, 50);
+        send(socket, "PRIVATE_CHAT_HISTORY", {
+          friendId,
+          messages
+        });
+        return;
+      }
+
+      /* ── CHAT GLOBAL ────────────────────────────────── */
+      if (type === "GLOBAL_CHAT") {
+        const msg = String(data.message || "").slice(0, 300);
+        if (!msg) return;
+        // Broadcast PRIMERO (instantáneo), luego guardar en DB sin esperar
+        for (const [pid, sock] of clients) {
+          if (sock?.readyState === WebSocket.OPEN) {
+            send(sock, "GLOBAL_CHAT", {
+              playerId: data.playerId,
+              playerName: data.playerName,
+              message: msg,
+              timestamp: Date.now()
+            });
+          }
+        }
+        // Guardar en DB sin await para no bloquear el broadcast
+        saveGlobalMessage(socket.playerId || data.playerId, data.playerName, msg).catch(e => console.warn('Global chat save failed:', e.message));
         return;
       }
 
@@ -995,5 +1990,44 @@ setInterval(cleanupGuestPlayers, 6 * 60 * 60 * 1000);
 cleanupGuestPlayers(); // también al iniciar
 
 /* ── Init ────────────────────────────────────────────────── */
-initializeDatabase();
-server.listen(PORT, () => console.log(`🚀 Servidor en http://localhost:${PORT}`));
+async function startServer() {
+  await initializeDatabase();
+  initPush();
+  initEmail();
+  initTournamentManager();
+
+  // Limpieza periódica de chats viejos
+  async function runChatCleanup() {
+    await cleanupGlobalChat().catch(e => console.warn('Global chat cleanup:', e.message));
+    await cleanupPrivateMessages().catch(e => console.warn('Private chat cleanup:', e.message));
+    console.log('🧹 Limpieza de chats ejecutada');
+  }
+  runChatCleanup();
+  setInterval(runChatCleanup, 24 * 60 * 60 * 1000);
+
+  // Crear cuenta de super admin
+  try {
+    const existing = await getAdminByUsername('mercenario.macko');
+    if (existing) {
+      // Asegurar que el admin existente tenga rol 'admin'
+      if (existing.role !== 'admin') {
+        try { await pool.query(`UPDATE admins SET role = 'admin' WHERE username = 'mercenario.macko'`); } catch(e) {}
+        console.log('👑 CEO admin actualizado a rol: admin');
+      } else {
+        console.log('👑 CEO admin ya existe (rol: admin)');
+      }
+    } else {
+      const hash = await bcrypt.hash('#2244#*/macko', 10);
+      await createAdmin('mercenario.macko', hash, 'admin');
+      console.log('👑 CEO admin creado: mercenario.macko (rol: admin)');
+    }
+  } catch(e) {
+    console.error('Error creando CEO admin:', e.message);
+  }
+
+  server.listen(PORT, () => {
+    console.log(`🚀 Servidor en http://localhost:${PORT}`);
+  });
+}
+
+startServer();

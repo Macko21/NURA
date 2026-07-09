@@ -61,8 +61,8 @@ html,body{
 .screen{position:fixed;inset:0;display:none;flex-direction:column;overflow:hidden}
 .screen.active{display:flex}
 
-/* Cuando el PWA bar está visible, las screens necesitan padding-top */
-.pwa-visible .screen{padding-top:38px}
+/* Cuando el PWA bar está visible, las screens necesitan padding-bottom */
+.pwa-visible .screen{padding-bottom:38px}
 .pwa-visible .pwa-install-bar{display:flex}
 
 /* ── Fondo animado con partículas ─────────────────────── */
@@ -195,6 +195,65 @@ html,body{
 .btn-danger-link{background:transparent;border:none;color:var(--red);font-size:13px;cursor:pointer;font-family:inherit}
 .btn-danger-link:hover{text-decoration:underline;filter:brightness(1.2)}
 
+/* ── Logout topbar (ícono ✕) ─────────────────────────── */
+.btn-logout-topbar{
+  background:rgba(200,60,48,.1);border:1px solid rgba(200,60,48,.15);
+  color:var(--red-lt);border-radius:6px;cursor:pointer;
+  font-size:12px;width:28px;height:28px;display:flex;
+  align-items:center;justify-content:center;flex-shrink:0;
+  transition:all .18s;margin-left:4px;
+}
+.btn-logout-topbar:hover{background:rgba(200,60,48,.2);border-color:var(--red);transform:scale(1.08)}
+.btn-logout-topbar.hidden{display:none}
+
+/* ── Push notification en topbar (campana) ───────────── */
+.btn-push-topbar{
+  background:transparent;border:1px solid var(--border2);
+  border-radius:6px;cursor:pointer;font-size:14px;
+  width:28px;height:28px;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;
+  transition:all .18s;color:var(--text3);margin-left:4px;
+}
+.btn-push-topbar:hover{border-color:var(--gold);color:var(--gold);background:var(--bg-hover)}
+.btn-push-topbar.push-active{color:var(--green-lt);border-color:var(--green)}
+.btn-push-topbar.hidden{display:none}
+
+/* ── Changelog outside form (abajo centrado) ──────────── */
+.btn-changelog-outside{
+  background:transparent;border:1px solid var(--border2);
+  color:var(--text3);border-radius:var(--r-sm);
+  padding:8px 16px;font-family:inherit;font-size:11px;
+  cursor:pointer;transition:all .18s;width:100%;max-width:340px;
+  margin-top:6px;
+}
+.btn-changelog-outside:hover{border-color:var(--gold);color:var(--gold);background:var(--bg-hover)}
+.btn-changelog-outside.hidden{display:none}
+
+/* ── PWA Install Bar rediseñada ──────────────────────── */
+.pwa-install-bar{
+  position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  max-width:340px;width:92%;z-index:250;
+  padding:8px 14px;margin-bottom:12px;
+  background:rgba(10,10,18,.94);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  display:flex;align-items:center;gap:8px;
+  animation:slideUp .3s ease;
+}
+@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+.pwa-install-bar.hidden{display:none}
+.pwa-install-text{flex:1;font-size:10px;color:var(--text2);font-weight:500;white-space:normal;line-height:1.3}
+.pwa-install-btn{
+  background:var(--gold);color:#1A1200;border:none;
+  border-radius:6px;padding:5px 10px;font-size:10px;
+  font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;
+  transition:filter .18s;white-space:nowrap;
+}
+.pwa-install-btn:hover{filter:brightness(1.1)}
+.pwa-install-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;flex-shrink:0;padding:4px;border-radius:4px;transition:all .18s}
+.pwa-install-close:hover{color:var(--text);background:var(--bg-hover)}
+
 .hidden{display:none !important}
 
 /* ══════════════════════════════════════
@@ -218,18 +277,21 @@ html,body{
 
 .user-top-bar{
   position:absolute;top:0;left:0;right:0;z-index:10;
-  padding:12px 18px;
+  padding:8px 14px;
   display:flex;justify-content:space-between;align-items:center;
-  background:linear-gradient(180deg,rgba(10,10,18,.9),transparent);
+  background:linear-gradient(180deg,rgba(10,10,18,.92),transparent);
+  min-height:44px;
 }
-.user-profile{display:flex;align-items:center;gap:10px}
+.user-profile{display:flex;align-items:center;gap:6px}
 .user-avatar{
   width:36px;height:36px;border-radius:50%;
   background:linear-gradient(135deg,var(--gold2),var(--gold-dk));
   color:#1A1200;font-weight:800;font-size:14px;
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 0 16px rgba(212,175,55,.3);flex-shrink:0;
+  cursor:pointer;transition:transform .2s,box-shadow .2s;
 }
+.user-avatar:hover{transform:scale(1.08);box-shadow:0 0 24px rgba(212,175,55,.5)}
 .user-avatar.avatar-icon{
   background:transparent;
   color:var(--text);font-size:20px;
@@ -239,12 +301,14 @@ html,body{
   box-shadow:0 0 0 2px var(--gold),0 0 0 4px rgba(212,175,55,.2),0 0 12px rgba(212,175,55,.3) !important;
   border-radius:50%;
 }
-.user-name{font-family:'Cinzel',serif;font-size:14px;font-weight:600;color:var(--gold)}
+.user-name{font-family:'Cinzel',serif;font-size:13px;font-weight:600;color:var(--gold);cursor:pointer}
+.user-name:hover{color:var(--gold2)}
 .user-wallet{
   display:flex;align-items:center;gap:8px;
   background:var(--bg-card);backdrop-filter:blur(12px);
   border:1px solid var(--border);padding:6px 14px;
   border-radius:20px;box-shadow:var(--sh-sm);
+  position:relative;
 }
 .coin-icon{font-size:14px;filter:drop-shadow(0 0 4px rgba(212,175,55,.4))}
 #lobby-coins{font-weight:700;color:var(--gold);font-size:14px;font-family:'Cinzel',serif;min-width:20px}
@@ -274,6 +338,21 @@ html,body{
   transition:filter .18s,transform .12s;
 }
 .btn-shop:hover{filter:brightness(1.1);transform:translateY(-1px)}
+
+/* ── Wallet toggle (mobile: flechita para expandir/colapsar) ── */
+.btn-wallet-toggle{
+  background:none;border:none;color:var(--text2);font-size:12px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;
+  transition:all .2s;line-height:1;
+}
+.btn-wallet-toggle:hover{color:var(--gold);background:var(--bg-hover)}
+.btn-wallet-toggle.open{transform:rotate(180deg)}
+
+.wallet-extras{
+  display:flex;align-items:center;gap:8px;
+  transition:all .3s ease;
+}
+.wallet-extras.hidden{display:none}
 
 .lobby-content{
   position:relative;z-index:2;
@@ -316,6 +395,54 @@ html,body{
 @keyframes boostPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05);box-shadow:0 0 24px rgba(212,175,55,.5)}}
 
 .lobby-form{width:100%;display:flex;flex-direction:column;gap:10px}
+
+/* ── Misiones diarias en lobby ──────────────────────── */
+.lobby-missions{
+  margin:2px 0;padding:10px 12px;
+  background:var(--bg-card2);
+  border:1px solid var(--border2);
+  border-radius:var(--r-sm);
+  text-align:left;
+}
+.lobby-missions.hidden{display:none}
+.lobby-missions-header{
+  font-size:11px;font-weight:600;color:var(--gold);
+  margin-bottom:6px;letter-spacing:.5px;
+}
+.lobby-missions-list{display:flex;flex-direction:column;gap:4px}
+
+/* Misiones desktop: posicionado absoluto en esquina superior derecha */
+.lobby-missions-desktop{display:none !important}
+/* Botón de misiones en mobile: oculto por defecto, visible al remover .hidden */
+#btn-missions-mobile{margin-top:4px}
+#btn-missions-mobile.hidden{display:none}
+.lobby-missions-header-dt{
+  font-size:12px;font-weight:600;color:var(--gold);
+  margin-bottom:8px;letter-spacing:.5px;font-family:'Cinzel',serif;
+}
+.lobby-missions-header-dt::before{content:'🎯 '}
+.lobby-mission{
+  display:flex;align-items:center;gap:6px;
+  font-size:10px;color:var(--text2);
+  padding:3px 4px;border-radius:4px;
+  transition:background .15s;
+}
+.lobby-mission:hover{background:var(--bg-hover)}
+.lobby-mission .lm-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center}
+.lobby-mission .lm-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lobby-mission .lm-bar{
+  width:50px;height:4px;background:var(--bg-input);
+  border-radius:2px;overflow:hidden;flex-shrink:0;
+}
+.lobby-mission .lm-fill{
+  height:100%;border-radius:2px;
+  background:linear-gradient(90deg,var(--gold-dk),var(--gold));
+  transition:width .4s;
+}
+.lobby-mission.done{opacity:.7}
+.lobby-mission.done .lm-fill{background:linear-gradient(90deg,var(--green),var(--green-lt))}
+.lobby-mission .lm-pct{font-size:9px;color:var(--text3);flex-shrink:0;min-width:24px;text-align:right}
+.lobby-mission .lm-check{font-size:10px;flex-shrink:0;width:14px;text-align:center}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:2px}
 .field label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:600}
@@ -512,6 +639,7 @@ html,body{
    ══════════════════════════════════════ */
 .dice-zone{display:flex;flex-direction:column;align-items:center;gap:10px;position:relative;z-index:1}
 .dice-tray{
+  position:relative;
   background:rgba(0,0,0,.4);
   border:1px solid rgba(255,255,255,.04);
   border-radius:18px;padding:16px 20px;
@@ -545,88 +673,94 @@ html,body{
   box-shadow:
     2px 2px 0 #42A028, 3px 3px 0 #206808,
     0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3),
-    inset 0 1px 2px rgba(180,255,160,.9) !important;
+    inset 0 1px 2px rgba(180,255,160,.9);
 }
-/* Dados normales con skin: borde celeste sutil */
-.die[class*="die-skin-"]:not(.scoring):not(.hot):not(.dead){
-  border:2px solid rgba(120,210,255,.5) !important;
-}
-/* Scoring con skin: borde verde brillante */
-.die.scoring[class*="die-skin-"]{
-  border:2.5px solid rgba(34,197,94,.9) !important;
-  box-shadow:
-    0 0 12px rgba(34,197,94,.5), 0 0 24px rgba(34,197,94,.2),
-    inset 0 0 8px rgba(34,197,94,.15) !important;
-}
+/* Scoring con skin: ya no se usa — JS setea fondo verde + box-shadow inline */
+.die.scoring[class*="die-skin-"]{}
 .die.hot{
   box-shadow:
     2px 2px 0 #B06008, 3px 3px 0 #883800,
     0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3),
-    inset 0 1px 2px rgba(255,230,110,.9) !important;
+    inset 0 1px 2px rgba(255,230,110,.9);
   animation:dieScale .35s ease both;
 }
-/* Hot con skin: borde dorado visible */
-.die.hot[class*="die-skin-"]{
-  border:2.5px solid rgba(251,191,36,.85) !important;
-  box-shadow:
-    0 0 14px rgba(251,191,36,.5), 0 0 28px rgba(251,191,36,.2),
-    inset 0 0 10px rgba(251,191,36,.2) !important;
-}
+/* Hot con skin: ya no se usa — JS setea fondo dorado + box-shadow inline */
+.die.hot[class*="die-skin-"]{}
 .die.dead{opacity:.25;filter:grayscale(1);transform:scale(.95)}
 
 /* ── Efectos visuales por skin de dados ──────────────── */
-.die[class*="die-skin-"]::after{content:'';position:absolute;inset:-2px;border-radius:13px;pointer-events:none;z-index:0;opacity:0;transition:opacity .3s}
+.die[class*="die-skin-"]::after{content:'';position:absolute;inset:-8px;border-radius:18px;pointer-events:none;z-index:0;opacity:0;transition:opacity .3s}
 .die[class*="die-skin-"]:not(.dead)::after{opacity:1}
 .die{position:relative}
+.die[class*="die-skin-"] .die-icon-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:32px;pointer-events:none;z-index:0;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.3));opacity:.5}
 .die[class*="die-skin-"] svg{position:relative;z-index:1}
-.die[class*="die-skin-"] .die-icon-bg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:38px;opacity:.9;pointer-events:none;z-index:0;filter:drop-shadow(0 1px 4px rgba(0,0,0,.45));line-height:1}
-.win-die.die[class*="die-skin-"] .die-icon-bg{font-size:30px;opacity:.85}
+.die[class*="die-skin-"] svg circle{filter:drop-shadow(0 0 5px rgba(0,0,0,.6))}
 
 /* Skin 1 - Neón */
-.die-skin-1::after{border:2px solid rgba(255,255,255,.3);box-shadow:inset 0 0 12px rgba(255,255,255,.15),0 0 12px rgba(255,255,255,.1);animation:skinPulse 1.5s ease-in-out infinite}
+.die-skin-1::after{border:4px solid rgba(255,255,255,.5);box-shadow:inset 0 0 20px rgba(255,255,255,.35),0 0 24px rgba(255,255,255,.2);animation:skinPulse 1.5s ease-in-out infinite}
 @keyframes skinPulse{0%,100%{opacity:.5}50%{opacity:1}}
 
 /* Skin 2 - Fuego */
-.die-skin-2::after{border:2px solid rgba(255,100,0,.5);box-shadow:inset 0 0 16px rgba(255,100,0,.3),0 0 16px rgba(255,100,0,.2);animation:skinFlicker .6s ease-in-out infinite}
+.die-skin-2::after{border:4px solid rgba(255,100,0,.7);box-shadow:inset 0 0 22px rgba(255,100,0,.5),0 0 28px rgba(255,100,0,.35);animation:skinFlicker .6s ease-in-out infinite}
 @keyframes skinFlicker{0%,100%{opacity:.6}50%{opacity:1}}
 
 /* Skin 4 - Élite */
-.die-skin-4::after{border:2px solid rgba(100,180,255,.4);box-shadow:inset 0 0 12px rgba(100,180,255,.2),0 0 14px rgba(100,180,255,.15);animation:skinPulse 2s ease-in-out infinite}
+.die-skin-4::after{border:4px solid rgba(100,180,255,.6);box-shadow:inset 0 0 20px rgba(100,180,255,.4),0 0 24px rgba(100,180,255,.25);animation:skinPulse 2s ease-in-out infinite}
 
 /* Skin 5 - Fantasma */
-.die-skin-5::after{border:2px solid rgba(100,220,255,.4);box-shadow:inset 0 0 16px rgba(100,220,255,.25),0 0 20px rgba(100,220,255,.2);animation:skinGhost 2.5s ease-in-out infinite}
+.die-skin-5::after{border:4px solid rgba(100,220,255,.6);box-shadow:inset 0 0 22px rgba(100,220,255,.4),0 0 28px rgba(100,220,255,.3);animation:skinGhost 2.5s ease-in-out infinite}
 @keyframes skinGhost{0%,100%{opacity:.4;transform:translateY(0)}50%{opacity:.8;transform:translateY(-2px)}}
 
 /* Skin 6 - Hielo */
-.die-skin-6::after{border:2px solid rgba(180,230,255,.4);box-shadow:inset 0 0 16px rgba(180,230,255,.25),0 0 16px rgba(180,230,255,.15);animation:skinPulse 1.8s ease-in-out infinite}
+.die-skin-6::after{border:4px solid rgba(180,230,255,.6);box-shadow:inset 0 0 22px rgba(180,230,255,.4),0 0 24px rgba(180,230,255,.25);animation:skinPulse 1.8s ease-in-out infinite}
 
 /* Skin 18 - Láser */
-.die-skin-18::after{border:2px solid rgba(255,50,50,.5);box-shadow:inset 0 0 16px rgba(255,50,50,.3),0 0 20px rgba(255,50,50,.25);animation:skinFlicker .5s ease-in-out infinite}
+.die-skin-18::after{border:4px solid rgba(255,50,50,.7);box-shadow:inset 0 0 22px rgba(255,50,50,.5),0 0 28px rgba(255,50,50,.35);animation:skinFlicker .5s ease-in-out infinite}
 
 /* Skin 19 - Dorados */
-.die-skin-19::after{border:2px solid rgba(255,215,0,.5);box-shadow:inset 0 0 16px rgba(255,215,0,.3),0 0 20px rgba(255,215,0,.25);animation:skinPulse 1.3s ease-in-out infinite}
+.die-skin-19::after{border:4px solid rgba(255,215,0,.7);box-shadow:inset 0 0 22px rgba(255,215,0,.5),0 0 28px rgba(255,215,0,.35);animation:skinPulse 1.3s ease-in-out infinite}
 
 /* Skin 20 - Esmeralda */
-.die-skin-20::after{border:2px solid rgba(80,200,120,.4);box-shadow:inset 0 0 14px rgba(80,200,120,.25),0 0 18px rgba(80,200,120,.2);animation:skinPulse 1.6s ease-in-out infinite}
+.die-skin-20::after{border:4px solid rgba(80,200,120,.6);box-shadow:inset 0 0 22px rgba(80,200,120,.4),0 0 26px rgba(80,200,120,.25);animation:skinPulse 1.6s ease-in-out infinite}
 
 /* Skin 21 - Zombie */
-.die-skin-21::after{border:2px solid rgba(80,180,30,.35);box-shadow:inset 0 0 14px rgba(80,180,30,.2),0 0 14px rgba(80,180,30,.15);animation:skinZombie 1.2s ease-in-out infinite}
+.die-skin-21::after{border:4px solid rgba(80,180,30,.55);box-shadow:inset 0 0 22px rgba(80,180,30,.35),0 0 22px rgba(80,180,30,.25);animation:skinZombie 1.2s ease-in-out infinite}
 @keyframes skinZombie{0%,100%{opacity:.4}50%{opacity:.8;box-shadow:inset 0 0 20px rgba(80,180,30,.4),0 0 20px rgba(80,180,30,.3)}}
 
 /* Skin 22 - Arcoíris */
-.die-skin-22::after{border:2px solid rgba(255,150,200,.3);animation:rainbowBorder 2s ease-in-out infinite}
+.die-skin-22::after{border:4px solid rgba(255,150,200,.5);animation:rainbowBorder 2s ease-in-out infinite}
 @keyframes rainbowBorder{0%,100%{border-color:rgba(255,100,150,.4);box-shadow:inset 0 0 12px rgba(255,100,150,.2),0 0 14px rgba(255,100,150,.15)}25%{border-color:rgba(255,215,0,.4);box-shadow:inset 0 0 12px rgba(255,215,0,.2),0 0 14px rgba(255,215,0,.15)}50%{border-color:rgba(100,200,255,.4);box-shadow:inset 0 0 12px rgba(100,200,255,.2),0 0 14px rgba(100,200,255,.15)}75%{border-color:rgba(150,100,255,.4);box-shadow:inset 0 0 12px rgba(150,100,255,.2),0 0 14px rgba(150,100,255,.15)}100%{border-color:rgba(255,100,150,.4);box-shadow:inset 0 0 12px rgba(255,100,150,.2),0 0 14px rgba(255,100,150,.15)}}
 
 /* Skin 32 - Diamante */
-.die-skin-32::after{border:2px solid rgba(200,240,255,.4);box-shadow:inset 0 0 16px rgba(200,240,255,.3),0 0 20px rgba(200,240,255,.2);animation:diamondSparkle 1.4s ease-in-out infinite}
+.die-skin-32::after{border:4px solid rgba(200,240,255,.6);box-shadow:inset 0 0 22px rgba(200,240,255,.45),0 0 28px rgba(200,240,255,.3);animation:diamondSparkle 1.4s ease-in-out infinite}
 @keyframes diamondSparkle{0%,100%{opacity:.4}33%{opacity:.9;box-shadow:inset 0 0 24px rgba(200,240,255,.45),0 0 28px rgba(200,240,255,.3)}66%{opacity:.6}100%{opacity:.4}}
 
 /* Skin 33 - Galácticos */
-.die-skin-33::after{border:2px solid rgba(150,100,255,.35);box-shadow:inset 0 0 16px rgba(150,100,255,.2),0 0 16px rgba(150,100,255,.15);animation:skinPulse 2.2s ease-in-out infinite}
+.die-skin-33::after{border:4px solid rgba(150,100,255,.55);box-shadow:inset 0 0 22px rgba(150,100,255,.35),0 0 24px rgba(150,100,255,.25);animation:skinPulse 2.2s ease-in-out infinite}
 
 /* Skin 34 - Ninja */
-.die-skin-34::after{border:2px solid rgba(200,50,50,.3);box-shadow:inset 0 0 14px rgba(200,50,50,.2),0 0 14px rgba(200,50,50,.15);animation:ninjaFlash 1.8s ease-in-out infinite}
+.die-skin-34::after{border:4px solid rgba(200,50,50,.5);box-shadow:inset 0 0 22px rgba(200,50,50,.35),0 0 22px rgba(200,50,50,.25);animation:ninjaFlash 1.8s ease-in-out infinite}
 @keyframes ninjaFlash{0%,100%{opacity:.3}50%{opacity:.8;box-shadow:inset 0 0 20px rgba(200,50,50,.35),0 0 20px rgba(200,50,50,.25)}}
+
+/* ── Partículas de skins de dados ────────────────────── */
+.skin-particle{
+  position:absolute;pointer-events:none;z-index:10;
+  border-radius:50%;opacity:.9;
+  animation:skinParticleUp .8s ease-out forwards;
+  filter:drop-shadow(0 0 4px currentColor);
+}
+.skin-particle[data-rise="float"]{
+  animation:skinParticleFloat 1.2s ease-out forwards;
+}
+@keyframes skinParticleUp{
+  0%{transform:translate(0,0) scale(1);opacity:.9}
+  100%{transform:translate(var(--tx,30px),var(--ty,-60px)) scale(0);opacity:0}
+}
+@keyframes skinParticleFloat{
+  0%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.8}
+  50%{transform:translate(calc(var(--tx,30px)*.6),calc(var(--ty,-60px)*.5)) scale(1.2) rotate(180deg);opacity:.6}
+  100%{transform:translate(var(--tx,30px),var(--ty,-60px)) scale(0) rotate(360deg);opacity:0}
+}
 
 /* Dado Mag. Animado (item 29): brillo rotatorio extra */
 .die.magic-dice::after{
@@ -750,6 +884,8 @@ html,body{
 .cm{font-size:11px;line-height:1.4;color:var(--text2)}
 .cm .cn{color:var(--gold);font-weight:600}
 .cm.sys{display:none;color:var(--text3);font-style:italic}
+.cm.mine{text-align:right}
+.cm.mine .cn{color:var(--green-lt)}
 .chat-foot{display:flex;gap:8px;padding:6px 10px;border-top:1px solid var(--border2);flex-shrink:0}
 .chat-foot input{
   flex:1;background:var(--bg-input);
@@ -979,34 +1115,6 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 }
 .toast.hidden{opacity:0;transform:translateX(-50%) translateY(10px);pointer-events:none}
 
-/* ══════════════════════════════════════
-   PWA BANNER
-   ══════════════════════════════════════ */
-.pwa-install-bar{
-  display:flex;align-items:center;gap:10px;
-  position:fixed;top:0;left:0;right:0;
-  z-index:250;
-  padding:8px 16px;
-  background:rgba(10,10,18,.92);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  border-bottom:1px solid var(--border);
-  min-height:38px;
-  animation:slideDown .3s ease;
-}
-@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
-/* Cuando el PWA bar está OCULTO, la clase pwa-visible se remueve */
-.pwa-install-bar.hidden{display:none}
-.pwa-install-text{flex:1;font-size:11px;color:var(--text2);font-weight:500;white-space:normal}
-.pwa-install-btn{
-  background:var(--gold);color:#1A1200;border:none;
-  border-radius:6px;padding:4px 10px;font-size:10px;
-  font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;
-  transition:filter .18s;white-space:nowrap;
-}
-.pwa-install-btn:hover{filter:brightness(1.1)}
-.pwa-install-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;flex-shrink:0;padding:2px 6px;border-radius:4px;transition:all .18s}
-.pwa-install-close:hover{color:var(--text);background:var(--bg-hover)}
 
 /* ══════════════════════════════════════
    TIENDA (REDISEÑADA)
@@ -1366,6 +1474,89 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .stripe-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
 
 /* ══════════════════════════════════════
+   FEEDBACK
+   ══════════════════════════════════════ */
+.feedback-form{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.feedback-cats{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.feedback-cat{
+  display:inline-flex;align-items:center;gap:6px;
+  cursor:pointer;padding:8px 14px;
+  background:var(--bg-card2);border:1.5px solid var(--border2);
+  border-radius:var(--r-sm);font-size:12px;color:var(--text2);
+  transition:all .2s;user-select:none;
+}
+.feedback-cat:hover{border-color:var(--border);color:var(--text)}
+.feedback-cat:has(input:checked){
+  border-color:var(--gold);color:var(--gold);background:var(--gold-bg);
+  box-shadow:0 0 12px rgba(212,175,55,.08);
+}
+.feedback-cat input{display:none}
+.feedback-textarea{
+  resize:vertical;min-height:80px;max-height:200px;
+  font-family:inherit;font-size:13px;line-height:1.5;
+}
+.feedback-status{font-size:12px;text-align:center;margin:0}
+.feedback-status.success{color:var(--green-lt)}
+.feedback-status.error{color:var(--red)}
+.feedback-status.hidden{display:none}
+
+/* ══════════════════════════════════════
+   TORNEOS
+   ══════════════════════════════════════ */
+.tournament-list{display:flex;flex-direction:column;gap:10px}
+.tournament-card{
+  background:var(--bg-card2);backdrop-filter:blur(8px);
+  border:1px solid var(--border2);border-radius:var(--r);
+  padding:16px;display:flex;flex-direction:column;gap:8px;
+  transition:border-color .2s,transform .15s;cursor:pointer;
+  position:relative;overflow:hidden;
+}
+.tournament-card:hover{border-color:var(--gold);transform:translateY(-2px)}
+.tournament-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--gold-dk),var(--gold),var(--gold-dk));
+  opacity:.5;
+}
+.tournament-card.registration{border-color:rgba(42,154,108,.3)}
+.tournament-card.registration::before{background:linear-gradient(90deg,var(--green),var(--green-lt),var(--green))}
+.tournament-card.active{box-shadow:0 0 20px rgba(212,175,55,.12)}
+.tournament-card.completed{opacity:.7}
+.tournament-card.cancelled{opacity:.4}
+.tc-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tc-name{font-family:'Cinzel',serif;font-size:15px;color:var(--text);font-weight:600}
+.tc-status{font-size:10px;font-weight:600;padding:2px 10px;border-radius:4px;white-space:nowrap}
+.tc-status.registration{background:rgba(42,154,108,.15);color:var(--green-lt)}
+.tc-status.active{background:rgba(212,175,55,.15);color:var(--gold)}
+.tc-status.completed{background:rgba(255,255,255,.05);color:var(--text3)}
+.tc-status.cancelled{background:rgba(200,60,48,.15);color:var(--red)}
+.tc-details{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text2)}
+.tc-details span{display:flex;align-items:center;gap:4px}
+.tc-desc{font-size:11px;color:var(--text3);line-height:1.4}
+.tc-actions{display:flex;gap:8px;margin-top:4px}
+.tc-actions .btn{width:auto;padding:7px 16px;font-size:11px}
+
+/* ── Tournament Bracket ── */
+.tournament-bracket{display:flex;gap:16px;overflow-x:auto;padding:8px 0;min-height:200px;align-items:stretch}
+.tb-round{display:flex;flex-direction:column;gap:12px;min-width:160px;flex-shrink:0}
+.tb-round-title{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:4px 0 2px;border-bottom:1px solid var(--border2);margin-bottom:4px}
+.tb-match{
+  background:var(--bg-card2);border:1px solid var(--border2);
+  border-radius:8px;padding:10px;font-size:11px;
+  display:flex;flex-direction:column;gap:6px;
+  transition:border-color .2s;flex:1;
+  min-height:60px;justify-content:center;
+}
+.tb-match.completed{border-color:rgba(42,154,108,.25)}
+.tb-match.live{border-color:var(--gold);box-shadow:0 0 12px rgba(212,175,55,.15)}
+.tb-match-pair{display:flex;flex-direction:column;gap:3px}
+.tb-player{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;font-size:11px}
+.tb-player.winner{background:rgba(42,154,108,.1);color:var(--green-lt);font-weight:600}
+.tb-player.loser{color:var(--text3)}
+.tb-player.bye{color:var(--text3);font-style:italic;opacity:.5}
+.tb-player-score{margin-left:auto;font-family:'Cinzel',serif;font-size:12px;color:var(--gold);font-weight:700}
+.tb-match-room{font-size:9px;color:var(--text3);text-align:center;padding:2px 0}
+
+/* ══════════════════════════════════════
    MISC
    ══════════════════════════════════════ */
 input[type=number]::-webkit-inner-spin-button,
@@ -1377,10 +1568,129 @@ input[type=number]{-moz-appearance:textfield}
    ══════════════════════════════════════ */
 
 /* <= 420px: Mobile chico */
+/* ══════════════════════════════════════
+   PORTAL
+   ══════════════════════════════════════ */
+.portal-body{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
+.portal-left{flex:0 0 280px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.portal-right{flex:1;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.portal-card{
+  background:var(--bg-card);backdrop-filter:blur(12px);
+  border:1px solid var(--border2);border-radius:var(--r);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.portal-card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;font-size:13px;font-weight:600;
+  color:var(--gold);border-bottom:1px solid var(--border2);
+  font-family:'Cinzel',serif;
+}
+.portal-friends{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.portal-friends-list{flex:1;overflow-y:auto;padding:6px}
+.portal-empty{font-size:11px;color:var(--text3);text-align:center;padding:20px 8px}
+
+/* Indicador online/offline en amigos */
+.portal-friend-status{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  margin-right:2px;
+}
+.portal-friend-status.online{background:var(--green-lt);box-shadow:0 0 6px rgba(42,154,108,.6)}
+.portal-friend-status.offline{background:var(--text3);box-shadow:none}
+.friend-online-tag{color:var(--green-lt);font-size:9px;font-weight:600;display:inline-block;margin-right:4px}
+.friend-offline-tag{color:var(--text3);font-size:9px;display:inline-block;margin-right:4px}
+.portal-friend-msg{
+  background:none;border:none;cursor:pointer;
+  font-size:14px;color:var(--text3);padding:2px 4px;
+  border-radius:4px;transition:all .15s;flex-shrink:0;
+  opacity:0;
+}
+.portal-friend-item:hover .portal-friend-msg{opacity:1}
+.portal-friend-msg:hover{color:var(--gold);background:var(--bg-hover)}
+
+.portal-friend-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 10px;border-radius:8px;
+  transition:background .15s;cursor:default;
+}
+.portal-friend-item:hover{background:var(--bg-hover)}
+.portal-friend-av{font-size:18px;flex-shrink:0;width:28px;text-align:center}
+.portal-friend-name{flex:1;font-size:12px;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.portal-friend-stats{font-size:10px;color:var(--text3);flex-shrink:0}
+.portal-friend-remove{
+  background:none;border:none;cursor:pointer;
+  font-size:12px;color:var(--text3);padding:2px 4px;
+  border-radius:4px;transition:all .15s;flex-shrink:0;
+  opacity:0;
+}
+.portal-friend-item:hover .portal-friend-remove{opacity:1}
+.portal-friend-remove:hover{color:var(--red);background:rgba(200,60,48,.1)}
+
+.portal-search-area{padding:0 6px 6px;border-top:1px solid var(--border2)}
+.portal-search-input{margin:6px 0;font-size:12px;padding:8px 10px}
+.portal-search-results{max-height:150px;overflow-y:auto}
+.portal-search-item{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 8px;border-radius:6px;font-size:12px;
+}
+.portal-search-item:hover{background:var(--bg-hover)}
+.portal-add-btn{
+  margin-left:auto;background:var(--gold);color:#1A1200;
+  border:none;border-radius:5px;padding:4px 8px;
+  font-size:10px;font-weight:600;cursor:pointer;flex-shrink:0;
+}
+.portal-add-btn:hover{filter:brightness(1.1)}
+.portal-add-btn:disabled{opacity:.5;cursor:default}
+.portal-search-none{font-size:11px;color:var(--text3);text-align:center;padding:10px}
+
+.portal-games{flex:0 0 auto;max-height:160px}
+.portal-games-list{overflow-y:auto;padding:6px}
+.portal-game-item{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 8px;font-size:12px;border-radius:6px;
+}
+.portal-game-item:hover{background:var(--bg-hover)}
+.portal-game-status{font-size:10px;flex-shrink:0}
+.portal-game-code{font-family:'Cinzel',serif;font-weight:700;color:var(--gold);font-size:13px;letter-spacing:2px;flex-shrink:0}
+.portal-game-players{font-size:10px;color:var(--text3);flex-shrink:0}
+.portal-game-names{font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+
+.portal-chat-card{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.portal-chat-tabs{
+  display:flex;gap:2px;padding:4px 4px 0;flex-shrink:0;
+  background:var(--bg-card);
+  border-bottom:1px solid var(--border2);
+}
+.portal-chat-tab{
+  flex:1;background:transparent;border:none;
+  color:var(--text3);font-family:inherit;font-size:12px;
+  font-weight:600;padding:7px 6px;border-radius:6px 6px 0 0;
+  cursor:pointer;transition:all .2s;
+}
+.portal-chat-tab.active{
+  background:var(--gold-bg);color:var(--gold);
+  border:1px solid var(--border);border-bottom-color:var(--bg-card);
+}
+.portal-chat-tab:hover{color:var(--gold);background:var(--bg-hover)}
+
+.portal-chat-pane{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.portal-chat-msgs{
+  flex:1;overflow-y:auto;padding:6px 10px;
+  display:flex;flex-direction:column;gap:2px;
+}
+.portal-chat-foot{display:flex;gap:6px;padding:6px 8px;border-top:1px solid var(--border2);flex-shrink:0}
+
+@media(max-width:768px){
+  .portal-body{flex-direction:column}
+  .portal-left{flex:0 0 auto}
+  .portal-friends{max-height:200px}
+  .portal-games{max-height:130px}
+}
+
 @media(max-width:420px){
   .die{width:48px;height:48px}
   .die svg{width:38px;height:38px}
-  .die[class*="die-skin-"] .die-icon-bg{font-size:30px}
+  
   .dice-tray{min-width:auto;padding:10px 12px}
   .action-zone{max-width:100%}
   .lobby-content{gap:14px;padding:12px}
@@ -1416,7 +1726,7 @@ input[type=number]{-moz-appearance:textfield}
   .shop-grid{grid-template-columns:repeat(3,1fr)}
   .die{width:56px;height:56px}
   .die svg{width:44px;height:44px}
-  .die[class*="die-skin-"] .die-icon-bg{font-size:34px}
+  
   .lobby-content{max-width:420px}
   .game-table{padding:20px 24px 14px}
 }
@@ -1428,11 +1738,11 @@ input[type=number]{-moz-appearance:textfield}
   .shop-grid{grid-template-columns:repeat(4,1fr)}
   .die{width:68px;height:68px}
   .die svg{width:52px;height:52px}
-  .die[class*="die-skin-"] .die-icon-bg{font-size:42px}
+  
   .dice-tray{padding:22px 28px;min-width:340px}
   .game-table{padding:24px 32px 16px}
-  .lobby-content{max-width:400px}
-  .lobby-content{gap:26px}
+  .lobby-content{max-width:360px;flex-direction:column;align-items:center;gap:22px}
+  .lobby-form{width:100%}
   .chat-msgs{max-height:100px}
   .stats-row{max-width:400px}
   .action-zone{max-width:400px}
@@ -1440,4 +1750,21 @@ input[type=number]{-moz-appearance:textfield}
   .auth-box{max-width:380px}
   .game-topbar{padding:10px 20px}
   .top-bar{padding:14px 24px}
+  
+  /* Desktop: ocultar flechita toggle del wallet y mostrar extras siempre */
+  .btn-wallet-toggle,
+  .hidden-desktop{display:none !important}
+  .wallet-extras{display:flex !important}
+  .wallet-extras.hidden{display:flex !important}
+
+  /* Misiones desktop: arriba a la derecha, abajo del top-bar */
+  .lobby-missions-desktop{
+    position:fixed;top:64px;right:16px;z-index:15;
+    width:280px;margin:0;padding:16px;
+    background:var(--bg-card);backdrop-filter:blur(12px);
+    border:1px solid var(--border2);border-radius:var(--r);
+    box-shadow:var(--sh);
+    display:flex !important;flex-direction:column;
+  }
+  #btn-missions-mobile{display:none !important}
 }

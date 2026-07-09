@@ -32,15 +32,111 @@ let _playAgainTimer  = null;
 let _deferredInstall = null; // evento beforeinstallprompt
 
 /* ── Service Worker + PWA ────────────────────────────── */
+let _swRegistration = null;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       console.log('SW registrado:', reg.scope);
+      _swRegistration = reg;
     }).catch(err => {
       console.warn('SW error:', err);
     });
   });
 }
+
+/* ── Push Notifications ─────────────────────────────── */
+let _pushSubscribed = false;
+
+// Convertir VAPID key de base64 a Uint8Array (requerido por Push API)
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+async function subscribeToPush() {
+  const token = localStorage.getItem('gameToken');
+  if (!token || !_swRegistration) { toast('Debés iniciar sesión'); return; }
+  try {
+    // Obtener VAPID public key
+    const keyRes = await fetch('/api/push/vapid-key');
+    const keyData = await keyRes.json();
+    if (!keyData.publicKey) {
+      toast('🔔 Push no disponible (sin configuración)', 'error');
+      return;
+    }
+    // Subscription (convertir key a Uint8Array)
+    const sub = await _swRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+    });
+    await fetch('/api/push/subscribe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ subscription: sub.toJSON() })
+    });
+    _pushSubscribed = true;
+    localStorage.setItem('macko_push', 'subscribed');
+    updatePushBtn();
+    toast('🔔 Notificaciones activadas', 'success');
+  } catch (e) {
+    if (e.name === 'NotAllowedError' || e.code === 20) {
+      toast('🔔 Permití las notificaciones en el navegador', 'error');
+    } else {
+      toast('Error al activar push: ' + e.message, 'error');
+    }
+  }
+}
+
+async function unsubscribeFromPush() {
+  const token = localStorage.getItem('gameToken');
+  if (!token || !_swRegistration) return;
+  try {
+    const sub = await _swRegistration.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+    await fetch('/api/push/unsubscribe', {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+    });
+  } catch(e) {}
+  _pushSubscribed = false;
+  localStorage.removeItem('macko_push');
+  updatePushBtn();
+  toast('🔔 Notificaciones desactivadas', 'info');
+}
+
+async function checkPushStatus() {
+  if (!_swRegistration || !isLogged()) return;
+  try {
+    const sub = await _swRegistration.pushManager.getSubscription();
+    _pushSubscribed = !!sub;
+    updatePushBtn();
+  } catch(e) {}
+}
+
+function updatePushBtn() {
+  // Actualizar botón de notificaciones en la topbar
+  const btns = ['btn-push-topbar'];
+  btns.forEach(id => {
+    const btn = $(id);
+    if (!btn) return;
+    if (_pushSubscribed) {
+      btn.textContent = '🔔';
+      btn.classList.add('push-active');
+      btn.title = 'Desactivar notificaciones';
+    } else {
+      btn.textContent = '🔕';
+      btn.classList.remove('push-active');
+      btn.title = 'Activar notificaciones';
+    }
+  });
+}
+
+// También llamar al login y después de register SW
+setTimeout(() => {
+  if (localStorage.getItem('macko_push') === 'subscribed') {
+    subscribeToPush(); // re-suscribir si ya estaba
+  }
+}, 6000);
 
 /* Capturar evento de instalación PWA */
 let _pwaDismissed = false;
@@ -84,6 +180,26 @@ window.addEventListener('appinstalled', () => {
 /* ── Persistencia de sesión ──────────────────────────── */
 const SESSION_KEY = 'macko_session';
 const AUTH_KEY = 'macko_auth';
+
+// Cache busting: limpiar localStorage viejo de versiones anteriores
+const GAME_CACHE_KEY = 'macko_cache_ver';
+function checkCacheVersion() {
+  const appVersion = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : '0.0.0';
+  const cachedVersion = localStorage.getItem(GAME_CACHE_KEY);
+  if (cachedVersion !== appVersion) {
+    // Nueva versión: limpiar todo lo que no sea sesión activa
+    const keptKeys = [AUTH_KEY, 'gameToken', SESSION_KEY, GAME_CACHE_KEY, 'macko_push'];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && !keptKeys.includes(key)) {
+        localStorage.removeItem(key);
+      }
+    }
+    localStorage.setItem(GAME_CACHE_KEY, appVersion);
+    console.log('🧹 Cache local limpiado para versión', appVersion);
+  }
+}
+
 function saveSession() {
   if (!S.id) return;
   localStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -133,6 +249,9 @@ function clearAuth() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem('gameToken');
 }
+
+// Ejecutar cache check al cargar la página
+checkCacheVersion();
 /* ── SVG dados realistas ─────────────────────────────── */
 const DOT_POSITIONS = {
   1: [[25,25]],
@@ -161,40 +280,20 @@ const DICE_SKINS = {
 };
 
 /* ── Mezclar dos colores hex ──────────────────────────── */
-function blendHexColor(hex1, hex2, ratio = 0.4) {
-  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
-  const [r1,g1,b1] = p(hex1);
-  const [r2,g2,b2] = p(hex2);
-  const r = Math.round(r1 * (1-ratio) + r2 * ratio);
-  const g = Math.round(g1 * (1-ratio) + g2 * ratio);
-  const b = Math.round(b1 * (1-ratio) + b2 * ratio);
-  return `rgb(${r},${g},${b})`;
-}
-
-function makeDieSVG(value, state='normal', skinId=null) {
+function makeDieSVG(value, state='normal', skinId=null, dotColor=null) {
   const dots = DOT_POSITIONS[value] || [];
-  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
 
-  let dotColor = '#1a1a2e';
-  if (skin) {
-    if (state === 'dead') {
-      // Dados muertos: puntos grises
-      dotColor = '#666666';
-    } else if (state === 'scoring' || state === 'hot') {
-      // Scoring/hot: puntos blancos brillantes para que se distingan del icono
-      dotColor = '#FFFFFF';
-    } else {
-      // Normal con skin: puntos blancos semi-transparentes para que el icono se vea
-      dotColor = 'rgba(255,255,255,0.85)';
-    }
-  } else {
-    if (state === 'scoring') dotColor = '#103808';
-    else if (state === 'hot') dotColor = '#6b3400';
-    else if (state === 'dead') dotColor = '#666666';
+  let finalDotColor = dotColor;
+  if (!finalDotColor) {
+    // Fallback para dados sin skin
+    if (state === 'scoring')      finalDotColor = '#103808';
+    else if (state === 'hot')     finalDotColor = '#6b3400';
+    else if (state === 'dead')    finalDotColor = '#666666';
+    else                          finalDotColor = '#1a1a2e';
   }
 
   const circles = dots.map(([cx,cy]) =>
-    `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${dotColor}"/>`
+    `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${finalDotColor}" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>`
   ).join('');
   return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">${circles}</svg>`;
 }
@@ -208,33 +307,48 @@ function makeDie(value, state='normal', skinId=null) {
     + (state === 'hot'     ? ' hot'     : '')
     + (state === 'dead'    ? ' dead'    : '');
 
-  // Colores de fondo: skin mantiene sus colores originales, scoring/hot se indican con BORDE
-  if (state !== 'dead') {
-    if (skin) {
-      // Skin: mantener fondo original de la skin, sin mezclar
-      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
-      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 4px 12px rgba(0,0,0,.4)`;
-      el.classList.add('die-skin-' + skinId);
-      // Ícono de la skin como elemento visual principal que REEMPLAZA el dado
-      // Los puntos se superponen encima para mostrar el valor
-      el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId);
-    } else if (state === 'scoring') {
+  if (skin) {
+    // ── Dado CON skin ──
+    let dotColor;
+
+    if (state === 'scoring') {
+      // Scoring: fondo VERDE (el dado se pinta verde para indicar que suma)
       el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
-      el.innerHTML = makeDieSVG(value, state, skinId);
+      el.style.boxShadow = `2px 2px 0 #206808, 3px 3px 0 #005000, 0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3), inset 0 1px 2px rgba(180,255,160,.5)`;
+      dotColor = '#103808';
     } else if (state === 'hot') {
+      // Hot: fondo DORADO (dados calientes)
       el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
-      el.innerHTML = makeDieSVG(value, state, skinId);
+      el.style.boxShadow = `2px 2px 0 #A06008, 3px 3px 0 #784000, 0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3), inset 0 1px 2px rgba(255,230,110,.5)`;
+      dotColor = '#6b3400';
+    } else if (state === 'dead') {
+      // Muerto: fondo apagado + puntos grises
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      dotColor = '#666666';
     } else {
-      el.innerHTML = makeDieSVG(value, state, skinId);
+      // Normal: fondo completo de la skin
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)`;
+      dotColor = skin.dot || '#1a1a2e';
     }
+
+    el.classList.add('die-skin-' + skinId);
+    // Icono grande de la skin como fondo del dado + puntos SVG encima
+    el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId, dotColor);
+  } else if (state === 'scoring') {
+    // ── Dado SIN skin: fondo verde ──
+    el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
+    el.innerHTML = makeDieSVG(value, state, skinId);
+  } else if (state === 'hot') {
+    // ── Dado SIN skin: fondo dorado ──
+    el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
+    el.innerHTML = makeDieSVG(value, state, skinId);
+  } else if (state === 'dead') {
+    // ── Dado SIN skin: muerto ──
+    el.innerHTML = makeDieSVG(value, state, skinId);
   } else {
-    // Dados muertos con skin: el ícono se ve apagado junto con los puntos
-    if (skin) {
-      el.classList.add('die-skin-' + skinId);
-      el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId);
-    } else {
-      el.innerHTML = makeDieSVG(value, state, skinId);
-    }
+    // ── Dado SIN skin: normal ──
+    el.innerHTML = makeDieSVG(value, state, skinId);
   }
 
   el.dataset.val = value;
@@ -271,7 +385,16 @@ function showDice(dice, mode) {
   }
   // 2. NO usar fallback a skin local — solo la skin del jugador que tira
   // Si el jugador activo no tiene skin, se ven dados normales
-  console.log('🎲 Skin activo:', activeSkinId, '| DICE_SKINS tiene:', !!DICE_SKINS[activeSkinId], '| match:', S.match?.currentPlayerIndex, '| players:', S.match?.players?.length, '| rollingPlayer:', S.match?.players?.[S.match?.currentPlayerIndex]?.name, '| diceEq:', S.match?.players?.[S.match?.currentPlayerIndex]?.equippedDice);
+  const rp = S.match?.players?.[S.match?.currentPlayerIndex];
+  console.log('🎲 Skin debug:', {
+    activeSkinId,
+    hasDiceSkins: !!DICE_SKINS[activeSkinId],
+    currentPlayerIdx: S.match?.currentPlayerIndex,
+    rollingPlayerName: rp?.name,
+    diceEq: rp?.equippedDice,
+    allPlayers: S.match?.players?.map(p => ({ name: p.name, dice: p.equippedDice, avatar: p.equippedAvatar })),
+    localDiceEquipped: S.diceEquipped
+  });
   // Solo usar skin del jugador que está tirando (ya no hay fallback local)
 
   // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
@@ -301,6 +424,10 @@ function showDice(dice, mode) {
     }
     row.appendChild(die);
   });
+  // Partículas visuales de la skin (si el jugador activo tiene skin)
+  if (activeSkinId && SKIN_PARTICLES[activeSkinId] && mode !== 'dead') {
+    setTimeout(() => spawnSkinParticles(activeSkinId, row), 400);
+  }
 }
 
 function clearDice() {
@@ -477,6 +604,108 @@ const SFX = {
   purchase: ()=>{ tone(600,'triangle',.1,.25); tone(800,'triangle',.08,.2,.08); tone(1000,'triangle',.15,.3,.2); }
 };
 
+// ── Partículas visuales únicas por skin de dados ────────
+const SKIN_PARTICLES = {
+  '1':  { colors:['#fff','#f0e0c0'],           shape:'circle', count:5,  size:[2,5],  dur:[1.2,2.0], rise:'up' },
+  '2':  { colors:['#FF6B35','#FFD700','#FF4500'], shape:'spark',  count:8,  size:[2,4],  dur:[.8,1.6], rise:'up' },
+  '4':  { colors:['#88D8FF','#B8E8FF'],        shape:'spark',  count:5,  size:[2,4],  dur:[1.5,2.5], rise:'up' },
+  '5':  { colors:['#70E8FF','#fff','#b0f0ff'], shape:'circle', count:7,  size:[2,4],  dur:[1.8,3.0], rise:'float' },
+  '6':  { colors:['#c0e8ff','#fff','#80d0ff'], shape:'circle', count:6,  size:[2,4],  dur:[1.5,2.5], rise:'float' },
+  '18': { colors:['#FF2222','#FF6666','#FF0000'], shape:'spark',  count:10, size:[2,5],  dur:[.6,1.2], rise:'up' },
+  '19': { colors:['#FFD700','#FFF0A0','#DAA520'], shape:'circle', count:6,  size:[2,4],  dur:[1.2,2.0], rise:'up' },
+  '20': { colors:['#50C878','#90E8A0','#2EA85E'], shape:'circle', count:5,  size:[2,4],  dur:[1.2,2.0], rise:'up' },
+  '21': { colors:['#6B8E23','#8FB830','#4A6E10'], shape:'circle', count:6,  size:[3,5],  dur:[1.0,1.8], rise:'up' },
+  '22': { colors:['#FF6B9D','#FFD700','#88D8FF'], shape:'spark',  count:8,  size:[2,4],  dur:[1.0,2.0], rise:'float' },
+  '32': { colors:['#B9F2FF','#fff','#7FE0F8'],  shape:'spark',  count:7,  size:[2,3],  dur:[1.5,2.8], rise:'float' },
+  '33': { colors:['#9B59B6','#8E44AD','#fff'],   shape:'circle', count:8,  size:[2,5],  dur:[1.5,3.0], rise:'float' },
+  '34': { colors:['#CC4444','#fff','#1A1A1A'],   shape:'spark',  count:6,  size:[2,4],  dur:[.8,1.5], rise:'up' }
+};
+
+function spawnSkinParticles(skinId, container) {
+  const cfg = SKIN_PARTICLES[skinId];
+  if (!cfg || !container) return;
+  const rect = container.getBoundingClientRect();
+  const tray = container.closest('.dice-tray');
+  const area = tray || container;
+  const areaRect = area.getBoundingClientRect();
+  for (let i = 0; i < cfg.count; i++) {
+    const p = document.createElement('div');
+    p.className = 'skin-particle';
+    const color = cfg.colors[Math.floor(Math.random() * cfg.colors.length)];
+    const size = cfg.size[0] + Math.random() * (cfg.size[1] - cfg.size[0]);
+    const dur = cfg.dur[0] + Math.random() * (cfg.dur[1] - cfg.dur[0]);
+    const x = rect.left - areaRect.left + Math.random() * rect.width;
+    const y = rect.top - areaRect.top + Math.random() * rect.height;
+    const tx = (Math.random() - 0.5) * 80;
+    const ty = -40 - Math.random() * 60;
+    p.style.cssText = `
+      left:${x}px; top:${y}px;
+      width:${size}px; height:${size}px;
+      background:${color};
+      border-radius:${cfg.shape === 'circle' ? '50%' : '2px'};
+      animation-duration:${dur}s;
+      --tx:${tx}px; --ty:${ty}px;
+      box-shadow:0 0 ${size * 2}px ${color};
+    `;
+    p.dataset.rise = cfg.rise;
+    area.appendChild(p);
+    setTimeout(() => p.remove(), dur * 1000 + 200);
+  }
+}
+
+// ── Sonidos únicos por skin de dados ────────────────────
+// Cada skin tiene una frecuencia base y forma de onda que refleja su personalidad
+const SKIN_SOUND = {
+  '1':  { freq: 500, wave: 'square' },
+  '2':  { freq: 180, wave: 'sawtooth' },
+  '4':  { freq: 660, wave: 'sine' },
+  '5':  { freq: 880, wave: 'sine' },
+  '6':  { freq: 1100,wave: 'sine' },
+  '18': { freq: 160, wave: 'sawtooth' },
+  '19': { freq: 440, wave: 'sine' },
+  '20': { freq: 520, wave: 'sine' },
+  '21': { freq: 140, wave: 'sawtooth' },
+  '22': { freq: 770, wave: 'triangle' },
+  '32': { freq: 1200,wave: 'sine' },
+  '33': { freq: 200, wave: 'triangle' },
+  '34': { freq: 100, wave: 'square' }
+};
+
+// Obtener perfil de audio del jugador que está tirando
+function getActiveSkinAudio() {
+  if (!S.match?.players || S.match.currentPlayerIndex === undefined) return null;
+  const player = S.match.players[S.match.currentPlayerIndex];
+  if (!player?.equippedDice) return null;
+  const skinId = String(player.equippedDice);
+  return SKIN_SOUND[skinId] || null;
+}
+
+// Sonido de tirada con skin: 3 tonos ascendentes con la frecuencia/fondo de la skin
+function playSkinRoll() {
+  const s = getActiveSkinAudio();
+  if (!s) { SFX.roll(); return; }
+  tone(s.freq,          s.wave, .06, .28);
+  tone(s.freq * 1.4,    s.wave, .05, .22, .05);
+  tone(s.freq * 1.75,   s.wave, .04, .16, .1);
+}
+
+// Sonido de puntuar con skin: 2 tonos armónicos
+function playSkinScore() {
+  const s = getActiveSkinAudio();
+  if (!s) { SFX.score(); return; }
+  tone(s.freq,          'sine', .12, .28);
+  tone(s.freq * 1.26,   'sine', .12, .22, .1);
+}
+
+// Sonido de dados calientes con skin: 4 tonos ascendentes
+function playSkinHot() {
+  const s = getActiveSkinAudio();
+  if (!s) { SFX.hot(); return; }
+  [s.freq, s.freq * 1.26, s.freq * 1.5, s.freq * 2].forEach((f,i) =>
+    tone(f, 'sine', .18, .38, i * .08)
+  );
+}
+
 /* ── Helpers ─────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -517,11 +746,18 @@ function updateUserPanel(name, coins) {
     lobbyAv?.classList.toggle('avatar-premium', S.specialEquipped === '15');
     
     $('guest-name-field').classList.add('hidden');
-    $('btn-logout').classList.remove('hidden');
+    // Mostrar logout en topbar, ocultar volver al login
+    $('btn-logout-topbar')?.classList.remove('hidden');
+    $('btn-back-to-auth')?.classList.add('hidden');
+    $('btn-changelog-outside')?.classList.remove('hidden');
+    $('btn-logout')?.classList.add('hidden'); // ocultar el viejo del form
   } else {
-    // Si no está logueado, ocultamos la barra de usuario y mostramos el campo para nombre
+    // No logueado: ocultar topbar, mostrar campo nombre
     topBar.classList.add('hidden');
-    $('btn-logout').classList.add('hidden');
+    $('btn-logout-topbar')?.classList.add('hidden');
+    $('btn-push-topbar')?.classList.add('hidden');
+    $('btn-back-to-auth')?.classList.remove('hidden');
+    $('btn-changelog-outside')?.classList.remove('hidden');
     $('guest-name-field').classList.remove('hidden');
   }
 }
@@ -582,6 +818,7 @@ function goLobby(msg) {
   if (msg) toast(msg, 2500);
   if(isLogged()){
    showScreen('screen-lobby');
+   loadLobbyMissions();
 }else{
    showScreen('screen-auth');
 }
@@ -609,6 +846,9 @@ function goToPlayAgain(room) {
   S.isOwner = amOwner;
   $('btn-cancel-room').classList.toggle('hidden', !amOwner);
   $('btn-leave-room').classList.toggle('hidden', amOwner);
+  // Cargar items equipados al reiniciar partida
+  loadEquippedCache();
+  loadEquippedItems();
   showScreen('screen-room');
   toast('🎲 ¡Revancha! Marcá listo cuando estés.', 3000);
 }
@@ -691,6 +931,10 @@ function wsSend(type, data={}) {
 /* ════════════════════════════════════════════════════════
    MANEJADOR DE MENSAJES
    ════════════════════════════════════════════════════════ */
+
+// Flag para evitar doble cartel de victoria (WIN + GAME_OVER duplicados)
+let _winShown = false;
+
 function handle(type, data) {
   switch(type) {
 
@@ -815,6 +1059,7 @@ function handle(type, data) {
       S.banking = false;
       saveSession();
       showScreen('screen-game');
+      console.log('🎮 GAME_STARTED players:', data.match?.players?.map(p => ({ name: p.name, dice: p.equippedDice, av: p.equippedAvatar })));
       // Resetear botones al iniciar partida nueva
       $('btn-roll').disabled = false;
       $('btn-bank').disabled = true;
@@ -895,7 +1140,7 @@ function handle(type, data) {
         updateTurnUI(data.match);
       }
       syncMyScore(data.match);
-      if (data.playerId===S.id) SFX.score();
+      if (data.playerId===S.id) playSkinScore();
       break;
 
     case 'DEAD_ROLL':
@@ -937,7 +1182,7 @@ function handle(type, data) {
       updateTurnUI(data.match);
       syncMyScore(data.match);
       sys(`🔥 ${data.playerName} dados calientes! +${data.rollScore} pts acumulados`);
-      SFX.hot();
+      playSkinHot();
       break;
 
     case 'BANKED':
@@ -985,15 +1230,15 @@ function handle(type, data) {
       toast('⏰ Tiempo agotado');
       break;
 
-    /* ── Victorias ───────────────────────────────────── */
+    /* ── Victorias (con flag para evitar duplicados) ───── */
     case 'INSTANT_WIN': {
+      _winShown = true;
       S.match=data.match;
       S.banking=false;
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
-      // Obtener skin del ganador del match state
       const winP = S.match.players.find(p => p.id === data.playerId);
       showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice, winP?.equippedDice || null);
       SFX.win();
@@ -1001,13 +1246,13 @@ function handle(type, data) {
     }
 
     case 'WIN': {
+      _winShown = true;
       S.match=data.match;
       S.banking=false;
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
-      // Obtener skin del ganador del match state
       const winP = S.match.players.find(p => p.id === data.playerId);
       showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice, winP?.equippedDice || null);
       SFX.win();
@@ -1015,13 +1260,13 @@ function handle(type, data) {
     }
 
     case 'GAME_OVER': {
+      // Si ya se mostró WIN/INSTANT_WIN, ignorar GAME_OVER duplicado
+      if (_winShown) { _winShown = false; break; }
       S.banking = false;
       $('btn-roll').disabled = true;
       stopTimer();
       updateGameCoins();
-      // Verificar misiones completadas
       checkPendingMissions();
-      // Obtener skin del ganador del match state
       const winnerId = data.winner?.id;
       const winSkin = winnerId && S.match 
         ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
@@ -1038,6 +1283,7 @@ function handle(type, data) {
 
     /* ── Revancha ────────────────────────────────────── */
     case 'PLAY_AGAIN': {
+      _winShown = false; // Resetear flag para próxima partida
       S.match = null; S.entered = false; S.myTurn = false;
       stopTimer();
       const hint  = $('play-again-hint');
@@ -1060,7 +1306,36 @@ function handle(type, data) {
       break;
     }
 
-    /* ── Chat ────────────────────────────────────────── */
+    /* ── Chat Global ─────────────────────────────────── */
+    case 'GLOBAL_CHAT':
+      // Solo agregar si NO es mensaje propio (para evitar duplicados)
+      if (data.playerId !== S.id) {
+        addPortalChat(data.playerName, data.message);
+        SFX.chat();
+      }
+      break;
+
+    /* ── Chat Privado entre amigos ────────────────────── */
+    case 'PRIVATE_CHAT':
+      // Mensaje recibido de un amigo
+      addPrivateMessage(data.fromId, data.fromName, data.message, false);
+      SFX.chat();
+      break;
+
+    case 'PRIVATE_CHAT_SENT':
+      // Confirmación de mensaje enviado
+      addPrivateMessage(_privateChatTarget, _privateChatTargetName, data.message, true);
+      break;
+
+    case 'PRIVATE_CHAT_HISTORY':
+      // Historial de mensajes con un amigo
+      if (data.friendId === _privateChatTarget) {
+        _privateChatMessages = data.messages || [];
+        renderPrivateChat();
+      }
+      break;
+
+    /* ── Chat de sala ─────────────────────────────────── */
     case 'CHAT_MESSAGE':
       addChat(data.playerName, data.message);
       SFX.chat();
@@ -1427,6 +1702,399 @@ function addAudioMsg(name, audioBase64, duration, isMine) {
   }
 }
 
+/* ── PORTAL: Amigos, Partidas, Chat Global, Misiones ── */
+async function loadPortalData() {
+  loadPortalGames();
+}
+
+async function loadPortalFriends() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const list = $('portal-friends-list');
+  if (!list) return;
+  try {
+    const res = await fetch('/api/friends', { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!res.ok) { list.innerHTML = '<p class="portal-empty">Error al cargar</p>'; return; }
+    const { friends } = await res.json();
+    if (!friends?.length) {
+      list.innerHTML = '<p class="portal-empty">Sin amigos aún. Buscalos por nombre 🔍</p>';
+      return;
+    }
+    // Online check: el server devuelve is_online según si tiene WebSocket activo
+    list.innerHTML = friends.map(f => {
+      const isOnline = f.is_online || false;
+      const timeAgo = f.last_seen > 0 ? formatTimeAgo(f.last_seen) : 'nunca conectado';
+      return `
+      <div class="portal-friend-item">
+        <span class="portal-friend-status ${isOnline ? 'online' : 'offline'}"></span>
+        <span class="portal-friend-av">${f.equipped_avatar ? f.equipped_avatar : '👤'}</span>
+        <span class="portal-friend-name">${esc(f.alias || f.name)}</span>
+        <span class="portal-friend-stats">
+          ${isOnline ? '<span class="friend-online-tag">En línea</span>' : `<span class="friend-offline-tag">${timeAgo}</span>`}
+          ${f.games_won || 0}🏆
+        </span>
+        <button class="portal-friend-msg" data-id="${esc(f.id)}" data-name="${esc(f.alias || f.name)}" title="Enviar mensaje">💬</button>
+        <button class="portal-friend-remove" data-id="${esc(f.id)}" title="Eliminar amigo">✕</button>
+      </div>
+    `}).join('');
+    list.querySelectorAll('.portal-friend-remove').forEach(btn => {
+      btn.onclick = async () => {
+        await fetch('/api/friends/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ friendId: btn.dataset.id })
+        });
+        loadPortalFriends();
+        toast('🚫 Amigo eliminado');
+      };
+    });
+    // Botón para iniciar chat privado con amigo
+    list.querySelectorAll('.portal-friend-msg').forEach(btn => {
+      btn.onclick = () => {
+        openPrivateChat(btn.dataset.id, btn.dataset.name);
+      };
+    });
+  } catch(e) {
+    list.innerHTML = '<p class="portal-empty">Error al cargar</p>';
+  }
+}
+
+function formatTimeAgo(timestamp) {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'ahora';
+  if (mins < 60) return `hace ${mins}min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days}d`;
+}
+
+let _privateChatTarget = null;
+let _privateChatTargetName = '';
+let _privateChatMessages = {}; // friendId -> [{from, msg, ts}]
+
+function openPrivateChat(friendId, friendName) {
+  _privateChatTarget = friendId;
+  _privateChatTargetName = friendName;
+  // Cambiar a la pestaña de amigos
+  document.querySelectorAll('.portal-chat-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.portal-chat-tab[data-portal-tab="friends"]')?.classList.add('active');
+  document.querySelectorAll('.portal-chat-pane').forEach(p => p.style.display = 'none');
+  const friendsPane = $('portal-chat-friends');
+  if (friendsPane) friendsPane.style.display = 'flex';
+  // Habilitar input
+  const inp = $('portal-chat-friends-input');
+  const sendBtn = $('portal-chat-friends-send');
+  if (inp) { inp.disabled = false; inp.placeholder = `Mensaje para ${friendName}...`; inp.focus(); }
+  if (sendBtn) sendBtn.disabled = false;
+  // Cargar historial del backend
+  _privateChatMessages = [];
+  renderPrivateChat();
+  wsSend('GET_PRIVATE_CHAT', { friendId: _privateChatTarget });
+}
+
+function renderPrivateChat() {
+  const msgs = $('portal-chat-friends-msgs');
+  if (!msgs) return;
+  if (!_privateChatTarget) {
+    msgs.innerHTML = '<p class="portal-empty" style="padding:20px;font-size:11px">Seleccioná un amigo para chatear</p>';
+    return;
+  }
+  if (!_privateChatMessages.length) {
+    msgs.innerHTML = `<p class="portal-empty" style="padding:20px;font-size:11px">Chat con ${esc(_privateChatTargetName)} — sin mensajes aún</p>`;
+    return;
+  }
+  msgs.innerHTML = _privateChatMessages.map(m => {
+    const isMine = m.from_id === S.id;
+    const name = isMine ? 'Yo' : esc(_privateChatTargetName);
+    const msgText = m.message || m.msg || '';
+    return `<div class="cm${isMine ? ' mine' : ''}"><span class="cn">${name}</span>: ${esc(msgText)}</div>`;
+  }).join('');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendPrivateChat() {
+  const inp = $('portal-chat-friends-input');
+  const msg = inp.value.trim();
+  if (!msg || !_privateChatTarget) return;
+  // Enviar via WebSocket al servidor
+  wsSend('PRIVATE_CHAT', { playerId: S.id, playerName: S.name, toId: _privateChatTarget, message: msg });
+  inp.value = '';
+  // Mostrar instantáneo en el frontend (sin esperar confirmación)
+  addPrivateMessage(_privateChatTarget, _privateChatTargetName, msg, true);
+  SFX.chat();
+}
+
+function addPrivateMessage(fromId, fromName, text, isMine) {
+  // Agregar mensaje al array local
+  _privateChatMessages.push({
+    from_id: isMine ? S.id : fromId,
+    message: text,
+    created_at: Date.now()
+  });
+  if (_privateChatMessages.length > 100) _privateChatMessages.shift();
+  // Si estamos en la conversación correcta, renderizar
+  if (_privateChatTarget === fromId || isMine) {
+    renderPrivateChat();
+  }
+}
+
+async function searchPortalPlayers(query) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const results = $('portal-search-results');
+  try {
+    const res = await fetch(`/api/friends/search?q=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const { players } = await res.json();
+    if (!players?.length) {
+      results.innerHTML = '<p class="portal-search-none">Sin resultados</p>';
+      return;
+    }
+    results.innerHTML = players.map(p => `
+      <div class="portal-search-item">
+        <span class="portal-friend-av">${p.equipped_avatar ? p.equipped_avatar : '👤'}</span>
+        <span>${esc(p.alias || p.name)}</span>
+        <button class="portal-add-btn" data-id="${esc(p.id)}">+ Agregar</button>
+      </div>
+    `).join('');
+    results.querySelectorAll('.portal-add-btn').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          const r = await fetch('/api/friends/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ friendId: btn.dataset.id })
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error);
+          toast('✅ Amigo agregado');
+          btn.textContent = '✔';
+          btn.disabled = true;
+          loadPortalFriends();
+        } catch(err) {
+          toast('⚠ ' + err.message);
+        }
+      };
+    });
+  } catch(e) {}
+}
+
+async function loadPortalGames() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  const list = $('portal-games-list');
+  const title = $('portal-games-count-title');
+  if (!list) return;
+  try {
+    const res = await fetch('/api/games/active', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { list.innerHTML = '<p class="portal-empty">Error</p>'; return; }
+    const { games } = await res.json();
+    const count = games?.length || 0;
+    if (title) title.textContent = `🎲 Partidas activas: ${count}`;
+    if (!count) {
+      list.innerHTML = '<p class="portal-empty">No hay partidas activas ahora</p>';
+      return;
+    }
+    list.innerHTML = games.map(g => `
+      <div class="portal-game-item">
+        <span class="portal-game-code">${esc(g.code)}</span>
+        <span class="portal-game-players">${g.playerCount}/${g.maxPlayers} 👥</span>
+      </div>
+    `).join('');
+  } catch(e) {
+    list.innerHTML = '<p class="portal-empty">Error al cargar</p>';
+  }
+}
+
+/* ── Cargar misiones diarias en el lobby (vista principal) ── */
+async function loadLobbyMissions() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) { 
+    $('btn-missions-mobile')?.classList.add('hidden');
+    $('lobby-missions-desktop')?.classList.add('hidden');
+    return;
+  }
+  try {
+    const res = await fetch('/api/user/missions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) { 
+      $('btn-missions-mobile')?.classList.add('hidden');
+      $('lobby-missions-desktop')?.classList.add('hidden');
+      return;
+    }
+    const { missions } = await res.json();
+    const dailies = missions.filter(m => m.type === 'daily');
+    if (!dailies.length) { 
+      $('btn-missions-mobile')?.classList.add('hidden');
+      $('lobby-missions-desktop')?.classList.add('hidden');
+      return;
+    }
+    
+    const html = dailies.map(m => {
+      const pct = m.req > 0 ? Math.round((m.progress / m.req) * 100) : 0;
+      const done = m.completed === 1;
+      const claimed = m.claimed === 1;
+      return `<div class="lobby-mission${done ? ' done' : ''}">
+        <span class="lm-icon">${done ? (claimed ? '✅' : '🎯') : '📅'}</span>
+        <span class="lm-name">${esc(m.name)}</span>
+        <div class="lm-bar"><div class="lm-fill" style="width:${Math.min(pct,100)}%"></div></div>
+        <span class="lm-pct">${m.progress}/${m.req}</span>
+        ${claimed ? '<span class="lm-check">✔</span>' : ''}
+      </div>`;
+    }).join('');
+    
+    // Móvil: mostrar botón que abre modal de misiones
+    $('btn-missions-mobile')?.classList.remove('hidden');
+    // Desktop: poblar tarjeta de misiones
+    const desktopList = $('lobby-missions-list-desktop');
+    if (desktopList) { 
+      desktopList.innerHTML = html;
+      $('lobby-missions-desktop')?.classList.remove('hidden');
+    }
+  } catch(e) { 
+    $('btn-missions-mobile')?.classList.add('hidden');
+    $('lobby-missions-desktop')?.classList.add('hidden');
+  }
+}
+
+
+
+function openMissionTab() {
+  $('modal-shop').classList.remove('hidden');
+  loadMissions();
+  document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.shop-tab-content').forEach(c => c.style.display = 'none');
+  const tab = document.querySelector('.shop-tab[data-tab="missions"]');
+  if (tab) tab.classList.add('active');
+  const tc = $('shop-tab-missions');
+  if (tc) tc.style.display = 'block';
+}
+
+let _globalChatMessages = [];
+
+// Cache del changelog para carga instantánea
+let _changelogCache = null;
+
+async function loadChangelog() {
+  // Si ya tenemos datos cacheados, mostrar inmediatamente
+  if (_changelogCache) {
+    renderChangelog(_changelogCache.version, _changelogCache.entries);
+    $('modal-changelog').classList.remove('hidden');
+    return;
+  }
+  try {
+  try {
+    const res = await fetch('/api/version');
+    const data = await res.json();
+    const version = data.version || '—';
+    const changelog = data.changelog || [];
+    
+    // Cachear para próxima vez
+    const gameEntries = changelog.filter(e => e.scope === 'game' || e.scope === 'all');
+    _changelogCache = { version, entries: gameEntries };
+    
+    renderChangelog(version, gameEntries);
+    $('modal-changelog').classList.remove('hidden');
+  } catch(err) {
+    // Si falla el fetch, mostrar toast de error pero NO abrir modal vacío
+    toast('⚠ Error al cargar historial: ' + err.message);
+  }
+}
+
+function renderChangelog(version, entries) {
+  const verEl = $('changelog-current-version');
+  if (verEl) verEl.textContent = 'v' + version;
+  
+  const list = $('changelog-list');
+  if (!list) return;
+  
+  if (!entries.length) {
+    list.innerHTML = '<p style="color:var(--text3);text-align:center;padding:20px">Sin historial disponible</p>';
+    return;
+  }
+  
+  list.innerHTML = entries.map(entry => {
+    const isCurrent = entry.version === version;
+    return `<div style="
+      background:${isCurrent ? 'rgba(212,175,55,.08)' : 'var(--bg-card2)'};
+      border:1px solid ${isCurrent ? 'var(--gold)' : 'var(--border2)'};
+      border-radius:10px;padding:14px 12px;
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px">
+        <span style="
+          font-family:'Cinzel',serif;font-size:16px;font-weight:700;
+          color:${isCurrent ? 'var(--gold2)' : 'var(--gold)'};
+        ">v${esc(entry.version)}</span>
+        <span style="
+          font-size:10px;color:var(--text3);
+          background:var(--bg-input);padding:2px 8px;border-radius:4px;
+        ">${esc(entry.date || '')}</span>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">${esc(entry.title || '')}</div>
+      <ul style="margin:0;padding-left:16px;list-style:none">
+        ${(entry.changes || []).map(c => 
+          `<li style="font-size:11px;color:var(--text2);margin-bottom:3px;position:relative;padding-left:14px">
+            <span style="position:absolute;left:0;top:2px">•</span>
+            ${esc(c)}
+          </li>`
+        ).join('')}
+      </ul>
+      ${isCurrent ? '<div style="margin-top:6px;font-size:10px;color:var(--gold);font-weight:600">⬅ Actual</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+async function loadGlobalChat() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/global-chat', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const { messages } = await res.json();
+    _globalChatMessages = messages || [];
+    renderPortalChat();
+  } catch(e) {}
+}
+
+function renderPortalChat() {
+  const msgs = $('portal-chat-msgs');
+  if (!msgs) return;
+  if (!_globalChatMessages.length) {
+    msgs.innerHTML = '<p class="portal-empty" style="padding:10px;font-size:11px">Sin mensajes aún</p>';
+    return;
+  }
+  msgs.innerHTML = _globalChatMessages.map(m =>
+    `<div class="cm"><span class="cn">${esc(m.player_name)}</span>: ${esc(m.message)}</div>`
+  ).join('');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addPortalChat(name, text) {
+  _globalChatMessages.push({ player_name: name, message: text });
+  if (_globalChatMessages.length > 50) _globalChatMessages.shift();
+  renderPortalChat();
+}
+
+function sendPortalChat() {
+  const inp = $('portal-chat-input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  wsSend('GLOBAL_CHAT', { playerId: S.id, playerName: S.name, message: msg });
+  inp.value = '';
+  // Agregar localmente al instante (sin esperar round-trip del server)
+  addPortalChat(S.name, msg);
+  SFX.chat();
+}
+
 /* ── Ranking ─────────────────────────────────────────── */
 function renderRanking(rows) {
   const list = $('ranking-list');
@@ -1479,6 +2147,13 @@ function showWin(playerName, desc, dice, skinId) {
 
 /* ── Init UI ─────────────────────────────────────────── */
 function initUI() {
+  // Actualizar versión dinámica desde version.js
+  const appVersion = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : '2.3.0';
+  const authSub = document.querySelector('.auth-sub');
+  if (authSub) authSub.textContent = 'Juego de dados · 2 a 10 jugadores · v' + appVersion;
+  const appVerEl = document.querySelector('.app-version');
+  if (appVerEl) appVerEl.textContent = 'v' + appVersion;
+  $('btn-changelog-outside') && ($('btn-changelog-outside').textContent = '📋 v' + appVersion);
   initBgCanvas();
 
   /* PWA — botón instalar */
@@ -1497,6 +2172,16 @@ function initUI() {
     clearTimeout(_pwaAutoTimer);
     $('pwa-install-bar').classList.add('hidden');
     updatePwaOffset();
+  };
+
+  /* ── Wallet toggle (mobile: expandir/colapsar cofre y tienda) ── */
+  $('btn-wallet-toggle').onclick = () => {
+    const extras = $('wallet-extras');
+    const btn = $('btn-wallet-toggle');
+    if (!extras || !btn) return;
+    const isHidden = extras.classList.contains('hidden');
+    extras.classList.toggle('hidden', !isHidden);
+    btn.classList.toggle('open', isHidden);
   };
 
   /* ── Tienda ─────────────────────────────────────────── */
@@ -1579,6 +2264,123 @@ function initUI() {
     btn.textContent = '🎁';
   };
 
+  /* ── Portal Social ────────────────────────────────── */
+  $('btn-portal').onclick = async () => {
+    const token = localStorage.getItem('gameToken');
+    if (!token) { toast('Debes iniciar sesión'); return; }
+    showScreen('screen-portal');
+    loadPortalData();
+    loadPortalFriends();
+    loadGlobalChat();
+  };
+  $('btn-back-portal').onclick = navigateToLobbyOrAuth;
+  $('portal-chat-send').onclick = sendPortalChat;
+  $('portal-chat-input').onkeydown = e => { if (e.key==='Enter') sendPortalChat(); };
+  
+  // Tabs de chat en portal
+  document.querySelectorAll('.portal-chat-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.portal-chat-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.portal-chat-pane').forEach(p => p.style.display = 'none');
+      const paneId = tab.dataset.portalTab === 'global' ? 'portal-chat-global' : 'portal-chat-friends';
+      const pane = $(paneId);
+      if (pane) pane.style.display = 'flex';
+      if (tab.dataset.portalTab === 'global') {
+        $('portal-chat-input')?.focus();
+      } else if (_privateChatTarget) {
+        $('portal-chat-friends-input')?.focus();
+        renderPrivateChat();
+      }
+    };
+  });
+  
+  // Chat privado con amigos
+  $('portal-chat-friends-send').onclick = sendPrivateChat;
+  $('portal-chat-friends-input').onkeydown = e => { if (e.key==='Enter') sendPrivateChat(); };
+  $('btn-add-friend').onclick = () => {
+    const area = $('portal-search-area');
+    area.classList.toggle('hidden');
+    if (!area.classList.contains('hidden')) {
+      $('portal-search-input').focus();
+      $('portal-search-input').value = '';
+      $('portal-search-results').innerHTML = '';
+    }
+  };
+  $('portal-search-input').oninput = function() {
+    const q = this.value.trim();
+    if (q.length < 2) { $('portal-search-results').innerHTML = ''; return; }
+    searchPortalPlayers(q);
+  };
+  $('btn-refresh-games').onclick = loadPortalGames;
+
+  /* ── Feedback ────────────────────────────────────────── */
+  $('btn-feedback').onclick = () => {
+    $('modal-feedback').classList.remove('hidden');
+    $('feedback-text').value = '';
+    const status = $('feedback-status');
+    status.classList.add('hidden');
+    status.className = 'feedback-status hidden';
+  };
+  $('btn-close-feedback').onclick = () => $('modal-feedback').classList.add('hidden');
+
+  $('btn-send-feedback').onclick = async () => {
+    const token = localStorage.getItem('gameToken');
+    if (!token) { toast('Debes iniciar sesión'); return; }
+    const cat = document.querySelector('input[name="fb-cat"]:checked');
+    const category = cat ? cat.value : 'otro';
+    const message = $('feedback-text').value.trim();
+    if (!message) { toast('Escribí un mensaje'); return; }
+    const btn = $('btn-send-feedback');
+    const status = $('feedback-status');
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ category, message })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      status.textContent = '✅ Feedback enviado. ¡Gracias!';
+      status.className = 'feedback-status success';
+      status.classList.remove('hidden');
+      $('feedback-text').value = '';
+      setTimeout(() => $('modal-feedback').classList.add('hidden'), 1500);
+    } catch (err) {
+      status.textContent = '⚠ ' + err.message;
+      status.className = 'feedback-status error';
+      status.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Enviar feedback';
+    }
+  };
+  // Enter en textarea de feedback
+  $('feedback-text').onkeydown = e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      $('btn-send-feedback').click();
+    }
+  };
+
+  /* ── Changelog ────────────────────────────────────────── */
+  $('btn-changelog-outside').onclick = () => loadChangelog();
+  $('btn-close-changelog').onclick = () => $('modal-changelog').classList.add('hidden');
+
+  /* ── Torneos ────────────────────────────────────────── */
+  $('btn-tournaments').onclick = async () => {
+    const token = localStorage.getItem('gameToken');
+    if (!token) { toast('Debés iniciar sesión'); return; }
+    $('modal-tournament').classList.remove('hidden');
+    loadTournaments();
+  };
+  $('btn-close-tournament').onclick = () => {
+    $('modal-tournament').classList.add('hidden');
+    $('tournament-bracket-view').classList.add('hidden');
+  };
+
   $('btn-ranking').onclick = async () => {
     if (!isLogged()) {
       toast('🔒 Debes iniciar sesión para ver el ranking');
@@ -1608,22 +2410,35 @@ function initUI() {
   };
 
 /* Logout */
-  $('btn-logout').onclick = () => {
+  /* ── Push notifications toggle (ambos botones) ──── */
+  function setupPushToggle(btnId) {
+    const btn = $(btnId);
+    if (!btn) return;
+    btn.onclick = () => {
+      if (_pushSubscribed) unsubscribeFromPush();
+      else subscribeToPush();
+    };
+  }
+  setupPushToggle('btn-push-topbar');
+  // Check push status after login — also triggered reliably inside btn-login's handler
+
+  function doLogout() {
     clearAuth();
     clearSession();
-    
-    // RESET TOTAL DEL ESTADO
     S.logged = false;
     S.userId = null;
     S.id = null;
-    S.name = null; // IMPORTANTE: Borramos el nombre guardado
-    
-    // Limpiar campos visuales
-    $('input-name').value = ''; 
-    
+    S.name = null;
+    $('input-name').value = '';
+    $('btn-logout-topbar')?.classList.add('hidden');
+    $('btn-push-topbar')?.classList.add('hidden');
+    $('btn-back-to-auth')?.classList.remove('hidden');
     showScreen('screen-auth');
     toast('Sesión cerrada');
-  };
+  }
+
+  $('btn-logout').onclick = doLogout;
+  $('btn-logout-topbar').onclick = doLogout;
 
   /* Entrar como Invitado */
   $('btn-guest').onclick = () => {
@@ -1741,7 +2556,13 @@ function initUI() {
       loadEquippedItems();
       // Comprobar misiones completadas
       setTimeout(checkPendingMissions, 2000);
+      // Mostrar botones de push y ocultar volver al login
+      const pushTopbar = $('btn-push-topbar');
+      if (pushTopbar) { pushTopbar.classList.remove('hidden'); checkPushStatus(); }
+      $('btn-back-to-auth')?.classList.add('hidden');
+      $('btn-changelog-outside')?.classList.remove('hidden');
       loadChestStatus();
+      loadLobbyMissions();
       showScreen('screen-lobby');
       toast('¡Bienvenido, ' + S.name + '!');
       
@@ -1809,7 +2630,7 @@ function initUI() {
     wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
     clearDice();
     setMsg('','');
-    SFX.roll();
+    playSkinRoll();
   };
   
   /* ── Botón BANCO: SIN NINGÚN BLOQUEO ──────────────── */
@@ -2031,10 +2852,12 @@ async function loadTransactions() {
       div.className = 'tx-item';
       const isPositive = (t.amount || 0) > 0;
       const amt = t.amount || 0;
-      // Formatear fecha
-      const d = new Date(t.created_at);
-      const dateStr = d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
-      const timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      // Formatear fecha (validar que sea válida)
+      const ts = t.created_at ? Number(t.created_at) : 0;
+      const d = new Date(ts > 0 ? ts : Date.now());
+      const isValid = !isNaN(d.getTime());
+      const dateStr = isValid ? d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }) : '—';
+      const timeStr = isValid ? d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
       div.innerHTML = `
         <div class="tx-icon">${isPositive ? '🪙' : '🛒'}</div>
         <div class="tx-info">
@@ -2383,6 +3206,7 @@ async function loadEquippedItems() {
     }
     const inv = await invRes.json();
     if (!inv || !inv.equipped) return;
+    console.log('📦 loadEquippedItems:', JSON.stringify(inv.equipped));
     S.diceEquipped = inv.equipped.dice || null;
     S.specialEquipped = inv.equipped.special || null;
     // Avatar equipado

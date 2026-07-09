@@ -6,6 +6,7 @@ const {
   createUserTransaction, 
   getUserByEmailOrUsername, 
   getPlayerByUserId,
+  checkIfBanned,
   pool 
 } = require("./database");
 
@@ -52,6 +53,16 @@ async function login(req, res) {
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
+    }
+
+    // Verificar si el usuario está baneado
+    const banStatus = await checkIfBanned(user.id);
+    if (banStatus.banned) {
+      if (banStatus.reason === 'permanente') {
+        return res.status(403).json({ error: '🚫 Tu cuenta ha sido baneada permanentemente' });
+      } else {
+        return res.status(403).json({ error: `🚫 Tu cuenta está ${banStatus.reason}` });
+      }
     }
 
     const player = await getPlayerByUserId(user.id);
