@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#52dad2" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NURA" />
+  <title>NURA — Gestión</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="logo.png" />
+  <link rel="icon" href="logo.png" type="image/png" />
+  <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Supabase — reemplaza Firebase (env.js ahora carga el SDK y crea el cliente) -->
+  <script src="env.js"></script>
+
+  <!-- Módulos de la aplicación -->
+  <script defer src="app/db.js"></script>
+  <script defer src="app/ui.js"></script>
+  <script defer src="app/auth.js"></script>
+  <script defer src="app/productos.js"></script>
+  <script defer src="app/clientes.js"></script>
+  <script defer src="app/ventas.js"></script>
+  <script defer src="app/compras.js"></script>
+  <script defer src="app/stock.js"></script>
+  <script defer src="app/combos.js"></script>
+  <script defer src="app/deudas.js"></script>
+  <script defer src="app/reportes.js"></script>
+  <script defer src="app/main.js"></script>
+</head>
+<body>
+
+  <!-- SPLASH -->
+  <div id="splash" style="position:fixed;inset:0;background:#0d1117;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s;">
+    <img src="logo.png" style="width:110px;height:110px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(82,218,210,0.6));animation:splashPulse 1.5s ease-in-out infinite alternate;" />
+    <div style="font-family:'Nunito',sans-serif;font-size:28px;font-weight:900;letter-spacing:8px;color:#fff;margin-top:8px;">NUR<span style="color:#a78bfa;">A</span></div>
+    <div style="font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:3px;text-transform:uppercase;margin-top:4px;">artículos de limpieza</div>
+    <div style="margin-top:28px;width:48px;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
+      <div style="height:100%;background:linear-gradient(90deg,#52dad2,#a78bfa);animation:splashLoad 1.2s ease-in-out infinite;border-radius:2px;"></div>
+    </div>
+  </div>
+
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen">
+    <div class="login-box">
+      <img src="logo.png" alt="Nura" class="logo-img" />
+      <h2>NUR<span style="color:#a78bfa;">A</span></h2>
+      <div class="sub">artículos de limpieza</div>
+      <input type="text" id="loginUser" placeholder="Usuario" autocomplete="off" />
+      <input type="password" id="loginPass" placeholder="Contraseña" />
+      <select id="loginRole">
+        <option value="admin">🔐 Admin</option>
+        <option value="vendedor">🏪 Vendedor</option>
+      </select>
+      <button id="loginBtn">Ingresar</button>
+      <div class="error" id="loginError">Usuario o contraseña incorrectos</div>
+    </div>
+  </div>
+
+  <!-- SYNC BAR -->
+  <div id="syncBar" style="display:none;position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#1ab8af,#a78bfa);z-index:8000;animation:syncP .9s ease-in-out infinite alternate;pointer-events:none;"></div>
+
+  <!-- APP -->
+  <div id="app" style="display:none;">
+    <nav class="sidebar" id="sidebar">
+      <button id="sidebarClose" style="position:absolute; top:10px; right:10px; background:none; border:none; color:white; font-size:24px; z-index:101;">✕</button>
+      <div class="sidebar-logo">
+        <img src="logo.png" alt="Nura" class="logo-img" />
+        <div class="logo-text">
+          <span class="logo-brand">NUR<span class="letra-a">A</span></span>
+          <span class="logo-sub">artículos de limpieza</span>
+        </div>
+      </div>
+      <ul class="nav-menu" id="navMenu"></ul>
+      <div class="sidebar-footer">
+        <div id="syncStatus" style="display:flex;align-items:center;gap:8px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:rgba(255,255,255,0.35);">
+          <span id="syncDot" style="width:6px;height:6px;border-radius:50%;background:#52dad2;flex-shrink:0;transition:background .3s;"></span>
+          <span id="syncTxt">Conectando...</span>
+        </div>
+        <button class="btn-wsp" id="btnWhatsappGlobal">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          Enviar catálogo
+        </button>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="hamburger" id="hamburger">☰</button>
+        <div class="topbar-title" id="pageTitle">Dashboard</div>
+        <div class="topbar-actions" id="topbarActions"></div>
+         <!-- BOTÓN CERRAR SESIÓN -->
+        <button id="logoutBtn" class="btn btn-sm btn-outline" style="flex-shrink:0;">🚪 Salir</button>
+      </header>
+      <div class="page active" id="page-dashboard"></div>
+      <div class="page" id="page-catalogo"></div>
+      <div class="page" id="page-clientes"></div>
+      <div class="page" id="page-ventas"></div>
+      <div class="page" id="page-compras"></div>
+      <div class="page" id="page-stock"></div>
+      <div class="page" id="page-combos"></div>
+      <div class="page" id="page-deudas"></div>
+      <div class="page" id="page-reportes"></div>
+      <div class="page" id="page-usuarios"></div>
+      <div class="page" id="page-misreportes"></div>
+    </main>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle"></h3>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
+  <script>
+    function initApp() {
+      if (!window._FB_READY) { document.addEventListener('fb-ready', initApp, { once:true }); return; }
+      if (window._nuraInit) window._nuraInit();
+    }
+    initApp();
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+    }
+
+    let _dip = null;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault(); _dip = e;
+      setTimeout(() => { if(document.getElementById('app').style.display!=='none') mostrarInstall(); }, 5000);
+    });
+    function mostrarInstall() {
+      if (!_dip || document.getElementById('installBanner')) return;
+      const b = document.createElement('div'); b.id = 'installBanner';
+      b.innerHTML = `<div style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:#161d27;border:1px solid rgba(82,218,210,0.3);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:11px;box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:7000;max-width:330px;width:calc(100% - 24px);">
+        <img src="logo.png" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;">
+        <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:800;color:#fff;font-size:13px;">Instalá NURA</div><div style="font-size:11px;color:rgba(255,255,255,0.4);">Accedé desde la pantalla de inicio</div></div>
+        <button onclick="instalarPWA()" style="background:linear-gradient(135deg,#1ab8af,#52dad2);color:#fff;border:none;border-radius:8px;padding:8px 13px;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;cursor:pointer;">Instalar</button>
+        <button onclick="this.closest('#installBanner').remove()" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:18px;padding:2px 4px;">✕</button>
+      </div>`;
+      document.body.appendChild(b);
+    }
+    window.instalarPWA = async function() {
+      if (!_dip) return;
+      _dip.prompt(); await _dip.userChoice; _dip = null;
+      const b = document.getElementById('installBanner'); if(b) b.remove();
+    };
+
+    // bloquear zoom multitouch
+    document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) event.preventDefault();
+      lastTouchEnd = now;
+    }, false);
+  </script>
+</body>
+</html>
