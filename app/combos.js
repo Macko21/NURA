@@ -86,7 +86,7 @@ function formCombo(id) {
     <div class="form-grid">
       <div class="form-group"><label>Precio combo Actual ($)</label>${moneyInput('cbPrecio', c ? c.precio || '' : '')}<span class="form-note">Precio especial del combo</span></div>
       <div class="form-group">
-        <label>${esVendedor ? 'Costo real de producción' : 'Precio combo mayorista ($)'}</label>
+        <label>${esVendedor ? 'Costo del combo (automático)' : 'Precio combo mayorista ($)'}</label>
         ${precioMayHTML}
         ${!esVendedor ? '<span class="form-note">Para vendedores/distribuidores</span>' : ''}
       </div>
@@ -126,27 +126,13 @@ window.agregarItemCombo = function() {
 
 function actualizarSugeridoCombo() {
   const total = _comboItems.reduce((s,i) => s + i.precio * i.cantidad, 0);
-  let costoReal = 0;
-  _comboItems.forEach(item => {
-    if (item.esAcc) {
-      const p = DB.productos.find(x => x.id === item.productoId);
-      costoReal += (p ? (p.costoUnidad || 0) : 0) * item.cantidad;
-    } else {
-      const p = DB.productos.find(x => x.id === item.productoId);
-      if (p) {
-        const pr = (p.presentaciones || []).find(x => x.id === item.presId);
-        const litros = pr ? pr.litros : (item.litrosPorUnidad || 0);
-        const costoEnvase = pr ? ((pr.costoEnvase || 0) + (pr.costoEtiqueta || 0)) : 0;
-        costoReal += ((p.costoLitro || 0) * litros + costoEnvase) * item.cantidad;
-      }
-    }
-  });
+  const totalMay = _comboItems.reduce((s,i) => s + (i.precioMayorista || i.precio) * i.cantidad, 0);
   const elSug = document.getElementById('cbSugerido');
   if (elSug) elSug.innerHTML = total > 0
-    ? `💡 Suma lista actual: <strong>${fmt(total)}</strong> · Costo real producción: <strong>${fmt(costoReal)}</strong>`
+    ? `💡 Suma Actual: <strong>${fmt(total)}</strong> · Costo del combo: <strong>${fmt(totalMay)}</strong>`
     : '';
   const elCosto = document.getElementById('cbCostoMay');
-  if (elCosto) elCosto.textContent = fmt(costoReal);
+  if (elCosto) elCosto.textContent = fmt(totalMay);
 }
 
 async function guardarCombo(id) {
@@ -155,27 +141,13 @@ async function guardarCombo(id) {
   if (!_comboItems.length) { await swalError('Agregá al menos un producto al combo'); return; }
   const precio = parseFloat(document.getElementById('cbPrecio').value) || 0;
   if (!precio) { await swalError('Ingresá el precio del combo'); return; }
-  let costoReal = 0;
-  _comboItems.forEach(item => {
-    if (item.esAcc) {
-      const p = DB.productos.find(x => x.id === item.productoId);
-      costoReal += (p ? (p.costoUnidad || 0) : 0) * item.cantidad;
-    } else {
-      const p = DB.productos.find(x => x.id === item.productoId);
-      if (p) {
-        const pr = (p.presentaciones || []).find(x => x.id === item.presId);
-        const litros = pr ? pr.litros : (item.litrosPorUnidad || 0);
-        const costoEnvase = pr ? ((pr.costoEnvase || 0) + (pr.costoEtiqueta || 0)) : 0;
-        costoReal += ((p.costoLitro || 0) * litros + costoEnvase) * item.cantidad;
-      }
-    }
-  });
-  if (Sesion.esVendedor() && precio < costoReal) {
-    await swalError(`El precio no puede ser menor que el costo real de producción (${fmt(costoReal)})`);
+  const costoMayorista = _comboItems.reduce((s, i) => s + (i.precioMayorista || i.precio) * i.cantidad, 0);
+  if (Sesion.esVendedor() && precio < costoMayorista) {
+    await swalError(`El precio no puede ser menor que el costo del combo (${fmt(costoMayorista)})`);
     return;
   }
   const precioMayorista = Sesion.esVendedor()
-    ? costoReal
+    ? costoMayorista
     : (parseFloat(document.getElementById('cbPrecioMay').value) || 0);
   const combo = {
     id: id || genId(),

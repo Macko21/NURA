@@ -578,28 +578,20 @@ window.verDetalleProducto = function(id) {
   if (!p) return;
   let html = '';
   if (p.tipo === 'accesorio') {
-    const costoReal = p.costoUnidad || 0;
-    const precioMay = p.precioMayorista || 0;
+    const costo = p.precioMayorista || 0;
     const sugerido = p.precioVenta;
-    const margenReal = sugerido > 0 ? Math.round(((sugerido - costoReal) / sugerido) * 100) : 0;
-    html += `<div class="m-card-row"><span class="m-card-row-label">Costo real de producción</span><span class="m-card-row-value">${fmt(costoReal)}</span></div>`;
-    html += `<div class="m-card-row"><span class="m-card-row-label">Precio mayorista</span><span class="m-card-row-value">${fmt(precioMay)}</span></div>`;
-    html += `<div class="m-card-row"><span class="m-card-row-label">Precio venta sugerido</span><span class="m-card-row-value">${fmt(sugerido)}</span></div>`;
-    html += `<div class="m-card-row"><span class="m-card-row-label">Margen real</span><span class="m-card-row-value" style="color:var(--violet-dark)">${margenReal}%</span></div>`;
+    const ganancia = sugerido - costo;
+    html += `<div class="m-card-row"><span class="m-card-row-label">Costo (Mayorista)</span><span class="m-card-row-value">${fmt(costo)}</span></div>`;
+    html += `<div class="m-card-row"><span class="m-card-row-label">Precio Sugerido</span><span class="m-card-row-value">${fmt(sugerido)}</span></div>`;
+    html += `<div class="m-card-row"><span class="m-card-row-label">Ganancia</span><span class="m-card-row-value" style="color:var(--violet-dark)">${fmt(ganancia)}</span></div>`;
   } else {
     (p.presentaciones || []).forEach(pr => {
-      const costoL = p.costoLitro || 0;
-      const litros = pr.litros || 0;
-      const costoEnvase = (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0);
-      const costoReal = costoL * litros + costoEnvase;
-      const precioMay = pr.precioMayorista || 0;
+      const costo = pr.precioMayorista || 0;
       const sugerido = pr.precioVenta;
-      const margenReal = sugerido > 0 ? Math.round(((sugerido - costoReal) / sugerido) * 100) : 0;
-      html += `<div style="margin-top:8px;"><strong>${pr.nombre}</strong> (${litros} L)</div>`;
-      html += `<div class="m-card-row"><span class="m-card-row-label">Costo real</span><span class="m-card-row-value">${fmt(costoReal)} <span style="font-size:11px;color:var(--text-muted)">(${fmt(costoL)}/L + ${fmt(costoEnvase)} envase)</span></span></div>`;
-      html += `<div class="m-card-row"><span class="m-card-row-label">Precio mayorista</span><span class="m-card-row-value">${fmt(precioMay)}</span></div>`;
-      html += `<div class="m-card-row"><span class="m-card-row-label">Precio venta sugerido</span><span class="m-card-row-value">${fmt(sugerido)}</span></div>`;
-      html += `<div class="m-card-row"><span class="m-card-row-label">Margen real</span><span class="m-card-row-value" style="color:var(--violet-dark)">${margenReal}%</span></div>`;
+      const ganancia = sugerido - costo;
+      html += `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre} – Costo</span><span class="m-card-row-value">${fmt(costo)}</span></div>`;
+      html += `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre} – Sugerido</span><span class="m-card-row-value">${fmt(sugerido)}</span></div>`;
+      html += `<div class="m-card-row"><span class="m-card-row-label">${pr.nombre} – Ganancia</span><span class="m-card-row-value" style="color:var(--violet-dark)">${fmt(ganancia)}</span></div>`;
     });
   }
   openModal(`Detalle de ${p.nombre}`, `<div style="display:flex;flex-direction:column;gap:8px;">${html}</div>`, null);
