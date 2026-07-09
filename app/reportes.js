@@ -5,6 +5,10 @@
 function calcularCostoVenta(venta) {
   let costoTotal = 0;
   venta.items.forEach(item => {
+    if (item.costoUnitario != null && item.costoUnitario > 0) {
+      costoTotal += item.costoUnitario * item.cantidad;
+      return;
+    }
     if (item.esCombo) {
       const combo = DB.combos.find(c => c.id === item.comboId);
       if (combo) {
@@ -45,7 +49,10 @@ function renderDashboard() {
   const el=document.getElementById('page-dashboard');
   if (!el) return;
   const tv=DB.ventas.reduce((s,v)=>s+v.total,0);
-  const tc=DB.compras.reduce((s,c)=>s+c.total,0);
+  const tc=DB.ventas.reduce((s,v)=>s+calcularCostoVenta(v),0);
+  const ganancia=tv-tc;
+  const margen=tv>0?Math.round((ganancia/tv)*100):0;
+  const ticketProm=DB.ventas.length>0?Math.round(tv/DB.ventas.length):0;
   const sb=DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length;
   const meses=[];
   for(let i=5;i>=0;i--){const d=new Date();d.setMonth(d.getMonth()-i);meses.push({label:d.toLocaleString('es-AR',{month:'short'}),year:d.getFullYear(),month:d.getMonth()});}
@@ -62,20 +69,20 @@ function renderDashboard() {
       </div>
     </div>
     <div class="grid-4 mb-16">
-      <div class="stat-card dash-stat" data-stat="ventas"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ventas totales</div><div class="stat-value">${fmt(tv)}</div><div class="stat-sub">${DB.ventas.length} transacc.</div></div></div>
-      <div class="stat-card dash-stat" data-stat="productos"><div class="stat-icon violet">📦</div><div class="stat-info"><div class="stat-label">Productos</div><div class="stat-value">${DB.productos.length}</div></div></div>
-      <div class="stat-card dash-stat" data-stat="clientes"><div class="stat-icon blue">👥</div><div class="stat-info"><div class="stat-label">Clientes</div><div class="stat-value">${DB.clientes.length}</div></div></div>
+      <div class="stat-card dash-stat" data-stat="ventas"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ingresos</div><div class="stat-value">${fmt(tv)}</div><div class="stat-sub">${DB.ventas.length} ventas · Ticket ${fmt(ticketProm)}</div></div></div>
+      <div class="stat-card dash-stat" data-stat="costos"><div class="stat-icon orange">📦</div><div class="stat-info"><div class="stat-label">Costo vendido</div><div class="stat-value">${fmt(tc)}</div></div></div>
+      <div class="stat-card dash-stat" data-stat="ganancia"><div class="stat-icon ${ganancia>=0?'green':'red'}">${ganancia>=0?'📈':'📉'}</div><div class="stat-info"><div class="stat-label">Ganancia</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-sub">Margen ${margen}%</div></div></div>
       <div class="stat-card dash-stat" data-stat="stock"><div class="stat-icon ${sb>0?'red':'green'}">${sb>0?'⚠️':'✅'}</div><div class="stat-info"><div class="stat-label">Stock bajo</div><div class="stat-value">${sb}</div></div></div>
     </div>
     <div class="grid-2 mb-16">
       <div class="card"><div class="section-header"><div class="section-title">Ventas por mes</div></div>
         <div class="mini-chart">${vm.map(m=>`<div class="bar-wrap"><div class="bar" style="height:${Math.round((m.val/maxV)*90)}px" title="${fmt(m.val)}"></div><div class="bar-label">${m.label}</div></div>`).join('')}</div>
       </div>
-      <div class="card"><div class="section-header"><div class="section-title">Financiero</div></div>
+      <div class="card"><div class="section-header"><div class="section-title">Resumen</div></div>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
-          <div class="cost-row"><span>Ventas</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(tv)}</span></div>
-          <div class="cost-row"><span>Compras</span><span class="fw-700" style="color:var(--danger)">${fmt(tc)}</span></div>
-          <div class="cost-row total"><span>Ganancia est.</span><span>${fmt(tv-tc)}</span></div>
+          <div class="cost-row"><span>Ingresos</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(tv)}</span></div>
+          <div class="cost-row"><span>Costo de lo vendido</span><span style="color:var(--danger)">-${fmt(tc)}</span></div>
+          <div class="cost-row total"><span>Ganancia</span><span style="color:${ganancia>=0?'var(--accent-dark)':'var(--danger)'}">${fmt(ganancia)} (${margen}%)</span></div>
         </div>
       </div>
     </div>
@@ -101,73 +108,133 @@ function dashVentas(items) {
 function renderReportes(){
   const el=document.getElementById('page-reportes');
   document.getElementById('topbarActions').innerHTML=`<button class="btn btn-wsp-sm" onclick="wspReporte()">📲 Compartir</button>`;
-  const tv=DB.ventas.reduce((s,v)=>s+v.total,0),tc=DB.compras.reduce((s,c)=>s+c.total,0);
+
+  const tv=DB.ventas.reduce((s,v)=>s+v.total,0);
+  const tc=DB.ventas.reduce((s,v)=>s+calcularCostoVenta(v),0);
+  const ganancia=tv-tc;
+  const margenPct=tv>0?Math.round((ganancia/tv)*100):0;
+  const ticketProm=DB.ventas.length>0?Math.round(tv/DB.ventas.length):0;
   const cobrado=DB.ventas.filter(v=>v.estado==='pagado').reduce((s,v)=>s+v.total,0);
   const pendiente=DB.ventas.filter(v=>v.estado==='pendiente').reduce((s,v)=>s+v.total,0);
-
-  const ventasPagadas = DB.ventas.filter(v => v.estado === 'pagado');
-  const ventasPendientes = DB.ventas.filter(v => v.estado === 'pendiente');
-  const costoPagadas = ventasPagadas.reduce((s,v) => s + calcularCostoVenta(v), 0);
-  const costoPendientes = ventasPendientes.reduce((s,v) => s + calcularCostoVenta(v), 0);
-  const gananciaNeta = cobrado - costoPagadas;
-  const gananciaTotal = tv - DB.ventas.reduce((s,v) => s + calcularCostoVenta(v), 0);
-  const margenPct = cobrado > 0 ? Math.round((gananciaNeta / cobrado) * 100) : 0;
-
-  const topP={};DB.ventas.forEach(v=>v.items.forEach(i=>{topP[i.nombre]=(topP[i.nombre]||0)+i.subtotal;}));
-  const topCl={};DB.ventas.forEach(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);const n=cl?cl.nombre:v.clienteNombre||'?';topCl[n]=(topCl[n]||0)+v.total;});
-  const litV={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(!i.esAcc&&!i.esCombo){const b=i.nombre.split(' ').slice(0,-1).join(' ')||i.nombre;litV[b]=(litV[b]||0)+(i.litrosPorUnidad||0)*i.cantidad;}}));
+  const costoPagadas=DB.ventas.filter(v=>v.estado==='pagado').reduce((s,v)=>s+calcularCostoVenta(v),0);
+  const gananciaNeta=cobrado-costoPagadas;
   const vtaMay=DB.ventas.filter(v=>v.esMayorista).reduce((s,v)=>s+v.total,0);
   const vtaMin=DB.ventas.filter(v=>!v.esMayorista).reduce((s,v)=>s+v.total,0);
-  const topCard=(items,vf)=>{if(!items.length)return`<div class="empty-state" style="padding:20px;"><p>Sin datos</p></div>`;return items.map(([n,v],i)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);"><span style="font-family:var(--font-display);font-weight:800;font-size:18px;color:var(--text-light);width:22px;">${i+1}</span><span style="flex:1;font-weight:500;font-size:13px;">${n}</span><span class="fw-700 text-gradient">${vf(v)}</span></div>`).join('');};
+
+  const invValorizado=DB.productos.reduce((s,p)=>{
+    if(p.tipo==='accesorio') return s+(p.costoUnidad||0)*(p.stockUnidades||0);
+    return s+(p.costoLitro||0)*(p.stockLitros||0);
+  },0);
+
+  const topP={};
+  DB.ventas.forEach(v=>v.items.forEach(i=>{
+    const key=i.nombre;
+    if(!topP[key]) topP[key]={ingreso:0,costo:0,cant:0};
+    topP[key].ingreso+=i.subtotal;
+    topP[key].costo+=(i.costoUnitario||0)*i.cantidad;
+    topP[key].cant+=i.cantidad;
+  }));
+  const topProdByMargin=Object.entries(topP)
+    .filter(([,v])=>v.ingreso>0&&v.costo>0)
+    .map(([n,v])=>({n,ingreso:v.ingreso,costo:v.costo,ganancia:v.ingreso-v.costo,margen:Math.round(((v.ingreso-v.costo)/v.ingreso)*100),cant:v.cant}))
+    .sort((a,b)=>b.margen-a.margen);
+
+  const topCl={};
+  DB.ventas.forEach(v=>{
+    const cl=DB.clientes.find(c=>c.id===v.clienteId);
+    const n=cl?cl.nombre:v.clienteNombre||'?';
+    if(!topCl[n]) topCl[n]={ingreso:0,costo:0,ventas:0};
+    topCl[n].ingreso+=v.total;
+    topCl[n].costo+=calcularCostoVenta(v);
+    topCl[n].ventas++;
+  });
+  const topClientes=Object.entries(topCl)
+    .map(([n,v])=>({n,ingreso:v.ingreso,costo:v.costo,ganancia:v.ingreso-v.costo,margen:v.ingreso>0?Math.round(((v.ingreso-v.costo)/v.ingreso)*100):0,ventas:v.ventas}))
+    .sort((a,b)=>b.ganancia-a.ganancia);
+
+  const lowMargin=topProdByMargin.filter(p=>p.margen<30).slice(0,5);
+
+  const pct=(v,tot)=>tot>0?Math.round((v/tot)*100):0;
 
   el.innerHTML=`
     <div class="grid-4 mb-16">
-      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ventas totales</div><div class="stat-value">${fmt(tv)}</div></div></div>
-      <div class="stat-card"><div class="stat-icon violet">✅</div><div class="stat-info"><div class="stat-label">Cobrado</div><div class="stat-value">${fmt(cobrado)}</div></div></div>
-      <div class="stat-card"><div class="stat-icon orange">⏳</div><div class="stat-info"><div class="stat-label">Pendiente</div><div class="stat-value">${fmt(pendiente)}</div></div></div>
-      <div class="stat-card"><div class="stat-icon ${gananciaNeta>=0?'green':'red'}">📊</div><div class="stat-info"><div class="stat-label">Ganancia neta</div><div class="stat-value">${fmt(gananciaNeta)}</div><div class="stat-sub">Margen ${margenPct}%</div></div></div>
+      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ingresos totales</div><div class="stat-value">${fmt(tv)}</div><div class="stat-sub">${DB.ventas.length} ventas · Ticket ${fmt(ticketProm)}</div></div></div>
+      <div class="stat-card"><div class="stat-icon orange">📦</div><div class="stat-info"><div class="stat-label">Costo vendido</div><div class="stat-value">${fmt(tc)}</div><div class="stat-sub">${pct(tc,tv)}% de ingresos</div></div></div>
+      <div class="stat-card"><div class="stat-icon ${ganancia>=0?'green':'red'}">📈</div><div class="stat-info"><div class="stat-label">Ganancia bruta</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-sub">Margen ${margenPct}%</div></div></div>
+      <div class="stat-card"><div class="stat-icon blue">🏦</div><div class="stat-info"><div class="stat-label">Cobrado</div><div class="stat-value">${fmt(cobrado)}</div><div class="stat-sub">${pct(cobrado,tv)}% del total</div></div></div>
     </div>
 
     <div class="card mb-16" style="border-left:4px solid var(--accent-dark);">
-      <div class="section-title mb-12">💸 Desglose financiero neto</div>
+      <div class="section-title mb-12">📊 P&L simplificado</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
-        <div class="cost-row"><span>Ingresos cobrados</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(cobrado)}</span></div>
-        <div class="cost-row"><span style="padding-left:12px;color:var(--text-muted);font-size:13px;">— Costo de lo vendido (cobrado)</span><span style="color:var(--danger)">-${fmt(costoPagadas)}</span></div>
-        <div class="cost-row total"><span>✅ Ganancia neta cobrada</span><span style="color:${gananciaNeta>=0?'var(--accent-dark)':'var(--danger)'}">${fmt(gananciaNeta)}</span></div>
+        <div class="cost-row"><span>Ingresos por ventas</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(tv)}</span></div>
+        <div class="cost-row"><span style="padding-left:12px;color:var(--text-muted);font-size:13px;">— Mayorista</span><span style="color:var(--text-muted);font-size:13px;">${fmt(vtaMay)} (${pct(vtaMay,tv)}%)</span></div>
+        <div class="cost-row"><span style="padding-left:12px;color:var(--text-muted);font-size:13px;">— Actual</span><span style="color:var(--text-muted);font-size:13px;">${fmt(vtaMin)} (${pct(vtaMin,tv)}%)</span></div>
+        <div class="cost-row"><span>Costo de lo vendido (COGS)</span><span style="color:var(--danger)">-${fmt(tc)}</span></div>
+        <div class="cost-row total" style="font-size:16px;"><span>🏆 Ganancia bruta</span><span style="color:${ganancia>=0?'var(--accent-dark)':'var(--danger)'}">${fmt(ganancia)} (${margenPct}%)</span></div>
         <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
-        <div class="cost-row"><span>Ventas pendientes de cobro</span><span class="fw-700" style="color:var(--warning)">${fmt(pendiente)}</span></div>
-        <div class="cost-row"><span style="padding-left:12px;color:var(--text-muted);font-size:13px;">— Costo de lo pendiente</span><span style="color:var(--danger)">-${fmt(costoPendientes)}</span></div>
-        <div class="cost-row"><span>⏳ Ganancia neta pendiente</span><span style="color:var(--warning)">${fmt(pendiente-costoPendientes)}</span></div>
-        <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
-        <div class="cost-row total" style="font-size:16px;"><span>🏆 Ganancia neta total</span><span style="color:${gananciaTotal>=0?'var(--accent-dark)':'var(--danger)'}">${fmt(gananciaTotal)}</span></div>
-        ${costoPagadas===0&&tv>0?`<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">⚠️ Sin datos de costo — cargá el costo por litro y envase en cada producto para ver la ganancia real.</div>`:''}
+        <div class="cost-row"><span>Cobrado efectivo</span><span style="color:var(--accent-dark)">${fmt(cobrado)}</span></div>
+        <div class="cost-row"><span style="padding-left:12px;color:var(--text-muted);font-size:13px;">— COGS cobrado</span><span style="color:var(--danger)">-${fmt(costoPagadas)}</span></div>
+        <div class="cost-row"><span>✅ Ganancia neta cobrada</span><span style="color:${gananciaNeta>=0?'var(--accent-dark)':'var(--danger)'}">${fmt(gananciaNeta)}</span></div>
+        <div class="cost-row"><span>⏳ Pendiente de cobro</span><span style="color:var(--warning)">${fmt(pendiente)}</span></div>
       </div>
     </div>
 
     <div class="grid-2 mb-16">
+      <div class="card"><div class="section-title mb-12">📦 Inventario valorizado</div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+          <div class="cost-row"><span>Valor a costo real</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(invValorizado)}</span></div>
+          <div class="cost-row"><span>Productos</span><span>${DB.productos.length}</span></div>
+          <div class="cost-row"><span>Stock bajo</span><span style="color:var(--warning)">${DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length}</span></div>
+          <div class="cost-row"><span>Sin stock</span><span style="color:var(--danger)">${DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)===0:(p.stockLitros||0)===0).length}</span></div>
+        </div>
+      </div>
       <div class="card"><div class="section-title mb-12">🛍️ Ventas por tipo</div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
           <div class="cost-row"><span>🛍️ Actual</span><span class="fw-700 text-gradient">${fmt(vtaMin)}</span></div>
           <div class="cost-row"><span>🏪 Mayorista</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(vtaMay)}</span></div>
           <div class="cost-row total"><span>Total</span><span>${fmt(tv)}</span></div>
         </div>
       </div>
-      <div class="card"><div class="section-title mb-12">🏆 Top productos ($)</div>${topCard(Object.entries(topP).sort((a,b)=>b[1]-a[1]).slice(0,5),fmt)}</div>
     </div>
+
     <div class="grid-2 mb-16">
-      <div class="card"><div class="section-title mb-12">👑 Mejores clientes</div>${topCard(Object.entries(topCl).sort((a,b)=>b[1]-a[1]).slice(0,5),fmt)}</div>
-      <div class="card"><div class="section-title mb-12">💧 Litros vendidos</div>${topCard(Object.entries(litV).sort((a,b)=>b[1]-a[1]).slice(0,5),v=>fmtL(v)+' L')}</div>
-    </div>
-    <div class="card"><div class="section-title mb-12">📦 Inventario</div>
-      <div class="grid-3 keep-2" style="margin-top:8px;text-align:center;">
-        <div style="padding:12px;"><div class="fw-800 text-gradient" style="font-family:var(--font-display);font-size:32px;">${DB.productos.length}</div><div class="text-muted">Productos</div></div>
-        <div style="padding:12px;"><div class="fw-800" style="font-family:var(--font-display);font-size:32px;color:var(--warning);">${DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length}</div><div class="text-muted">Stock bajo</div></div>
-        <div style="padding:12px;"><div class="fw-800" style="font-family:var(--font-display);font-size:32px;color:var(--danger);">${DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)===0:(p.stockLitros||0)===0).length}</div><div class="text-muted">Sin stock</div></div>
+      <div class="card"><div class="section-title mb-12">🏆 Top productos por margen</div>
+        ${topProdByMargin.length===0?'<div class="empty-state" style="padding:20px;"><p>Sin datos de costo</p></div>':topProdByMargin.slice(0,5).map((p,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+            <span style="font-family:var(--font-display);font-weight:800;font-size:18px;color:var(--text-light);width:22px;">${i+1}</span>
+            <span style="flex:1;font-weight:500;font-size:13px;">${p.n}</span>
+            <span style="font-size:12px;color:var(--text-muted);">${p.cant} u.</span>
+            <span style="font-size:12px;color:var(--text-muted);">${fmt(p.ingreso)}</span>
+            <span class="fw-700" style="color:${p.margen>=30?'var(--accent-dark)':'var(--danger)'}">${p.margen}%</span>
+          </div>`).join('')}
       </div>
-    </div>`;
+      <div class="card"><div class="section-title mb-12">👑 Top clientes por ganancia</div>
+        ${topClientes.length===0?'<div class="empty-state" style="padding:20px;"><p>Sin ventas</p></div>':topClientes.slice(0,5).map((c,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+            <span style="font-family:var(--font-display);font-weight:800;font-size:18px;color:var(--text-light);width:22px;">${i+1}</span>
+            <span style="flex:1;font-weight:500;font-size:13px;">${c.n}</span>
+            <span style="font-size:12px;color:var(--text-muted);">${c.ventas} v.</span>
+            <span style="font-size:12px;color:var(--text-muted);">${fmt(c.ingreso)}</span>
+            <span class="fw-700" style="color:${c.ganancia>=0?'var(--accent-dark)':'var(--danger)'}">${fmt(c.ganancia)}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    ${lowMargin.length>0?`
+    <div class="card mb-16" style="border-left:4px solid var(--danger);">
+      <div class="section-title mb-12" style="color:var(--danger);">⚠️ Productos con margen bajo (&lt;30%)</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${lowMargin.map(p=>`
+          <div class="cost-row">
+            <span>${p.n} <span style="font-size:12px;color:var(--text-muted);">(${p.cant} vendidos)</span></span>
+            <span style="color:var(--danger)">${p.margen}% · ${fmt(p.ganancia)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`:''}`;
 }
 
-function wspReporte(){const tv=DB.ventas.reduce((s,v)=>s+v.total,0),tc=DB.compras.reduce((s,c)=>s+c.total,0),sb=DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length;window.open('https://wa.me/?text='+encodeURIComponent(`*📊 Resumen NURA — ${new Date().toLocaleDateString('es-AR')}*\n\n💰 Ventas: ${fmt(tv)}\n🚚 Compras: ${fmt(tc)}\n📈 Ganancia: ${fmt(tv-tc)}\n📦 Productos: ${DB.productos.length} | 👥 Clientes: ${DB.clientes.length}\n⚠️ Stock bajo: ${sb}\n\n_NURA Gestión_`),'_blank');}
+function wspReporte(){const tv=DB.ventas.reduce((s,v)=>s+v.total,0),tc=DB.ventas.reduce((s,v)=>s+calcularCostoVenta(v),0),ganancia=tv-tc,sb=DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length;window.open('https://wa.me/?text='+encodeURIComponent(`*📊 Resumen NURA — ${new Date().toLocaleDateString('es-AR')}*\n\n💰 Ingresos: ${fmt(tv)}\n📦 Costo vendido: ${fmt(tc)}\n📈 Ganancia: ${fmt(ganancia)}\n📦 Productos: ${DB.productos.length} | 👥 Clientes: ${DB.clientes.length}\n⚠️ Stock bajo: ${sb}\n\n_NURA Gestión_`),'_blank');}
 
 // ══════════════════════════════════════════════════════════════════════
 // MIS REPORTES (Vendedor)

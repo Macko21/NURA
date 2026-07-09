@@ -408,6 +408,37 @@ async function guardarVenta(){
   const total = Math.max(0, sub - desc + envio);
   const cl = DB.clientes.find(c => c.id === clienteId);
 
+  const itemsGuardados = ventaItems.map(i => {
+    let costoUnit = 0;
+    if (i.esCombo) {
+      const combo = DB.combos.find(c => c.id === i.comboId);
+      if (combo) {
+        (combo.items || []).forEach(ci => {
+          const p = DB.productos.find(x => x.id === ci.productoId);
+          if (!p) return;
+          if (ci.esAcc) { costoUnit += (p.costoUnidad || 0) * ci.cantidad; }
+          else {
+            const litros = ci.litrosPorUnidad || 0;
+            costoUnit += ((p.costoLitro || 0) * litros) * ci.cantidad;
+          }
+        });
+        costoUnit = i.cantidad > 0 ? costoUnit * i.cantidad : costoUnit;
+      }
+    } else if (i.esAcc) {
+      const p = DB.productos.find(x => x.id === i.productoId);
+      costoUnit = p ? (p.costoUnidad || 0) : 0;
+    } else {
+      const p = DB.productos.find(x => x.id === i.productoId);
+      if (p) {
+        const pr = (p.presentaciones || []).find(x => x.id === i.presId);
+        const litros = pr ? pr.litros : (i.litrosPorUnidad || 0);
+        const costoEnvase = pr ? ((pr.costoEnvase || 0) + (pr.costoEtiqueta || 0)) : 0;
+        costoUnit = (p.costoLitro || 0) * litros + costoEnvase;
+      }
+    }
+    return { ...i, costoUnitario: costoUnit };
+  });
+
   const venta = {
     id: genId(),
     fecha: Date.now(),
@@ -416,7 +447,7 @@ async function guardarVenta(){
     vendedorId: Sesion.esVendedor() ? Sesion.user.id : null,
     vendedorNombre: Sesion.esVendedor() ? Sesion.user.nombre : '',
     esMayorista: esMay,
-    items: ventaItems.map(i => ({...i})),
+    items: itemsGuardados,
     subtotal: sub,
     descuento: desc,
     envio: envio,
