@@ -23,7 +23,8 @@ const {
   createRoom, getRoom, getRoomByCode,
   addPlayer, removePlayer,
   setReady, allPlayersReady,
-  startGame, getAutomaticWinner
+  startGame, getAutomaticWinner,
+  startReadyCountdown, cancelReadyCountdown, hasReadyCountdown
 } = require("./roomManager");
 
 const {
@@ -1784,51 +1785,58 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── Helper: iniciar match para una sala ──── */
+      async function startMatchForRoom(roomId, triggerData) {
+        const firstPlayer = startGame(roomId);
+        const room  = getRoom(roomId);
+        const match = createMatch(room);
+        for (const p of match.players) {
+          if (p.id) {
+            try {
+              const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
+              if (plRes.rows[0]) {
+                p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
+                p.equippedDice = plRes.rows[0].equipped_dice || null;
+                p.equippedSpecial = plRes.rows[0].equipped_special || null;
+                p.winStreak = plRes.rows[0].win_streak || 0;
+              }
+            } catch(e) {}
+            const roomP = room.players.find(rp => rp.id === p.id);
+            if (roomP) {
+              if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
+              if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
+              if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
+            }
+            if (triggerData && p.id === triggerData.playerId) {
+              if (!p.equippedDice && triggerData.equippedDice) p.equippedDice = triggerData.equippedDice;
+              if (!p.equippedAvatar && triggerData.equippedAvatar) p.equippedAvatar = triggerData.equippedAvatar;
+              if (!p.equippedSpecial && triggerData.equippedSpecial) p.equippedSpecial = triggerData.equippedSpecial;
+            }
+          }
+        }
+        broadcastRoom(roomId, "GAME_STARTED", {
+          firstPlayer, match: snapshotMatch(match)
+        });
+        startFirstTurnTimer(roomId, broadcastRoom);
+      }
+
       /* ── LISTO ─────────────────────────────────────────── */
       if (type === "PLAYER_READY") {
         setReady(data.roomId, data.playerId, true);
         broadcastRoomState(data.roomId);
         if (allPlayersReady(data.roomId)) {
-          const firstPlayer = startGame(data.roomId);
-          const room  = getRoom(data.roomId);
-          const match = createMatch(room);
-          // Cargar items equipados y racha de cada jugador desde la BD (per-player)
-          for (const p of match.players) {
-            if (p.id) {
-              try {
-                const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
-                if (plRes.rows[0]) {
-                  p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
-                  p.equippedDice = plRes.rows[0].equipped_dice || null;
-                  p.equippedSpecial = plRes.rows[0].equipped_special || null;
-                  p.winStreak = plRes.rows[0].win_streak || 0;
-                  console.log(`🎮 ${p.name}: avatar=${p.equippedAvatar}, dice=${p.equippedDice}`);
-                }
-              } catch(e) {
-                console.error(`Error loading equipped for ${p.id}:`, e.message);
-              }
-              // Fallback: usar valores de la sala (room player) para TODOS los jugadores
-              // Si la BD no tenía datos (ej: invitados), conservar lo que ya tenía el room player
-              const roomP = room.players.find(rp => rp.id === p.id);
-              if (roomP) {
-                if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
-                if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
-                if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
-              }
-              // Fallback del frontend para el que clickeó listo
-              if (p.id === data.playerId) {
-                if (!p.equippedDice && data.equippedDice) p.equippedDice = data.equippedDice;
-                if (!p.equippedAvatar && data.equippedAvatar) p.equippedAvatar = data.equippedAvatar;
-                if (!p.equippedSpecial && data.equippedSpecial) p.equippedSpecial = data.equippedSpecial;
-              }
-            }
+          cancelReadyCountdown(data.roomId);
+          await startMatchForRoom(data.roomId, data);
+        } else {
+          const room = getRoom(data.roomId);
+          const readyCount = room ? room.players.filter(p => p.ready).length : 0;
+          if (readyCount >= 2 && !hasReadyCountdown(data.roomId)) {
+            startReadyCountdown(data.roomId, broadcastRoom, async (roomId) => {
+              await startMatchForRoom(roomId, null);
+            });
+          } else if (readyCount < 2) {
+            cancelReadyCountdown(data.roomId);
           }
-          console.log(`📤 GAME_STARTED match: ${match.players.map(p => `${p.name}[${p.id}] dice=${p.equippedDice} av=${p.equippedAvatar} ws=${p.winStreak}`).join(' | ')}`);
-          console.log(`📤 GAME_STARTED room: ${room.players.map(p => `${p.name}[${p.id}] dice=${p.equippedDice} av=${p.equippedAvatar}`).join(' | ')}`);
-          broadcastRoom(data.roomId, "GAME_STARTED", {
-            firstPlayer, match: snapshotMatch(match)
-          });
-          startFirstTurnTimer(data.roomId, broadcastRoom);
         }
         return;
       }
@@ -2103,6 +2111,7 @@ wss.on("connection", socket => {
         removePlayer(roomId, playerId);
         socket.roomId = null;
         clients.delete(playerId);
+        cancelReadyCountdown(roomId);
         broadcastRoomState(roomId);
         return;
       }
@@ -2114,6 +2123,7 @@ wss.on("connection", socket => {
         if (!room || room.status !== "waiting") return;
         const isOwner = room.players[0]?.id === playerId;
         if (!isOwner) return;
+        cancelReadyCountdown(roomId);
         broadcastRoom(roomId, "ROOM_CANCELLED", { roomId });
       for (const p of room.players) {
         const sock = clients.get(p.id);
@@ -2149,6 +2159,7 @@ wss.on("connection", socket => {
     if (room) {
       const p = room.players.find(p => p.id === playerId);
       if (p) p.disconnected = true;
+      if (room.status === 'waiting') cancelReadyCountdown(roomId);
     }
 
     broadcastRoom(roomId, "PLAYER_DISCONNECTED", { playerId });

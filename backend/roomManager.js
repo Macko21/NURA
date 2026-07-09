@@ -10,6 +10,45 @@ const { v4: uuidv4 } = require("uuid");
   */
   const rooms = new Map();
 
+// ── Temporizadores de countdown para auto-start ──
+const readyCountdowns = new Map();   // roomId -> setInterval id
+const readyCountdownSec = new Map(); // roomId -> seconds left
+const READY_COUNTDOWN_TOTAL = 15;
+
+function startReadyCountdown(roomId, broadcastFn, onAutoStart) {
+  if (readyCountdowns.has(roomId)) return;
+  readyCountdownSec.set(roomId, READY_COUNTDOWN_TOTAL);
+  broadcastFn(roomId, 'READY_COUNTDOWN', { seconds: READY_COUNTDOWN_TOTAL });
+  const timer = setInterval(() => {
+    const left = (readyCountdownSec.get(roomId) || 0) - 1;
+    readyCountdownSec.set(roomId, left);
+    broadcastFn(roomId, 'READY_COUNTDOWN', { seconds: left });
+    if (left <= 0) {
+      clearInterval(timer);
+      readyCountdowns.delete(roomId);
+      readyCountdownSec.delete(roomId);
+      const room = rooms.get(roomId);
+      if (room && room.status === 'waiting' && room.players.filter(p => p.ready).length >= 2) {
+        room.players = room.players.filter(p => p.ready);
+        if (onAutoStart) onAutoStart(roomId);
+      }
+    }
+  }, 1000);
+  readyCountdowns.set(roomId, timer);
+}
+
+function cancelReadyCountdown(roomId) {
+  if (readyCountdowns.has(roomId)) {
+    clearInterval(readyCountdowns.get(roomId));
+    readyCountdowns.delete(roomId);
+    readyCountdownSec.delete(roomId);
+  }
+}
+
+function hasReadyCountdown(roomId) {
+  return readyCountdowns.has(roomId);
+}
+
 /**
 
 * ============================================================
@@ -375,6 +414,7 @@ player.id !== playerId
 );
 
 if (room.players.length === 0) {
+cancelReadyCountdown(roomId);
 rooms.delete(roomId);
 return true;
 }
@@ -447,5 +487,11 @@ shouldKickForInactivity,
 
 getAutomaticWinner,
 
-generateAlias
+generateAlias,
+
+startReadyCountdown,
+
+cancelReadyCountdown,
+
+hasReadyCountdown
 };

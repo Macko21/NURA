@@ -1014,9 +1014,10 @@ function goLobby(msg) {
   S.myTurn   = false;
   S.isOwner  = false;
   $('btn-ready').disabled    = false;
-  $('btn-ready').textContent = 'Estoy listo ✓';
+  $('btn-ready').textContent = 'Esperando';
   const cm = $('chat-msgs'); if(cm) cm.innerHTML = '';
   $('modal-win').classList.add('hidden');
+  $('ready-countdown')?.classList.add('hidden');
   clearDice();
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
@@ -1037,6 +1038,7 @@ function goToPlayAgain(room) {
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   $('modal-win').classList.add('hidden');
+  $('ready-countdown')?.classList.add('hidden');
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
   S.roomId   = room.id;
@@ -1046,7 +1048,7 @@ function goToPlayAgain(room) {
   S.myTurn   = false;
   saveSession();
   $('btn-ready').disabled    = false;
-  $('btn-ready').textContent = 'Estoy listo ✓';
+  $('btn-ready').textContent = 'Esperando';
   const c2 = $('chat-msgs'); if(c2) c2.innerHTML = '';
   clearDice();
   renderRoom(room);
@@ -1268,12 +1270,27 @@ function handle(type, data) {
       renderRoom(data.room);
       break;
 
+    /* ── Countdown para auto-start ────────────────── */
+    case 'READY_COUNTDOWN': {
+      const cdEl = $('ready-countdown');
+      if (cdEl) {
+        if (data.seconds > 0) {
+          cdEl.textContent = '⏳ Iniciando en ' + data.seconds + 's';
+          cdEl.classList.remove('hidden');
+        } else {
+          cdEl.classList.add('hidden');
+        }
+      }
+      break;
+    }
+
     /* ── Inicio de partida ───────────────────────────── */
     case 'GAME_STARTED':
       S.match=data.match; S.entered=false;
       S.banking = false;
       saveSession();
       showScreen('screen-game');
+      $('ready-countdown')?.classList.add('hidden');
       console.log('🎮 GAME_STARTED players:', data.match?.players?.map(p => ({ name: p.name, dice: p.equippedDice, av: p.equippedAvatar })));
       // Resetear botones al iniciar partida nueva
       $('btn-roll').disabled = false;
@@ -2734,6 +2751,7 @@ function renderRanking(rows) {
 
 /* ── Modal victoria ──────────────────────────────────── */
 function showWin(playerName, desc, dice, skinId) {
+  if (!$('modal-win').classList.contains('hidden')) return;
   $('win-name').textContent = '¡'+playerName+'!';
   $('win-desc').textContent = desc;
   const wr = $('win-dice');
@@ -3321,7 +3339,7 @@ function initUI() {
   $('btn-ready').onclick = () => {
     wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
     $('btn-ready').disabled    = true;
-    $('btn-ready').textContent = 'Esperando...';
+    $('btn-ready').textContent = 'Estoy listo ✓';
   };
 
   /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
