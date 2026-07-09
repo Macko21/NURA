@@ -114,9 +114,12 @@ async function fbDescontarStock(productoId, cantidad, esAcc) {
 
 async function cargarColeccion(col) {
   try {
-    const { data, error } = await _sb().from('nura_' + col).select('id, datos');
+    const client = _sb();
+    if (!client) { console.error('cargar', col, 'Supabase client not ready'); return; }
+    const { data, error } = await client.from('nura_' + col).select('id, datos');
     if (error) { console.error('cargar', col, error.message); syncUI('off'); return; }
     DB[col] = (data || []).map(row => ({ ...row.datos, id: row.id }));
+    console.log('cargar', col, DB[col].length, 'rows');
     notifyUpdate(col);
   } catch(e) { console.error('cargar', col, e); syncUI('off'); }
 }
@@ -150,20 +153,24 @@ function debouncedReload(col) {
 }
 
 async function suscribirColecciones() {
+  console.log('nura: starting data load...');
   await Promise.all(COLS_LIST.map(cargarColeccion));
+  console.log('nura: data loaded, DB.ventas:', DB.ventas.length, 'DB.productos:', DB.productos.length);
   hideSplash();
 
-  _realtimeChannel = _sb().channel('nura-changes');
-  COLS_LIST.forEach(col => {
-    _realtimeChannel
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'nura_' + col },
-        () => debouncedReload(col)
-      );
-  });
-  _realtimeChannel.subscribe(status => {
-    if (status === 'SUBSCRIBED') syncUI('ok');
-    else if (status === 'CHANNEL_ERROR') syncUI('off');
-  });
+  try {
+    _realtimeChannel = _sb().channel('nura-changes');
+    COLS_LIST.forEach(col => {
+      _realtimeChannel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'nura_' + col },
+          () => debouncedReload(col)
+        );
+    });
+    _realtimeChannel.subscribe(status => {
+      if (status === 'SUBSCRIBED') syncUI('ok');
+      else if (status === 'CHANNEL_ERROR') syncUI('off');
+    });
+  } catch(e) { console.error('nura: realtime error', e); }
 }
 
 window._nuraInit = suscribirColecciones;
