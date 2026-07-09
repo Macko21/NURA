@@ -102,32 +102,79 @@ function dashVentas(items) {
 // ══════════════════════════════════════════════════════════════════════
 // REPORTES
 // ══════════════════════════════════════════════════════════════════════
+let _repFiltro = { mes: '', anio: '' };
+
+function aplicarFiltroReportes() {
+  _repFiltro.mes = document.getElementById('repMes')?.value || '';
+  _repFiltro.anio = document.getElementById('repAnio')?.value || '';
+  renderReportes();
+}
+
+function limpiarFiltroReportes() {
+  _repFiltro = { mes: '', anio: '' };
+  renderReportes();
+}
+
 function renderReportes(){
   const el=document.getElementById('page-reportes');
   document.getElementById('topbarActions').innerHTML=`<button class="btn btn-wsp-sm" onclick="wspReporte()">📲 Compartir</button>`;
-  const tv=DB.ventas.reduce((s,v)=>s+v.total,0),tc=DB.compras.reduce((s,c)=>s+c.total,0);
-  const cobrado=DB.ventas.filter(v=>v.estado==='pagado').reduce((s,v)=>s+v.total,0);
-  const pendiente=DB.ventas.filter(v=>v.estado==='pendiente').reduce((s,v)=>s+v.total,0);
 
-  const ventasPagadas = DB.ventas.filter(v => v.estado === 'pagado');
-  const ventasPendientes = DB.ventas.filter(v => v.estado === 'pendiente');
+  // Filtrar ventas por mes/año si hay filtro
+  let ventasFiltradas = DB.ventas;
+  if (_repFiltro.mes !== '' || _repFiltro.anio !== '') {
+    ventasFiltradas = DB.ventas.filter(v => {
+      const d = new Date(v.fecha);
+      if (_repFiltro.anio !== '' && d.getFullYear() !== parseInt(_repFiltro.anio)) return false;
+      if (_repFiltro.mes !== '' && d.getMonth() !== parseInt(_repFiltro.mes)) return false;
+      return true;
+    });
+  }
+  const filtrado = _repFiltro.mes !== '' || _repFiltro.anio !== '';
+
+  const tv=ventasFiltradas.reduce((s,v)=>s+v.total,0);
+  const tc=comprasFiltradas().reduce((s,c)=>s+c.total,0);
+  const cobrado=ventasFiltradas.filter(v=>v.estado==='pagado').reduce((s,v)=>s+v.total,0);
+  const pendiente=ventasFiltradas.filter(v=>v.estado==='pendiente').reduce((s,v)=>s+v.total,0);
+
+  const ventasPagadas = ventasFiltradas.filter(v => v.estado === 'pagado');
+  const ventasPendientes = ventasFiltradas.filter(v => v.estado === 'pendiente');
   const costoPagadas = ventasPagadas.reduce((s,v) => s + calcularCostoVenta(v), 0);
   const costoPendientes = ventasPendientes.reduce((s,v) => s + calcularCostoVenta(v), 0);
   const gananciaNeta = cobrado - costoPagadas;
-  const gananciaTotal = tv - DB.ventas.reduce((s,v) => s + calcularCostoVenta(v), 0);
+  const gananciaTotal = tv - ventasFiltradas.reduce((s,v) => s + calcularCostoVenta(v), 0);
   const margenPct = cobrado > 0 ? Math.round((gananciaNeta / cobrado) * 100) : 0;
 
-  const topP={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(!i.esCombo){topP[i.nombre]=(topP[i.nombre]||0)+i.subtotal;}}));
-  const topC={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(i.esCombo){topC[i.nombre]=(topC[i.nombre]||0)+i.subtotal;}}));
-  const topCl={};DB.ventas.forEach(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);const n=cl?cl.nombre:v.clienteNombre||'?';topCl[n]=(topCl[n]||0)+v.total;});
-  const litV={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(!i.esAcc&&!i.esCombo){const b=i.nombre.split(' ').slice(0,-1).join(' ')||i.nombre;litV[b]=(litV[b]||0)+(i.litrosPorUnidad||0)*i.cantidad;}}));
-  const vtaMay=DB.ventas.filter(v=>v.esMayorista).reduce((s,v)=>s+v.total,0);
-  const vtaMin=DB.ventas.filter(v=>!v.esMayorista).reduce((s,v)=>s+v.total,0);
+  const topP={};ventasFiltradas.forEach(v=>v.items.forEach(i=>{if(!i.esCombo){topP[i.nombre]=(topP[i.nombre]||0)+i.subtotal;}}));
+  const topC={};ventasFiltradas.forEach(v=>v.items.forEach(i=>{if(i.esCombo){topC[i.nombre]=(topC[i.nombre]||0)+i.subtotal;}}));
+  const topCl={};ventasFiltradas.forEach(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);const n=cl?cl.nombre:v.clienteNombre||'?';topCl[n]=(topCl[n]||0)+v.total;});
+  const litV={};ventasFiltradas.forEach(v=>v.items.forEach(i=>{if(!i.esAcc&&!i.esCombo){const b=i.nombre.split(' ').slice(0,-1).join(' ')||i.nombre;litV[b]=(litV[b]||0)+(i.litrosPorUnidad||0)*i.cantidad;}}));
+  const vtaMay=ventasFiltradas.filter(v=>v.esMayorista).reduce((s,v)=>s+v.total,0);
+  const vtaMin=ventasFiltradas.filter(v=>!v.esMayorista).reduce((s,v)=>s+v.total,0);
   const topCard=(items,vf)=>{if(!items.length)return`<div class="empty-state" style="padding:20px;"><p>Sin datos</p></div>`;return items.map(([n,v],i)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);"><span style="font-family:var(--font-display);font-weight:800;font-size:18px;color:var(--text-light);width:22px;">${i+1}</span><span style="flex:1;font-weight:500;font-size:13px;">${n}</span><span class="fw-700 text-gradient">${vf(v)}</span></div>`).join('');};
 
+  // Options para selects
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const anios = [...new Set(DB.ventas.map(v=>new Date(v.fecha).getFullYear()))].sort((a,b)=>b-a);
+  const mesOpts = `<option value="">Todos</option>${meses.map((m,i)=>`<option value="${i}" ${String(i)===_repFiltro.mes?'selected':''}>${m}</option>`).join('')}`;
+  const anioOpts = `<option value="">Todos</option>${anios.map(a=>`<option value="${a}" ${String(a)===_repFiltro.anio?'selected':''}>${a}</option>`).join('')}`;
+
   el.innerHTML=`
+    <div class="card mb-16" style="padding:12px 16px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-weight:700;font-size:13px;color:var(--text-muted);">🔍 Filtrar:</span>
+        <select id="repMes" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;" onchange="aplicarFiltroReportes()">
+          ${mesOpts}
+        </select>
+        <select id="repAnio" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;" onchange="aplicarFiltroReportes()">
+          ${anioOpts}
+        </select>
+        ${filtrado ? `<button class="btn btn-secondary btn-sm" onclick="limpiarFiltroReportes()">✕ Limpiar</button>` : ''}
+        ${filtrado ? `<span style="font-size:12px;color:var(--accent-dark);">Mostrando: ${meses[parseInt(_repFiltro.mes)]||''} ${_repFiltro.anio||'todos los años'} · ${ventasFiltradas.length} ventas</span>` : ''}
+      </div>
+    </div>
+
     <div class="grid-4 mb-16">
-      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ventas totales</div><div class="stat-value">${fmt(tv)}</div></div></div>
+      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ventas totales</div><div class="stat-value">${fmt(tv)}</div><div class="stat-sub">${ventasFiltradas.length} ventas</div></div></div>
       <div class="stat-card"><div class="stat-icon violet">✅</div><div class="stat-info"><div class="stat-label">Cobrado</div><div class="stat-value">${fmt(cobrado)}</div></div></div>
       <div class="stat-card"><div class="stat-icon orange">⏳</div><div class="stat-info"><div class="stat-label">Pendiente</div><div class="stat-value">${fmt(pendiente)}</div></div></div>
       <div class="stat-card"><div class="stat-icon ${gananciaNeta>=0?'green':'red'}">📊</div><div class="stat-info"><div class="stat-label">Ganancia neta</div><div class="stat-value">${fmt(gananciaNeta)}</div><div class="stat-sub">Margen ${margenPct}%</div></div></div>
@@ -164,6 +211,16 @@ function renderReportes(){
         <div style="padding:12px;"><div class="fw-800" style="font-family:var(--font-display);font-size:32px;color:var(--danger);">${DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)===0:(p.stockLitros||0)===0).length}</div><div class="text-muted">Sin stock</div></div>
       </div>
     </div>`;
+}
+
+function comprasFiltradas() {
+  if (_repFiltro.mes === '' && _repFiltro.anio === '') return DB.compras;
+  return DB.compras.filter(c => {
+    const d = new Date(c.fecha);
+    if (_repFiltro.anio !== '' && d.getFullYear() !== parseInt(_repFiltro.anio)) return false;
+    if (_repFiltro.mes !== '' && d.getMonth() !== parseInt(_repFiltro.mes)) return false;
+    return true;
+  });
 }
 
 function wspReporte(){const tv=DB.ventas.reduce((s,v)=>s+v.total,0),tc=DB.compras.reduce((s,c)=>s+c.total,0),sb=DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length;window.open('https://wa.me/?text='+encodeURIComponent(`*📊 Resumen NURA — ${new Date().toLocaleDateString('es-AR')}*\n\n💰 Ventas: ${fmt(tv)}\n🚚 Compras: ${fmt(tc)}\n📈 Ganancia: ${fmt(tv-tc)}\n📦 Productos: ${DB.productos.length} | 👥 Clientes: ${DB.clientes.length}\n⚠️ Stock bajo: ${sb}\n\n_NURA Gestión_`),'_blank');}
