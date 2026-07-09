@@ -1,5 +1,5 @@
 // NURA Service Worker — Supabase + Static Cache
-const CACHE = 'nura-v14';
+const CACHE = 'nura-v15';
 const SHELL = [
   './', './index.html', './styles.css', './logo.png', './manifest.json',
   './env.js',

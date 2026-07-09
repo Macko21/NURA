@@ -117,7 +117,8 @@ function renderReportes(){
   const gananciaTotal = tv - DB.ventas.reduce((s,v) => s + calcularCostoVenta(v), 0);
   const margenPct = cobrado > 0 ? Math.round((gananciaNeta / cobrado) * 100) : 0;
 
-  const topP={};DB.ventas.forEach(v=>v.items.forEach(i=>{topP[i.nombre]=(topP[i.nombre]||0)+i.subtotal;}));
+  const topP={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(!i.esCombo){topP[i.nombre]=(topP[i.nombre]||0)+i.subtotal;}}));
+  const topC={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(i.esCombo){topC[i.nombre]=(topC[i.nombre]||0)+i.subtotal;}}));
   const topCl={};DB.ventas.forEach(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);const n=cl?cl.nombre:v.clienteNombre||'?';topCl[n]=(topCl[n]||0)+v.total;});
   const litV={};DB.ventas.forEach(v=>v.items.forEach(i=>{if(!i.esAcc&&!i.esCombo){const b=i.nombre.split(' ').slice(0,-1).join(' ')||i.nombre;litV[b]=(litV[b]||0)+(i.litrosPorUnidad||0)*i.cantidad;}}));
   const vtaMay=DB.ventas.filter(v=>v.esMayorista).reduce((s,v)=>s+v.total,0);
@@ -149,13 +150,7 @@ function renderReportes(){
     </div>
 
     <div class="grid-2 mb-16">
-      <div class="card"><div class="section-title mb-12">🛍️ Ventas por tipo</div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <div class="cost-row"><span>🛍️ Actual</span><span class="fw-700 text-gradient">${fmt(vtaMin)}</span></div>
-          <div class="cost-row"><span>🏪 Mayorista</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(vtaMay)}</span></div>
-          <div class="cost-row total"><span>Total</span><span>${fmt(tv)}</span></div>
-        </div>
-      </div>
+      <div class="card"><div class="section-title mb-12">🎁 Top combos ($)</div>${topCard(Object.entries(topC).sort((a,b)=>b[1]-a[1]).slice(0,5),fmt)}</div>
       <div class="card"><div class="section-title mb-12">🏆 Top productos ($)</div>${topCard(Object.entries(topP).sort((a,b)=>b[1]-a[1]).slice(0,5),fmt)}</div>
     </div>
     <div class="grid-2 mb-16">
