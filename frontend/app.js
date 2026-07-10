@@ -1018,7 +1018,7 @@ function goLobby(msg) {
   S.myTurn   = false;
   S.isOwner  = false;
   $('btn-ready').disabled    = false;
-  $('btn-ready').textContent = 'Esperando';
+  $('btn-ready').textContent = 'Estoy listo ✓';
   const cm = $('chat-msgs'); if(cm) cm.innerHTML = '';
   $('modal-win').classList.add('hidden');
   $('ready-countdown')?.classList.add('hidden');
@@ -1052,7 +1052,7 @@ function goToPlayAgain(room) {
   S.myTurn   = false;
   saveSession();
   $('btn-ready').disabled    = false;
-  $('btn-ready').textContent = 'Esperando';
+  $('btn-ready').textContent = 'Estoy listo ✓';
   const c2 = $('chat-msgs'); if(c2) c2.innerHTML = '';
   clearDice();
   renderRoom(room);
@@ -1564,9 +1564,15 @@ function handle(type, data) {
       break;
 
     case 'PRIVATE_CHAT_HISTORY':
-      // Historial de mensajes con un amigo
+      // Historial de mensajes con un amigo — mergear con cache local
       if (data.friendId === _privateChatTarget) {
-        _privateChatMessages = data.messages || [];
+        const serverMsgs = data.messages || [];
+        const localMsgs = _privateChatMessages[data.friendId] || [];
+        // Merge: keep local messages not in server (sent during disconnect)
+        const serverTexts = new Set(serverMsgs.map(m => (m.message||'') + '_' + m.from_id));
+        const merged = [...serverMsgs, ...localMsgs.filter(m => !serverTexts.has((m.message||'') + '_' + m.from_id))];
+        merged.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+        _privateChatMessages[data.friendId] = merged;
         renderPrivateChat();
       }
       break;
@@ -1882,6 +1888,8 @@ function addChat(name, text) {
   const nameStyle = hasNickDorado ? ' style="color:var(--gold2);text-shadow:0 0 8px rgba(212,175,55,.4)"' : '';
   d.innerHTML = `<span class="cn"${nameStyle}>${esc(name)}</span>: ${esc(text)}`;
   msgs.appendChild(d);
+  // Limitar DOM: mantener solo últimos 60 mensajes
+  while (msgs.children.length > 60) msgs.removeChild(msgs.firstChild);
   msgs.scrollTop = msgs.scrollHeight;
 }
 
@@ -2099,11 +2107,13 @@ function formatTimeAgo(timestamp) {
 
 let _privateChatTarget = null;
 let _privateChatTargetName = '';
-let _privateChatMessages = {}; // friendId -> [{from, msg, ts}]
+let _privateChatMessages = {}; // friendId -> [{from_id, message, created_at}]
 
 function openPrivateChat(friendId, friendName) {
   _privateChatTarget = friendId;
   _privateChatTargetName = friendName;
+  // Inicializar array si no existe
+  if (!Array.isArray(_privateChatMessages[friendId])) _privateChatMessages[friendId] = [];
   // Cambiar a la pestaña de amigos
   document.querySelectorAll('.portal-chat-tab').forEach(t => t.classList.remove('active'));
   document.querySelector('.portal-chat-tab[data-portal-tab="friends"]')?.classList.add('active');
@@ -2115,8 +2125,7 @@ function openPrivateChat(friendId, friendName) {
   const sendBtn = $('portal-chat-friends-send');
   if (inp) { inp.disabled = false; inp.placeholder = `Mensaje para ${friendName}...`; inp.focus(); }
   if (sendBtn) sendBtn.disabled = false;
-  // Cargar historial del backend
-  _privateChatMessages = [];
+  // Cargar historial del backend (puede tener mensajes cacheados localmente)
   renderPrivateChat();
   wsSend('GET_PRIVATE_CHAT', { friendId: _privateChatTarget });
 }
@@ -2128,11 +2137,12 @@ function renderPrivateChat() {
     msgs.innerHTML = '<p class="portal-empty" style="padding:20px;font-size:11px">Seleccioná un amigo para chatear</p>';
     return;
   }
-  if (!_privateChatMessages.length) {
+  const chatMsgs = _privateChatMessages[_privateChatTarget] || [];
+  if (!chatMsgs.length) {
     msgs.innerHTML = `<p class="portal-empty" style="padding:20px;font-size:11px">Chat con ${esc(_privateChatTargetName)} — sin mensajes aún</p>`;
     return;
   }
-  msgs.innerHTML = _privateChatMessages.map(m => {
+  msgs.innerHTML = chatMsgs.map(m => {
     const isMine = m.from_id === S.id;
     const name = isMine ? 'Yo' : esc(_privateChatTargetName);
     const msgText = m.message || m.msg || '';
@@ -2154,15 +2164,18 @@ function sendPrivateChat() {
 }
 
 function addPrivateMessage(fromId, fromName, text, isMine) {
-  // Agregar mensaje al array local
-  _privateChatMessages.push({
+  const targetId = isMine ? _privateChatTarget : fromId;
+  if (!targetId) return;
+  // Inicializar array si no existe
+  if (!Array.isArray(_privateChatMessages[targetId])) _privateChatMessages[targetId] = [];
+  _privateChatMessages[targetId].push({
     from_id: isMine ? S.id : fromId,
     message: text,
     created_at: Date.now()
   });
-  if (_privateChatMessages.length > 100) _privateChatMessages.shift();
+  if (_privateChatMessages[targetId].length > 100) _privateChatMessages[targetId].shift();
   // Si estamos en la conversación correcta, renderizar
-  if (_privateChatTarget === fromId || isMine) {
+  if (_privateChatTarget === fromId || (isMine && _privateChatTarget)) {
     renderPrivateChat();
   }
 }
@@ -2998,7 +3011,8 @@ function initUI() {
   $('portal-search-input').oninput = function() {
     const q = this.value.trim();
     if (q.length < 2) { $('portal-search-results').innerHTML = ''; return; }
-    searchPortalPlayers(q);
+    clearTimeout(this._debounce);
+    this._debounce = setTimeout(() => searchPortalPlayers(q), 300);
   };
   $('btn-refresh-games').onclick = loadPortalGames;
 
@@ -3185,6 +3199,8 @@ function initUI() {
     
     showScreen('screen-lobby');
     updateUserPanel(null, 0); // Panel vacío
+    // Conectar WebSocket para que invitados puedan recibir mensajes/invitaciones
+    connect();
   };
 
 /* Alternar entre Login y Registro */
@@ -3280,6 +3296,9 @@ function initUI() {
 
       $('btn-login').textContent = 'Ingresar';
 
+      // Conectar WebSocket para chat, invitaciones, notificaciones
+      connect();
+
       // Mostrar panel de usuario inmediatamente (nombre, monedas)
       // loadEquippedCache() después actualizará el avatar/icono cuando estén listos
       updateUserPanel(S.name, data.player.coins);
@@ -3365,7 +3384,7 @@ function initUI() {
   $('btn-ready').onclick = () => {
     wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
     $('btn-ready').disabled    = true;
-    $('btn-ready').textContent = 'Estoy listo ✓';
+    $('btn-ready').textContent = 'Esperando...';
   };
 
   /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
@@ -3442,6 +3461,7 @@ function initUI() {
   /* Enter en inputs */
   $('input-name').onkeydown = e => { if (e.key==='Enter') $('btn-create').click(); };
   $('input-code').onkeydown = e => { if (e.key==='Enter') $('btn-join-confirm').click(); };
+
 }
 
 /* ── Cargar perfil del usuario ──────────────────────── */
