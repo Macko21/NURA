@@ -228,6 +228,14 @@ html,body{
 }
 .btn-changelog-outside:hover{border-color:var(--gold);color:var(--gold);background:var(--bg-hover)}
 .btn-changelog-outside.hidden{display:none}
+.btn-check-update{
+  background:transparent;border:1px solid var(--border2);
+  color:var(--text3);border-radius:var(--r-sm);
+  padding:6px 12px;font-size:16px;cursor:pointer;transition:all .18s;
+  margin-top:4px;width:100%;max-width:340px;
+}
+.btn-check-update:hover{border-color:var(--gold);color:var(--gold);background:var(--bg-hover)}
+.btn-check-update.hidden{display:none}
 
 /* ── PWA Install Bar rediseñada ──────────────────────── */
 .pwa-install-bar{

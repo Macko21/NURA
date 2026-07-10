@@ -250,6 +250,10 @@ if ('serviceWorker' in navigator) {
         }
       }
     }
+    if (msg.type === 'SW_UPDATED') {
+      toast('🔄 Nueva versión ' + msg.version + ' disponible. Actualizando...', 3000);
+      setTimeout(() => window.location.reload(), 1500);
+    }
   });
 /* ── Push Notifications ─────────────────────────────── */
 let _pushSubscribed = localStorage.getItem('macko_push') === 'subscribed';
@@ -952,6 +956,7 @@ function updateUserPanel(name, coins) {
     const notifWrapper = document.querySelector('.notif-wrapper');
     if (notifWrapper) notifWrapper.classList.remove('hidden');
     $('btn-changelog-outside')?.classList.remove('hidden');
+    $('btn-check-update')?.classList.remove('hidden');
     $('btn-logout')?.classList.add('hidden'); // ocultar el viejo del form
   } else {
     // No logueado: ocultar topbar, mostrar campo nombre
@@ -961,6 +966,7 @@ function updateUserPanel(name, coins) {
     if (notifWrapper) notifWrapper.classList.add('hidden');
     $('btn-back-to-auth')?.classList.remove('hidden');
     $('btn-changelog-outside')?.classList.remove('hidden');
+    $('btn-check-update')?.classList.remove('hidden');
     $('guest-name-field').classList.remove('hidden');
   }
 }
@@ -3051,6 +3057,22 @@ function initUI() {
   $('btn-changelog-outside').onclick = () => loadChangelog();
   $('btn-close-changelog').onclick = () => $('modal-changelog').classList.add('hidden');
 
+  /* ── Check for updates ──────────────────────────────── */
+  $('btn-check-update').onclick = async () => {
+    if (!_swRegistration) { toast('Service Worker no disponible'); return; }
+    try {
+      await _swRegistration.update();
+      toast('🔄 Buscando actualizaciones...', 2000);
+      setTimeout(() => {
+        if (_swRegistration.waiting) {
+          _swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        } else {
+          toast('✅ Estás en la última versión', 2000);
+        }
+      }, 2000);
+    } catch(e) { toast('Error al buscar actualización'); }
+  };
+
   /* ── Torneos ────────────────────────────────────────── */
   $('btn-tournaments').onclick = async () => {
     // Limpiar badge de notificación push al abrir torneos
@@ -3280,6 +3302,7 @@ function initUI() {
       checkPushStatus();
       $('btn-back-to-auth')?.classList.add('hidden');
       $('btn-changelog-outside')?.classList.remove('hidden');
+      $('btn-check-update')?.classList.remove('hidden');
       loadChestStatus();
       loadLobbyMissions();
       showScreen('screen-lobby');
