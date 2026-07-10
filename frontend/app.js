@@ -464,19 +464,18 @@ const DOT_POSITIONS = {
 
 // Mapa de skins de dados: ID del item → colores
 const DICE_SKINS = {
-  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',     icon:'🎲' },
-  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego',    icon:'🔥' },
-  '4':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',    icon:'💎' },
-  '5':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma', icon:'👻' },
-  '6':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',    icon:'❄️' },
-  '18': { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',    icon:'🔴' },
-  '19': { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',  icon:'🏅' },
-  '20': { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',icon:'💚' },
-  '21': { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',   icon:'🧟' },
-  '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris', icon:'🌈' },
-  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante', icon:'💠' },
-  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos',icon:'🌌' },
-  '34': { bg: ['#1A1A1A','#0D0D0D'], dot:'#CC4444', sh:'#000000', name:'Ninja',    icon:'🥷' }
+  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',       icon:'🎲' },
+  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego',      icon:'🔥' },
+  '3':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',      icon:'💎' },
+  '4':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma',   icon:'👻' },
+  '5':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',      icon:'❄️' },
+  '6':  { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',      icon:'🔴' },
+  '7':  { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',    icon:'🏅' },
+  '8':  { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',  icon:'💚' },
+  '9':  { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',     icon:'🧟' },
+  '10': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris',   icon:'🌈' },
+  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante',   icon:'💠' },
+  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos', icon:'🌌' },
 };
 
 /* ── Mezclar dos colores hex ──────────────────────────── */
@@ -858,17 +857,16 @@ function spawnSkinParticles(skinId, container) {
 const SKIN_SOUND = {
   '1':  { freq: 500, wave: 'square' },
   '2':  { freq: 180, wave: 'sawtooth' },
-  '4':  { freq: 660, wave: 'sine' },
-  '5':  { freq: 880, wave: 'sine' },
-  '6':  { freq: 1100,wave: 'sine' },
-  '18': { freq: 160, wave: 'sawtooth' },
-  '19': { freq: 440, wave: 'sine' },
-  '20': { freq: 520, wave: 'sine' },
-  '21': { freq: 140, wave: 'sawtooth' },
-  '22': { freq: 770, wave: 'triangle' },
+  '3':  { freq: 660, wave: 'sine' },
+  '4':  { freq: 880, wave: 'sine' },
+  '5':  { freq: 1100,wave: 'sine' },
+  '6':  { freq: 160, wave: 'sawtooth' },
+  '7':  { freq: 440, wave: 'sine' },
+  '8':  { freq: 520, wave: 'sine' },
+  '9':  { freq: 140, wave: 'sawtooth' },
+  '10': { freq: 770, wave: 'triangle' },
   '32': { freq: 1200,wave: 'sine' },
   '33': { freq: 200, wave: 'triangle' },
-  '34': { freq: 100, wave: 'square' }
 };
 
 // Obtener perfil de audio del jugador que está tirando

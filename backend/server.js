@@ -1411,8 +1411,23 @@ async function checkIfGuest(playerId) {
 }
 
 /* ── Resolver ID de item avatar a su icono (emoji) ──── */
+// Cache de iconos de avatares desde la DB
+const _avatarIconCache = new Map();
+async function loadAvatarIconCache() {
+  try {
+    const res = await pool.query("SELECT id, icon FROM shop_items WHERE category = 'avatares'");
+    for (const row of res.rows) {
+      _avatarIconCache.set(String(row.id), row.icon);
+    }
+    console.log(`🎨 Avatar icon cache loaded: ${_avatarIconCache.size} items`);
+  } catch(e) {}
+}
+loadAvatarIconCache();
+
 function resolveAvatarIcon(itemId) {
   if (!itemId) return '';
+  const id = String(itemId);
+  if (_avatarIconCache.has(id)) return _avatarIconCache.get(id);
   const item = SHOP_CATALOG.find(i => i.id === parseInt(itemId) && i.category === 'avatares');
   return item ? item.icon : '';
 }
