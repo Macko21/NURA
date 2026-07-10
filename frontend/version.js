@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.2.0";
+const GAME_VERSION = "3.3.0";
 
 const CHANGELOG = [
+  {
+    version: "3.3.0",
+    date: "2026-07-09",
+    title: "Fix chat + mejoras de rendimiento",
+    scope: "game",
+    changes: [
+      "Fix: chat global y privado no llegaban (faltaba connect() post-login)",
+      "Fix: invitaciones de partida no se recibían",
+      "Fix: chat privado perdía mensajes al cambiar de amigo",
+      "Debounce en búsqueda del portal (300ms)",
+      "Límite DOM en chat de sala (60 mensajes)",
+      "Versión del lobby actualizada a v3.3.0",
+    ]
+  },
   {
     version: "3.2.0",
     date: "2026-07-10",
