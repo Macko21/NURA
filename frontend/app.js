@@ -456,214 +456,8 @@ function clearAuth() {
 
 // Ejecutar cache check al cargar la página
 checkCacheVersion();
-/* ── SVG dados realistas ─────────────────────────────── */
-const DOT_POSITIONS = {
-  1: [[25,25]],
-  2: [[12,12],[38,38]],
-  3: [[12,12],[25,25],[38,38]],
-  4: [[12,12],[38,12],[12,38],[38,38]],
-  5: [[12,12],[38,12],[25,25],[12,38],[38,38]],
-  6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
-};
-
-// Mapa de skins de dados: ID del item → colores
-const DICE_SKINS = {
-  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',       icon:'🎲' },
-  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego',      icon:'🔥' },
-  '3':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',      icon:'💎' },
-  '4':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma',   icon:'👻' },
-  '5':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',      icon:'❄️' },
-  '6':  { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',      icon:'🔴' },
-  '7':  { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',    icon:'🏅' },
-  '8':  { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',  icon:'💚' },
-  '9':  { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',     icon:'🧟' },
-  '10': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris',   icon:'🌈' },
-  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante',   icon:'💠' },
-  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos', icon:'🌌' },
-};
-
-/* ── Mezclar dos colores hex ──────────────────────────── */
-function makeDieSVG(value, state='normal', skinId=null, dotColor=null) {
-  const dots = DOT_POSITIONS[value] || [];
-
-  let finalDotColor = dotColor;
-  if (!finalDotColor) {
-    // Fallback para dados sin skin
-    if (state === 'scoring')      finalDotColor = '#103808';
-    else if (state === 'hot')     finalDotColor = '#6b3400';
-    else if (state === 'dead')    finalDotColor = '#666666';
-    else                          finalDotColor = '#1a1a2e';
-  }
-
-  const circles = dots.map(([cx,cy]) =>
-    `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${finalDotColor}" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>`
-  ).join('');
-  return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">${circles}</svg>`;
-}
-
-function makeDie(value, state='normal', skinId=null) {
-  const el = document.createElement('div');
-  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
-
-  el.className = 'die rolling'
-    + (state === 'scoring' ? ' scoring' : '')
-    + (state === 'hot'     ? ' hot'     : '')
-    + (state === 'dead'    ? ' dead'    : '');
-
-  if (skin) {
-    // ── Dado CON skin ──
-    let dotColor;
-
-    if (state === 'scoring') {
-      // Scoring: fondo VERDE (el dado se pinta verde para indicar que suma)
-      el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
-      el.style.boxShadow = `2px 2px 0 #206808, 3px 3px 0 #005000, 0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3), inset 0 1px 2px rgba(180,255,160,.5)`;
-      dotColor = '#103808';
-    } else if (state === 'hot') {
-      // Hot: fondo DORADO (dados calientes)
-      el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
-      el.style.boxShadow = `2px 2px 0 #A06008, 3px 3px 0 #784000, 0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3), inset 0 1px 2px rgba(255,230,110,.5)`;
-      dotColor = '#6b3400';
-    } else if (state === 'dead') {
-      // Muerto: fondo apagado + puntos grises
-      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
-      dotColor = '#666666';
-    } else {
-      // Normal: fondo completo de la skin
-      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
-      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)`;
-      dotColor = skin.dot || '#1a1a2e';
-    }
-
-    el.classList.add('die-skin-' + skinId);
-    // Icono grande de la skin como fondo del dado + puntos SVG encima
-    el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId, dotColor);
-  } else if (state === 'scoring') {
-    // ── Dado SIN skin: fondo verde ──
-    el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
-    el.innerHTML = makeDieSVG(value, state, skinId);
-  } else if (state === 'hot') {
-    // ── Dado SIN skin: fondo dorado ──
-    el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
-    el.innerHTML = makeDieSVG(value, state, skinId);
-  } else if (state === 'dead') {
-    // ── Dado SIN skin: muerto ──
-    el.innerHTML = makeDieSVG(value, state, skinId);
-  } else {
-    // ── Dado SIN skin: normal ──
-    el.innerHTML = makeDieSVG(value, state, skinId);
-  }
-
-  el.dataset.val = value;
-  return el;
-}
-
-/* Calcula cuáles dados puntúan individualmente (sin ser todos calientes) */
-function scoringIndices(dice) {
-  const counts = {};
-  dice.forEach(d => counts[d] = (counts[d]||0)+1);
-  const result = [];
-  dice.forEach((val, i) => {
-    const c = counts[val];
-    // Trio o más → todos los de ese valor puntúan
-    if (c >= 3) { result.push(i); return; }
-    // Sueltos: solo 1 y 5
-    if (val === 1 || val === 5) result.push(i);
-  });
-  return result;
-}
-
-function showDice(dice, mode) {
-  const row = $('dice-row');
-  row.innerHTML = '';
-
-  // Determinar skin de dados del jugador que está tirando (para que TODOS vean el skin)
-  let activeSkinId = null;
-  // 1. Intentar del jugador activo en el match state (funciona para TODOS los jugadores)
-  if (S.match && S.match.players && S.match.currentPlayerIndex !== undefined) {
-    const rollingPlayer = S.match.players[S.match.currentPlayerIndex];
-    if (rollingPlayer && rollingPlayer.equippedDice) {
-      activeSkinId = String(rollingPlayer.equippedDice);
-    }
-  }
-  // 2. NO usar fallback a skin local — solo la skin del jugador que tira
-  // Si el jugador activo no tiene skin, se ven dados normales
-  const rp = S.match?.players?.[S.match?.currentPlayerIndex];
-  console.log('🎲 Skin debug:', {
-    activeSkinId,
-    hasDiceSkins: !!DICE_SKINS[activeSkinId],
-    currentPlayerIdx: S.match?.currentPlayerIndex,
-    rollingPlayerName: rp?.name,
-    diceEq: rp?.equippedDice,
-    allPlayers: S.match?.players?.map(p => ({ name: p.name, dice: p.equippedDice, avatar: p.equippedAvatar })),
-    localDiceEquipped: S.diceEquipped
-  });
-  // Solo usar skin del jugador que está tirando (ya no hay fallback local)
-
-  // Para tiradas normales, calcular cuáles dados puntúan para ponerlos verdes
-  let greenIdx = [];
-  if (mode === 'scored') {
-    // Verificar primero si es escalera (todos calientes)
-    const sorted = [...dice].sort((a,b)=>a-b).join('');
-    const isStr  = dice.length===5 && ['12345','23456','13456'].includes(sorted);
-    if (isStr) {
-      // Escalera = todos calientes → usar modo 'all' (dorado)
-      mode = 'all';
-    } else {
-      greenIdx = scoringIndices(dice);
-    }
-  }
-
-  dice.forEach((val, i) => {
-    let state = 'normal';
-    if (mode === 'all')    state = 'hot';
-    if (mode === 'dead')   state = 'dead';
-    if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
-    const die = makeDie(val, state, activeSkinId);
-    die.style.animationDelay = (i * 55) + 'ms';
-    // Dado Mag. Animado (item 29): animación extra al tirar
-    if (S.specialEquipped === '29' && mode !== 'dead') {
-      die.classList.add('magic-dice');
-    }
-    row.appendChild(die);
-  });
-  // Partículas visuales de la skin (si el jugador activo tiene skin)
-  if (activeSkinId && SKIN_PARTICLES[activeSkinId] && mode !== 'dead') {
-    setTimeout(() => spawnSkinParticles(activeSkinId, row), 400);
-  }
-}
-
-function clearDice() {
-  $('dice-row').innerHTML = '';
-  setMsg('', '');
-}
-
-function setMsg(text, type) {
-  const el = $('roll-msg');
-  el.textContent = text;
-  el.className = 'roll-msg' + (type ? ' ' + type : '');
-}
-
-/* ── Cartelito de entrada ────────────────────────────── */
-function showEntryBanner(gained) {
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-banner-overlay';
-  overlay.innerHTML = `
-    <div class="entry-banner-box">
-      <div class="entry-banner-icon">🎉</div>
-      <div class="entry-banner-title">¡ENTRASTE AL JUEGO!</div>
-      <div class="entry-banner-sub">${gained > 0
-        ? `Quedás con <strong>${gained} pts</strong> — próximo turno sumás`
-        : 'Quedás con 0 pts — próximo turno empezás a sumar'
-      }</div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  setTimeout(() => {
-    overlay.classList.add('fade-out');
-    setTimeout(() => overlay.remove(), 600);
-  }, 2800);
-}
+// ── Funciones de dados y skins → dice-renderer.js ────
+// (DOT_POSITIONS, DICE_SKINS, makeDieSVG, makeDie, showDice, clearDice, setMsg, showEntryBanner, SKIN_PARTICLES, spawnSkinParticles)
 
 /* ── Contador de tiempo ──────────────────────────────── */
 const TURN_SECS     = 15;
@@ -777,136 +571,8 @@ function launchConfetti() {
   }
 }
 
-/* ── Audio ───────────────────────────────────────────── */
-let AC = null;
-const ac = () => AC || (AC = new (window.AudioContext||window.webkitAudioContext)());
-
-function tone(freq, type='sine', dur=.12, vol=.2, delay=0) {
-  try {
-    const ctx=ac(), o=ctx.createOscillator(), g=ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type=type; o.frequency.value=freq;
-    const t=ctx.currentTime+delay;
-    g.gain.setValueAtTime(vol,t);
-    g.gain.exponentialRampToValueAtTime(.001,t+dur);
-    o.start(t); o.stop(t+dur);
-  } catch(e){}
-}
-
-const SFX = {
-  roll:  ()=>{ tone(200,'sawtooth',.06,.25); tone(280,'sawtooth',.05,.2,.05); tone(350,'sawtooth',.04,.15,.1); },
-  score: ()=>{ tone(523,'sine',.12,.28); tone(659,'sine',.12,.22,.1); },
-  bank:  ()=>{ tone(440,'sine',.1,.25); tone(554,'sine',.12,.25,.1); tone(659,'sine',.18,.3,.2); },
-  fail:  ()=>{ tone(200,'sawtooth',.2,.3); tone(160,'sawtooth',.2,.2,.12); },
-  hot:   ()=>{ [523,659,784,1047].forEach((f,i)=>tone(f,'sine',.18,.38,i*.08)); },
-  win:   ()=>{ [523,659,784,1047,1318].forEach((f,i)=>tone(f,'triangle',.35,.45,i*.12)); },
-  chat:  ()=>tone(880,'sine',.06,.1),
-  enter: ()=>{ tone(440,'sine',.12,.3); tone(659,'sine',.18,.35,.15); },
-  tick:  ()=>tone(1200,'sine',.04,.08),
-  equip: ()=>{ tone(660,'sine',.08,.25); tone(880,'sine',.08,.2,.08); tone(1100,'sine',.12,.18,.16); },
-  purchase: ()=>{ tone(600,'triangle',.1,.25); tone(800,'triangle',.08,.2,.08); tone(1000,'triangle',.15,.3,.2); }
-};
-
-// ── Partículas visuales únicas por skin de dados ────────
-const SKIN_PARTICLES = {
-  '1':  { colors:['#fff','#f0e0c0'],           shape:'circle', count:5,  size:[2,5],  dur:[1.2,2.0], rise:'up' },
-  '2':  { colors:['#FF6B35','#FFD700','#FF4500'], shape:'spark',  count:8,  size:[2,4],  dur:[.8,1.6], rise:'up' },
-  '4':  { colors:['#88D8FF','#B8E8FF'],        shape:'spark',  count:5,  size:[2,4],  dur:[1.5,2.5], rise:'up' },
-  '5':  { colors:['#70E8FF','#fff','#b0f0ff'], shape:'circle', count:7,  size:[2,4],  dur:[1.8,3.0], rise:'float' },
-  '6':  { colors:['#c0e8ff','#fff','#80d0ff'], shape:'circle', count:6,  size:[2,4],  dur:[1.5,2.5], rise:'float' },
-  '18': { colors:['#FF2222','#FF6666','#FF0000'], shape:'spark',  count:10, size:[2,5],  dur:[.6,1.2], rise:'up' },
-  '19': { colors:['#FFD700','#FFF0A0','#DAA520'], shape:'circle', count:6,  size:[2,4],  dur:[1.2,2.0], rise:'up' },
-  '20': { colors:['#50C878','#90E8A0','#2EA85E'], shape:'circle', count:5,  size:[2,4],  dur:[1.2,2.0], rise:'up' },
-  '21': { colors:['#6B8E23','#8FB830','#4A6E10'], shape:'circle', count:6,  size:[3,5],  dur:[1.0,1.8], rise:'up' },
-  '22': { colors:['#FF6B9D','#FFD700','#88D8FF'], shape:'spark',  count:8,  size:[2,4],  dur:[1.0,2.0], rise:'float' },
-  '32': { colors:['#B9F2FF','#fff','#7FE0F8'],  shape:'spark',  count:7,  size:[2,3],  dur:[1.5,2.8], rise:'float' },
-  '33': { colors:['#9B59B6','#8E44AD','#fff'],   shape:'circle', count:8,  size:[2,5],  dur:[1.5,3.0], rise:'float' },
-  '34': { colors:['#CC4444','#fff','#1A1A1A'],   shape:'spark',  count:6,  size:[2,4],  dur:[.8,1.5], rise:'up' }
-};
-
-function spawnSkinParticles(skinId, container) {
-  const cfg = SKIN_PARTICLES[skinId];
-  if (!cfg || !container) return;
-  const rect = container.getBoundingClientRect();
-  const tray = container.closest('.dice-tray');
-  const area = tray || container;
-  const areaRect = area.getBoundingClientRect();
-  for (let i = 0; i < cfg.count; i++) {
-    const p = document.createElement('div');
-    p.className = 'skin-particle';
-    const color = cfg.colors[Math.floor(Math.random() * cfg.colors.length)];
-    const size = cfg.size[0] + Math.random() * (cfg.size[1] - cfg.size[0]);
-    const dur = cfg.dur[0] + Math.random() * (cfg.dur[1] - cfg.dur[0]);
-    const x = rect.left - areaRect.left + Math.random() * rect.width;
-    const y = rect.top - areaRect.top + Math.random() * rect.height;
-    const tx = (Math.random() - 0.5) * 80;
-    const ty = -40 - Math.random() * 60;
-    p.style.cssText = `
-      left:${x}px; top:${y}px;
-      width:${size}px; height:${size}px;
-      background:${color};
-      border-radius:${cfg.shape === 'circle' ? '50%' : '2px'};
-      animation-duration:${dur}s;
-      --tx:${tx}px; --ty:${ty}px;
-      box-shadow:0 0 ${size * 2}px ${color};
-    `;
-    p.dataset.rise = cfg.rise;
-    area.appendChild(p);
-    setTimeout(() => p.remove(), dur * 1000 + 200);
-  }
-}
-
-// ── Sonidos únicos por skin de dados ────────────────────
-// Cada skin tiene una frecuencia base y forma de onda que refleja su personalidad
-const SKIN_SOUND = {
-  '1':  { freq: 500, wave: 'square' },
-  '2':  { freq: 180, wave: 'sawtooth' },
-  '3':  { freq: 660, wave: 'sine' },
-  '4':  { freq: 880, wave: 'sine' },
-  '5':  { freq: 1100,wave: 'sine' },
-  '6':  { freq: 160, wave: 'sawtooth' },
-  '7':  { freq: 440, wave: 'sine' },
-  '8':  { freq: 520, wave: 'sine' },
-  '9':  { freq: 140, wave: 'sawtooth' },
-  '10': { freq: 770, wave: 'triangle' },
-  '32': { freq: 1200,wave: 'sine' },
-  '33': { freq: 200, wave: 'triangle' },
-};
-
-// Obtener perfil de audio del jugador que está tirando
-function getActiveSkinAudio() {
-  if (!S.match?.players || S.match.currentPlayerIndex === undefined) return null;
-  const player = S.match.players[S.match.currentPlayerIndex];
-  if (!player?.equippedDice) return null;
-  const skinId = String(player.equippedDice);
-  return SKIN_SOUND[skinId] || null;
-}
-
-// Sonido de tirada con skin: 3 tonos ascendentes con la frecuencia/fondo de la skin
-function playSkinRoll() {
-  const s = getActiveSkinAudio();
-  if (!s) { SFX.roll(); return; }
-  tone(s.freq,          s.wave, .06, .28);
-  tone(s.freq * 1.4,    s.wave, .05, .22, .05);
-  tone(s.freq * 1.75,   s.wave, .04, .16, .1);
-}
-
-// Sonido de puntuar con skin: 2 tonos armónicos
-function playSkinScore() {
-  const s = getActiveSkinAudio();
-  if (!s) { SFX.score(); return; }
-  tone(s.freq,          'sine', .12, .28);
-  tone(s.freq * 1.26,   'sine', .12, .22, .1);
-}
-
-// Sonido de dados calientes con skin: 4 tonos ascendentes
-function playSkinHot() {
-  const s = getActiveSkinAudio();
-  if (!s) { SFX.hot(); return; }
-  [s.freq, s.freq * 1.26, s.freq * 1.5, s.freq * 2].forEach((f,i) =>
-    tone(f, 'sine', .18, .38, i * .08)
-  );
-}
+// ── Sistema de audio → audio.js ───────────────────────
+// (AC, ac, tone, SFX, SKIN_PARTICLES, spawnSkinParticles, SKIN_SOUND, getActiveSkinAudio, playSkinRoll, playSkinScore, playSkinHot)
 
 /* ── Helpers ─────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
@@ -4102,6 +3768,8 @@ async function loadShopCatalog() {
         const isEquipped = equipped && equipped[cat] === String(item.id);
         const div = document.createElement('div');
         div.className = 'shop-item' + (isOwned ? ' owned' : '');
+      div.dataset.category = cat;
+      div.dataset.id = String(item.id);
         if (isOwned) {
           div.innerHTML = `
             <div class="shop-item-preview">${item.icon}</div>
@@ -4358,4 +4026,24 @@ async function sendRecoveryEmail(event) {
     btn.textContent = "Enviar instrucciones";
     btn.disabled = false;
   }
+
+/* ── Inicializar previews de dados en la tienda ────────── */
+function initShopDicePreviews() {
+  // Escanear items de la tienda y reemplazar previews de dados por dados reales
+  document.querySelectorAll('.shop-item[data-category="dice"], .shop-item.owned[data-category="dice"]').forEach(item => {
+    const skinId = item.dataset.id;
+    if (!skinId) return;
+    const previewEl = item.querySelector('.shop-item-preview');
+    if (!previewEl || previewEl.querySelector('.dice-preview-container')) return;
+    if (typeof createDicePreviewDiv !== 'function') return;
+    const preview = createDicePreviewDiv(skinId, 'small');
+    const container = document.createElement('div');
+    container.className = 'dice-preview-container';
+    container.appendChild(preview);
+    previewEl.innerHTML = '';
+    previewEl.appendChild(container);
+  });
+}
+
+
 }

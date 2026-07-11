@@ -19,6 +19,7 @@ const {
   registerForTournament,
   cancelTournament,
   createTournament,
+  generateBracket,
   getAllPushSubscriptions,
   removePushSubscription,
 } = require("./database");
@@ -303,10 +304,14 @@ async function checkPendingMatches() {
 function cleanupTournament(tournamentId) {
   activeTournaments.delete(tournamentId);
   // Limpiar match rooms asociados
+  const toDelete = [];
   for (const [key, val] of matchRooms) {
     if (val?.tournamentId === tournamentId || key.startsWith(`${tournamentId}:`)) {
-      matchRooms.delete(key);
+      toDelete.push(key);
     }
+  }
+  for (const key of toDelete) {
+    matchRooms.delete(key);
   }
 }
 
@@ -397,7 +402,7 @@ async function sendTournamentPushNotifications(tournamentId, tournamentName, tit
         } else {
           pushFailed++;
           if (result.expired) {
-            await removePushSubscription(p.player_id).catch(e => {});
+            await removePushSubscription(s.playerId).catch(e => {});
           }
         }
       } catch(e) {
@@ -522,7 +527,7 @@ async function checkAndNotifyUpcomingTournaments() {
     // Limpiar del Set torneos que ya no están en registration (empezaron o se cancelaron)
     if (_notifiedUpcoming.size > 0) {
       const stillActive = await pool.query(`
-        SELECT id FROM tournaments WHERE id = ANY($1) AND status = 'registration'
+        SELECT id FROM tournaments WHERE id = ANY($1::int[]) AND status = 'registration'
       `, [Array.from(_notifiedUpcoming)]);
       const activeIds = new Set(stillActive.rows.map(r => String(r.id)));
       for (const id of _notifiedUpcoming) {

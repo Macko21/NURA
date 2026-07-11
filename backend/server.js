@@ -15,6 +15,7 @@ const http      = require("http");
 const express   = require("express");
 const WebSocket = require("ws");
 const bcrypt    = require("bcrypt");
+const jwt       = require("jsonwebtoken");
 const { createCoinPurchase, handleStripeWebhook, getCoinPacks } = require("./paymentManager");
 const { createCheckoutPreference, handleMPWebhook, getCoinPacks: getMPCoinPacks } = require("./paymentManagerMP");
 
@@ -81,6 +82,47 @@ const generalLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// Limitadores específicos para endpoints sensibles
+const shopBuyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: { error: "Demasiadas compras. Esperá 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const feedbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Demasiados mensajes de feedback. Esperá 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Demasiados intentos de pago. Esperá 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const equipLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: "Demasiados cambios de equipamiento. Esperá 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const tournamentRegLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Demasiadas inscripciones a torneos. Esperá 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // Stripe Webhook necesita el body CRUDO (sin parsear) para verificar firma
 // DEBE ir ANTES de express.json()
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
@@ -109,6 +151,16 @@ app.use("/api/forgot-password", authLimiter);
 app.use("/api/reset-password", authLimiter);
 app.use("/ceo-panel/api/login", authLimiter);
 app.use("/api", generalLimiter);
+// Aplicar limitadores específicos a rutas sensibles
+app.use("/api/shop/buy", shopBuyLimiter);
+app.use("/api/shop/create-payment", paymentLimiter);
+app.use("/api/mercadopago/create-preference", paymentLimiter);
+app.use("/api/feedback", feedbackLimiter);
+app.use("/api/user/equip", equipLimiter);
+app.use("/api/user/claim-chest", equipLimiter);
+app.use("/api/user/missions/claim", equipLimiter);
+app.use("/api/tournaments/:id/register", tournamentRegLimiter);
+app.use("/api/tournaments/:id/unregister", tournamentRegLimiter);
 
 app.get("/", (req, res) =>
   res.sendFile(path.join(__dirname, "../frontend/index.html"))
@@ -686,15 +738,15 @@ async function requireCeoAuth(req, res, next) {
   }
   try {
     const token = authHeader.split(' ')[1];
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+    const decoded = jwt.verify(token, process.env.CEO_SECRET || 'ceo-default');
     const admin = await getAdminByUsername(decoded.username);
-    if (!admin || decoded.secret !== (process.env.CEO_SECRET || 'ceo-default')) {
+    if (!admin) {
       return res.status(401).json({ error: 'Token inválido' });
     }
     req.admin = admin;
     next();
   } catch (e) {
-    return res.status(401).json({ error: 'Token inválido' });
+    return res.status(401).json({ error: 'Token inválido o expirado' });
   }
 }
 
@@ -712,8 +764,12 @@ app.post("/ceo-panel/api/login", async (req, res) => {
     if (!admin) return res.status(401).json({ error: 'Credenciales inválidas' });
     const match = await bcrypt.compare(password, admin.password_hash);
     if (!match) return res.status(401).json({ error: 'Credenciales inválidas' });
-    // Token simple: username + secret env
-    const token = Buffer.from(JSON.stringify({ username: admin.username, ts: Date.now(), secret: process.env.CEO_SECRET || 'ceo-default' })).toString('base64');
+    // Token JWT con expiración de 24h
+    const token = jwt.sign(
+      { username: admin.username, role: admin.role, id: admin.id },
+      process.env.CEO_SECRET || 'ceo-default',
+      { expiresIn: '24h' }
+    );
     res.json({ token, username: admin.username, role: admin.role });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1542,6 +1598,41 @@ function eliminatePlayer(roomId, playerId) {
   broadcastRoomState(roomId);
 }
 
+/* ── Helper: iniciar match para una sala ─────────────────── */
+async function startMatchForRoom(roomId, triggerData) {
+  const firstPlayer = startGame(roomId);
+  const room  = getRoom(roomId);
+  const match = createMatch(room);
+  for (const p of match.players) {
+    if (p.id) {
+      try {
+        const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
+        if (plRes.rows[0]) {
+          p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
+          p.equippedDice = plRes.rows[0].equipped_dice || null;
+          p.equippedSpecial = plRes.rows[0].equipped_special || null;
+          p.winStreak = plRes.rows[0].win_streak || 0;
+        }
+      } catch(e) {}
+      const roomP = room.players.find(rp => rp.id === p.id);
+      if (roomP) {
+        if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
+        if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
+        if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
+      }
+      if (triggerData && p.id === triggerData.playerId) {
+        if (!p.equippedDice && triggerData.equippedDice) p.equippedDice = triggerData.equippedDice;
+        if (!p.equippedAvatar && triggerData.equippedAvatar) p.equippedAvatar = triggerData.equippedAvatar;
+        if (!p.equippedSpecial && triggerData.equippedSpecial) p.equippedSpecial = triggerData.equippedSpecial;
+      }
+    }
+  }
+  broadcastRoom(roomId, "GAME_STARTED", {
+    firstPlayer, match: snapshotMatch(match)
+  });
+  startFirstTurnTimer(roomId, broadcastRoom);
+}
+
 /* ── Reconectar jugador a sala/partida ───────────────────── */
 function doReconnect(socket, playerId, room, match) {
   const roomId = room.id;
@@ -1800,40 +1891,7 @@ wss.on("connection", socket => {
         return;
       }
 
-      /* ── Helper: iniciar match para una sala ──── */
-      async function startMatchForRoom(roomId, triggerData) {
-        const firstPlayer = startGame(roomId);
-        const room  = getRoom(roomId);
-        const match = createMatch(room);
-        for (const p of match.players) {
-          if (p.id) {
-            try {
-              const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
-              if (plRes.rows[0]) {
-                p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
-                p.equippedDice = plRes.rows[0].equipped_dice || null;
-                p.equippedSpecial = plRes.rows[0].equipped_special || null;
-                p.winStreak = plRes.rows[0].win_streak || 0;
-              }
-            } catch(e) {}
-            const roomP = room.players.find(rp => rp.id === p.id);
-            if (roomP) {
-              if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
-              if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
-              if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
-            }
-            if (triggerData && p.id === triggerData.playerId) {
-              if (!p.equippedDice && triggerData.equippedDice) p.equippedDice = triggerData.equippedDice;
-              if (!p.equippedAvatar && triggerData.equippedAvatar) p.equippedAvatar = triggerData.equippedAvatar;
-              if (!p.equippedSpecial && triggerData.equippedSpecial) p.equippedSpecial = triggerData.equippedSpecial;
-            }
-          }
-        }
-        broadcastRoom(roomId, "GAME_STARTED", {
-          firstPlayer, match: snapshotMatch(match)
-        });
-        startFirstTurnTimer(roomId, broadcastRoom);
-      }
+
 
       /* ── LISTO ─────────────────────────────────────────── */
       if (type === "PLAYER_READY") {

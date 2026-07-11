@@ -1,0 +1,305 @@
+/**
+ * ═══════════════════════════════════════════════════════
+ * LOS 10.000 DE MACKO — dice-renderer.js
+ * Renderizado de dados SVG, skins, partículas y animaciones
+ * ═══════════════════════════════════════════════════════
+ */
+
+/* ── SVG dados realistas ─────────────────────────────── */
+const DOT_POSITIONS = {
+  1: [[25,25]],
+  2: [[12,12],[38,38]],
+  3: [[12,12],[25,25],[38,38]],
+  4: [[12,12],[38,12],[12,38],[38,38]],
+  5: [[12,12],[38,12],[25,25],[12,38],[38,38]],
+  6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
+};
+
+// Mapa de skins de dados: ID del item → colores
+const DICE_SKINS = {
+  '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',       icon:'🎲' },
+  '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego',      icon:'🔥' },
+  '3':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',      icon:'💎' },
+  '4':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma',   icon:'👻' },
+  '5':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',      icon:'❄️' },
+  '6':  { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',      icon:'🔴' },
+  '7':  { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',    icon:'🏅' },
+  '8':  { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',  icon:'💚' },
+  '9':  { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',     icon:'🧟' },
+  '10': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris',   icon:'🌈' },
+  '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante',   icon:'💠' },
+  '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos', icon:'🌌' },
+};
+
+// Preview de dados para la tienda: valores de dados emblemáticos para cada skin
+// y sus variantes de color en estado normal
+const SHOP_DICE_PREVIEW = {
+  '1':  { val: 5, label: '5 pts' },
+  '2':  { val: 1, label: '100 pts' },
+  '3':  { val: 6, label: 'Dado de la suerte' },
+  '4':  { val: 3, label: 'Triple amenaza' },
+  '5':  { val: 4, label: 'Frío mortal' },
+  '6':  { val: 6, label: 'Precisión láser' },
+  '7':  { val: 5, label: '50 pts' },
+  '8':  { val: 2, label: 'Doble esmeralda' },
+  '9':  { val: 1, label: 'Mordida zombie' },
+  '10': { val: 5, label: 'Arcoíris total' },
+  '32': { val: 3, label: 'Brillo puro' },
+  '33': { val: 6, label: 'Nebulosa cósmica' },
+};
+
+function makeDieSVG(value, state='normal', skinId=null, dotColor=null) {
+  const dots = DOT_POSITIONS[value] || [];
+
+  let finalDotColor = dotColor;
+  if (!finalDotColor) {
+    if (state === 'scoring')      finalDotColor = '#103808';
+    else if (state === 'hot')     finalDotColor = '#6b3400';
+    else if (state === 'dead')    finalDotColor = '#666666';
+    else                          finalDotColor = '#1a1a2e';
+  }
+
+  const circles = dots.map(([cx,cy]) =>
+    `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${finalDotColor}" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>`
+  ).join('');
+  return `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">${circles}</svg>`;
+}
+
+function makeDie(value, state='normal', skinId=null) {
+  const el = document.createElement('div');
+  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
+
+  el.className = 'die rolling'
+    + (state === 'scoring' ? ' scoring' : '')
+    + (state === 'hot'     ? ' hot'     : '')
+    + (state === 'dead'    ? ' dead'    : '');
+
+  if (skin) {
+    let dotColor;
+
+    if (state === 'scoring') {
+      el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
+      el.style.boxShadow = `2px 2px 0 #206808, 3px 3px 0 #005000, 0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3), inset 0 1px 2px rgba(180,255,160,.5)`;
+      dotColor = '#103808';
+    } else if (state === 'hot') {
+      el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
+      el.style.boxShadow = `2px 2px 0 #A06008, 3px 3px 0 #784000, 0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3), inset 0 1px 2px rgba(255,230,110,.5)`;
+      dotColor = '#6b3400';
+    } else if (state === 'dead') {
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      dotColor = '#666666';
+    } else {
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)`;
+      dotColor = skin.dot || '#1a1a2e';
+    }
+
+    el.classList.add('die-skin-' + skinId);
+    el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId, dotColor);
+  } else if (state === 'scoring') {
+    el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
+    el.innerHTML = makeDieSVG(value, state, skinId);
+  } else if (state === 'hot') {
+    el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
+    el.innerHTML = makeDieSVG(value, state, skinId);
+  } else if (state === 'dead') {
+    el.innerHTML = makeDieSVG(value, state, skinId);
+  } else {
+    el.innerHTML = makeDieSVG(value, state, skinId);
+  }
+
+  el.dataset.val = value;
+  return el;
+}
+
+/** Crear dado pequeño para preview en la tienda (sin animación rolling) */
+function makeShopDie(value, skinId) {
+  const el = document.createElement('div');
+  const skin = skinId && DICE_SKINS[skinId] ? DICE_SKINS[skinId] : null;
+
+  el.className = 'die';
+  el.style.width = '44px';
+  el.style.height = '44px';
+  el.style.animation = 'none';
+
+  if (skin) {
+    el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+    el.style.boxShadow = `1.5px 1.5px 0 ${skin.sh}, 2px 2px 0 ${skin.sh}, 0 3px 8px rgba(0,0,0,.5), inset 0 1px 2px rgba(255,255,255,.9)`;
+    el.classList.add('die-skin-' + skinId);
+    el.innerHTML = `<span class="die-icon-bg" style="font-size:24px">${skin.icon}</span>` + makeDieSVG(value, 'normal', skinId, skin.dot || '#1a1a2e');
+    el.querySelector('svg').setAttribute('viewBox', '0 0 50 50');
+    el.querySelectorAll('circle').forEach(c => c.setAttribute('r', '4'));
+  } else {
+    el.style.background = 'linear-gradient(145deg,#F8F4EE,#E8E0D0)';
+    el.style.boxShadow = '1.5px 1.5px 0 #C4BAA2, 2px 2px 0 #A49470, 0 3px 8px rgba(0,0,0,.5), inset 0 1px 2px rgba(255,255,255,.9)';
+    el.innerHTML = makeDieSVG(value, 'normal', null, '#1a1a2e');
+  }
+
+  el.dataset.val = value;
+  return el;
+}
+
+function scoringIndices(dice) {
+  const counts = {};
+  dice.forEach(d => counts[d] = (counts[d]||0)+1);
+  const result = [];
+  dice.forEach((val, i) => {
+    const c = counts[val];
+    if (c >= 3) { result.push(i); return; }
+    if (val === 1 || val === 5) result.push(i);
+  });
+  return result;
+}
+
+function showDice(dice, mode) {
+  const row = document.getElementById('dice-row');
+  row.innerHTML = '';
+
+  let activeSkinId = null;
+  if (window.S && window.S.match && window.S.match.players && window.S.match.currentPlayerIndex !== undefined) {
+    const rollingPlayer = window.S.match.players[window.S.match.currentPlayerIndex];
+    if (rollingPlayer && rollingPlayer.equippedDice) {
+      activeSkinId = String(rollingPlayer.equippedDice);
+    }
+  }
+
+  let greenIdx = [];
+  if (mode === 'scored') {
+    const sorted = [...dice].sort((a,b)=>a-b).join('');
+    const isStr  = dice.length===5 && ['12345','23456','13456'].includes(sorted);
+    if (isStr) {
+      mode = 'all';
+    } else {
+      greenIdx = scoringIndices(dice);
+    }
+  }
+
+  dice.forEach((val, i) => {
+    let state = 'normal';
+    if (mode === 'all')    state = 'hot';
+    if (mode === 'dead')   state = 'dead';
+    if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
+    const die = makeDie(val, state, activeSkinId);
+    die.style.animationDelay = (i * 55) + 'ms';
+    if (window.S && window.S.specialEquipped === '29' && mode !== 'dead') {
+      die.classList.add('magic-dice');
+    }
+    row.appendChild(die);
+  });
+  if (activeSkinId && SKIN_PARTICLES[activeSkinId] && mode !== 'dead') {
+    setTimeout(() => spawnSkinParticles(activeSkinId, row), 400);
+  }
+}
+
+function clearDice() {
+  const el = document.getElementById('dice-row');
+  if (el) el.innerHTML = '';
+  setMsg('', '');
+}
+
+function setMsg(text, type) {
+  const el = document.getElementById('roll-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'roll-msg' + (type ? ' ' + type : '');
+}
+
+/* ── Cartelito de entrada ────────────────────────────── */
+function showEntryBanner(gained) {
+  const overlay = document.createElement('div');
+  overlay.className = 'entry-banner-overlay';
+  overlay.innerHTML = `
+    <div class="entry-banner-box">
+      <div class="entry-banner-icon">🎉</div>
+      <div class="entry-banner-title">¡ENTRASTE AL JUEGO!</div>
+      <div class="entry-banner-sub">${gained > 0
+        ? `Quedás con <strong>${gained} pts</strong> — próximo turno sumás`
+        : 'Quedás con 0 pts — próximo turno empezás a sumar'
+      }</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => {
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.remove(), 600);
+  }, 2800);
+}
+
+// ── Partículas visuales únicas por skin de dados ────────
+const SKIN_PARTICLES = {
+  '1':  { colors:['#fff','#f0e0c0'],           shape:'circle', count:5,  size:[2,5],  dur:[1.2,2.0], rise:'up' },
+  '2':  { colors:['#FF6B35','#FFD700','#FF4500'], shape:'spark',  count:8,  size:[2,4],  dur:[.8,1.6], rise:'up' },
+  '4':  { colors:['#88D8FF','#B8E8FF'],        shape:'spark',  count:5,  size:[2,4],  dur:[1.5,2.5], rise:'up' },
+  '5':  { colors:['#70E8FF','#fff','#b0f0ff'], shape:'circle', count:7,  size:[2,4],  dur:[1.8,3.0], rise:'float' },
+  '6':  { colors:['#c0e8ff','#fff','#80d0ff'], shape:'circle', count:6,  size:[2,4],  dur:[1.5,2.5], rise:'float' },
+  '18': { colors:['#FF2222','#FF6666','#FF0000'], shape:'spark',  count:10, size:[2,5],  dur:[.6,1.2], rise:'up' },
+  '19': { colors:['#FFD700','#FFF0A0','#DAA520'], shape:'circle', count:6,  size:[2,4],  dur:[1.2,2.0], rise:'up' },
+  '20': { colors:['#50C878','#90E8A0','#2EA85E'], shape:'circle', count:5,  size:[2,4],  dur:[1.2,2.0], rise:'up' },
+  '21': { colors:['#6B8E23','#8FB830','#4A6E10'], shape:'circle', count:6,  size:[3,5],  dur:[1.0,1.8], rise:'up' },
+  '22': { colors:['#FF6B9D','#FFD700','#88D8FF'], shape:'spark',  count:8,  size:[2,4],  dur:[1.0,2.0], rise:'float' },
+  '32': { colors:['#B9F2FF','#fff','#7FE0F8'],  shape:'spark',  count:7,  size:[2,3],  dur:[1.5,2.8], rise:'float' },
+  '33': { colors:['#9B59B6','#8E44AD','#fff'],   shape:'circle', count:8,  size:[2,5],  dur:[1.5,3.0], rise:'float' },
+  '34': { colors:['#CC4444','#fff','#1A1A1A'],   shape:'spark',  count:6,  size:[2,4],  dur:[.8,1.5], rise:'up' }
+};
+
+function spawnSkinParticles(skinId, container) {
+  const cfg = SKIN_PARTICLES[skinId];
+  if (!cfg || !container) return;
+  const rect = container.getBoundingClientRect();
+  const tray = container.closest('.dice-tray');
+  const area = tray || container;
+  const areaRect = area.getBoundingClientRect();
+  for (let i = 0; i < cfg.count; i++) {
+    const p = document.createElement('div');
+    p.className = 'skin-particle';
+    const color = cfg.colors[Math.floor(Math.random() * cfg.colors.length)];
+    const size = cfg.size[0] + Math.random() * (cfg.size[1] - cfg.size[0]);
+    const dur = cfg.dur[0] + Math.random() * (cfg.dur[1] - cfg.dur[0]);
+    const x = rect.left - areaRect.left + Math.random() * rect.width;
+    const y = rect.top - areaRect.top + Math.random() * rect.height;
+    const tx = (Math.random() - 0.5) * 80;
+    const ty = -40 - Math.random() * 60;
+    p.style.cssText = `
+      left:${x}px; top:${y}px;
+      width:${size}px; height:${size}px;
+      background:${color};
+      border-radius:${cfg.shape === 'circle' ? '50%' : '2px'};
+      animation-duration:${dur}s;
+      --tx:${tx}px; --ty:${ty}px;
+      box-shadow:0 0 ${size * 2}px ${color};
+    `;
+    p.dataset.rise = cfg.rise;
+    area.appendChild(p);
+    setTimeout(() => p.remove(), dur * 1000 + 200);
+  }
+}
+
+/**
+ * Genera un contenedor de preview animado para un dado con skin
+ * Útil para la tienda: muestra un dado girando/animado
+ */
+function createDicePreviewDiv(skinId, size = 'small') {
+  const container = document.createElement('div');
+  container.className = 'dice-preview-container';
+
+  const val = (SHOP_DICE_PREVIEW[skinId] && SHOP_DICE_PREVIEW[skinId].val) || 5;
+  const die = makeShopDie(val, skinId);
+
+  if (size === 'large') {
+    die.style.width = '60px';
+    die.style.height = '60px';
+    die.querySelectorAll('circle').forEach(c => c.setAttribute('r', '5.5'));
+  }
+
+  // Clon animado que rota los valores
+  container.appendChild(die);
+
+  // Agregar tooltip con el nombre del skin
+  const skin = DICE_SKINS[skinId];
+  const label = document.createElement('div');
+  label.className = 'dice-preview-label';
+  label.textContent = skin ? skin.name : '';
+  container.appendChild(label);
+
+  return container;
+}

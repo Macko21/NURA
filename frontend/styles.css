@@ -1954,3 +1954,34 @@ input[type=number]{-moz-appearance:textfield}
 }
 .invite-send-btn:hover { background: var(--gold2); }
 .invite-send-btn:disabled { opacity: .4; cursor: default; }
+
+/* ── Preview de dados en tienda ────────────────────────── */
+.dice-preview-container {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dice-preview-container .die {
+  animation: shopDieIdle 2s ease-in-out infinite;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.dice-preview-container .die:hover {
+  transform: scale(1.15);
+}
+.dice-preview-label {
+  font-size: 9px;
+  color: var(--text3);
+  text-align: center;
+  margin-top: 2px;
+  opacity: 0.8;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+@keyframes shopDieIdle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-3px) rotate(-3deg); }
+  75% { transform: translateY(-1px) rotate(2deg); }
+}
