@@ -4096,6 +4096,7 @@ async function sendRecoveryEmail(event) {
     btn.textContent = "Enviar instrucciones";
     btn.disabled = false;
   }
+}
 
 /* ── Inicializar previews de dados en la tienda ────────── */
 function initShopDicePreviews() {

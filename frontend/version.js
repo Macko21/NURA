@@ -10,9 +10,19 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.4.4";
+const GAME_VERSION = "3.4.5";
 
 const CHANGELOG = [
+  // ═══ 3.4.5 — GAME ═══
+  {
+    version: "3.4.5",
+    date: "2026-07-11",
+    title: "🚨 Fix: syntax error login",
+    scope: "game",
+    changes: [
+      "🔧 Fix: sendRecoveryEmail faltaba cerrar la función (stray brace fix anterior la rompió)",
+    ]
+  },
   // ═══ 3.4.4 — GAME ═══
   {
     version: "3.4.4",
