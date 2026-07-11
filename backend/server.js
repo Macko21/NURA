@@ -2344,10 +2344,14 @@ cleanupGuestPlayers(); // también al iniciar
 
 /* ── Init ────────────────────────────────────────────────── */
 async function startServer() {
-  await initializeDatabase();
-  initPush();
-  initEmail();
-  initTournamentManager();
+  try {
+    await initializeDatabase();
+  } catch(e) {
+    console.error('⚠️ DB no disponible, arrancando en modo limitado:', e.message);
+  }
+  try { initPush(); } catch(e) { console.error('⚠️ Push no disponible:', e.message); }
+  try { initEmail(); } catch(e) { console.error('⚠️ Email no disponible:', e.message); }
+  try { initTournamentManager(); } catch(e) { console.error('⚠️ Tournament Manager no disponible:', e.message); }
 
   // Limpieza periódica de chats viejos
   async function runChatCleanup() {
@@ -2355,8 +2359,8 @@ async function startServer() {
     await cleanupPrivateMessages().catch(e => console.warn('Private chat cleanup:', e.message));
     console.log('🧹 Limpieza de chats ejecutada');
   }
-  runChatCleanup();
-  setInterval(runChatCleanup, 24 * 60 * 60 * 1000);
+  runChatCleanup().catch(() => {});
+  setInterval(() => runChatCleanup().catch(() => {}), 24 * 60 * 60 * 1000);
 
   // Crear cuenta de super admin
   try {
