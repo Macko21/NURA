@@ -4156,7 +4156,7 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
     toast('⚠ Error al mostrar preview: ' + e.message);
   }
 }
-window.openItemPreview = openItemPreview;;
+window.openItemPreview = openItemPreview;
 
 function buildDicePreviewHTML(skinId, itemName, itemIcon) {
   try {
@@ -4179,8 +4179,4 @@ function buildDicePreviewHTML(skinId, itemName, itemIcon) {
   } catch(e) {
     return '<p style="text-align:center;color:var(--red);padding:20px">Error al generar preview: ' + esc(e.message) + '</p>';
   }
-}
-
-
-
 }

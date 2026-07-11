@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.4.3";
+const GAME_VERSION = "3.4.4";
 
 const CHANGELOG = [
+  // ═══ 3.4.4 — GAME ═══
+  {
+    version: "3.4.4",
+    date: "2026-07-11",
+    title: "🔧 Fix: openItemPreview + sintaxis",
+    scope: "game",
+    changes: [
+      "🔧 Fix: preview de tienda roto por syntax error (stray closing brace al final de app.js)",
+      "🔧 Fix: doble punto y coma eliminado",
+      "🐛 Fix: chat/invitaciones no funcionaban por falta de connect() post-login",
+      "🐛 Fix: chat privado perdia mensajes al cambiar de amigo (type mismatch object/array)",
+    ]
+  },
   // ═══ 3.4.3 — GAME ═══
   {
     version: "3.4.3",
