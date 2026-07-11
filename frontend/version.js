@@ -42,15 +42,13 @@ const CHANGELOG = [
   {
     version: "3.4.0",
     date: "2026-07-11",
-    title: "🔧 Modularización + Rate limiting + Preview dados",
+    title: "🎲 Preview de dados en tienda + Protección anti-spam",
     scope: "game",
     changes: [
-      "📦 Refactor: app.js dividido en módulos (dice-renderer.js + audio.js), -18KB",
-      "🎲 Preview real de skins de dados (SVG con colores y animación) en la tienda",
-      "🔒 Rate limiting: protección contra spam en shop, feedback, pagos y torneos",
-      "🐛 Bugfix: generateBracket no importado en tournamentManager.js",
-      "🐛 Bugfix: startMatchForRoom anidado dentro del handler WS",
-      "🐛 Bugfix: className roto en shop items",
+      "🎲 Tienda: preview visual de dados con todos los estados del juego",
+      "📦 Juego más liviano y rápido con código optimizado",
+      "🔒 Protección contra spam en tienda, feedback y torneos",
+      "🐛 Varios bugs corregidos",
     ]
   },
   // ═══ 3.4.0 — CEO ═══
@@ -60,55 +58,53 @@ const CHANGELOG = [
     title: "🔧 Mejoras CEO Panel",
     scope: "ceo",
     changes: [
-      "🔧 CEO Panel: login JWT ya implementado correctamente",
-      "🧹 Eliminados scripts temporales de /scripts",
+      "🔧 CEO Panel: login JWT implementado correctamente",
+      "🧹 Eliminados scripts temporales",
     ]
   },
   // ═══ 3.3.0 — GAME ═══
   {
     version: "3.3.0",
     date: "2026-07-09",
-    title: "🐛 Fix chat + mejoras de rendimiento",
+    title: "🐛 Fix chat + mejoras",
     scope: "game",
     changes: [
-      "Fix: chat global y privado no llegaban (faltaba connect() post-login)",
-      "Fix: invitaciones de partida no se recibían",
-      "Fix: chat privado perdía mensajes al cambiar de amigo",
-      "Debounce en búsqueda del portal (300ms)",
-      "Límite DOM en chat de sala (60 mensajes)",
+      "Fix: chat no funcionaba después de iniciar sesión",
+      "Fix: invitaciones a partidas no se recibían",
+      "Fix: mensajes privados se perdían al cambiar de chat",
+      "Búsqueda optimizada en el portal",
+      "Límite de mensajes en chat para mejor rendimiento",
     ]
   },
   // ═══ 3.2.0 — GAME ═══
   {
     version: "3.2.0",
     date: "2026-07-10",
-    title: "🔔 Notificaciones + Amistad + Invitaciones + Fix tienda",
+    title: "🔔 Notificaciones + Amistad + Invitaciones",
     scope: "game",
     changes: [
-      "Centro de notificaciones con panel deslizante y badge de no leídas",
-      "Switch de push notifications con persistencia en localStorage",
-      "Solicitudes de amistad con aceptar/rechazar en notificaciones",
-      "Invitaciones a partida con buscador de jugadores",
-      "Broadcasts del CEO se ven en notificaciones en tiempo real",
+      "Centro de notificaciones con panel deslizante",
+      "Push notifications activables desde el juego",
+      "Solicitudes de amistad con aceptar/rechazar",
+      "Invitaciones a partidas desde el buscador",
+      "Notificaciones del CEO en tiempo real",
       "Fix: tienda mostraba items comprados incorrectamente",
-      "Fix: inventario perfil 5 columnas cuadradas compactas",
-      "Fix: invalid date en notificaciones",
-      "Torneos envían notificación a participantes conectados",
-      "Deduplicación de mensajes de broadcast",
+      "Fix: diseño del inventario mejorado",
+      "Fix: fechas incorrectas en notificaciones",
+      "Notificaciones de torneos para participantes",
     ]
   },
   // ═══ 3.1.0 — GAME ═══
   {
     version: "3.1.0",
     date: "2026-07-10",
-    title: "⏰ Torneos automáticos programados + countdown",
+    title: "⏰ Torneos automáticos programados",
     scope: "game",
     changes: [
-      "⏰ Auto-inicio: cuando la inscripción vence, el torneo arranca automáticamente",
-      "❌ Auto-cancelación: si no hay suficientes jugadores, se cancela solo",
-      "🔄 Torneos recurrentes: cada 1h, 2h, 4h, 8h, 12h, diarios y semanales",
-      "⏳ Lobby: banner con countdown del próximo torneo programado",
-      "🔄 Auto-creación del siguiente torneo al completarse el anterior",
+      "⏰ Torneos con inicio automático cuando vence la inscripción",
+      "❌ Cancelación automática si no hay suficientes jugadores",
+      "🔄 Torneos recurrentes: cada 1h, 2h, 4h, 8h, 12h o diarios",
+      "⏳ Banner con cuenta regresiva del próximo torneo",
     ]
   },
   // ═══ 3.1.0 — CEO ═══
@@ -126,27 +122,27 @@ const CHANGELOG = [
   {
     version: "3.0.0",
     date: "2026-07-10",
-    title: "🏆 Torneos automáticos con bracket single-elimination",
+    title: "🏆 Torneos automáticos con bracket",
     scope: "game",
     changes: [
-      "🏆 Sistema de torneos automáticos con bracket single-elimination",
-      "📝 Jugadores pueden inscribirse en torneos con fee de monedas",
-      "🔀 Bracket generado automáticamente con seeds aleatorios",
-      "🏆 Visualización de brackets en vivo con rondas y ganadores",
-      "💰 Prize pool dinámico calculado automáticamente",
-      "🔔 Notificaciones en tiempo real de avances de torneo via WebSocket",
+      "🏆 Sistema de torneos con bracket single-eliminación",
+      "📝 Inscripción con fee de monedas",
+      "🔀 Brackets generados automáticamente",
+      "👀 Visualización de brackets en vivo",
+      "💰 Premios calculados automáticamente",
+      "🔔 Notificaciones en tiempo real de avances",
     ]
   },
   // ═══ 2.5.0 — GAME ═══
   {
     version: "2.5.0",
     date: "2026-07-10",
-    title: "🧹 Botón de cambios único + caché de versiones",
+    title: "🧹 Botón de cambios único + caché",
     scope: "game",
     changes: [
-      "🧹 Eliminado botón de cambios duplicado dentro del formulario",
-      "📋 Changelog cacheado: carga instantánea aunque el servidor esté reiniciando",
-      "🔖 Versión 2.5.0 consolidada con todos los cambios de UX, bugs y mejoras",
+      "🧹 Botón de cambios más limpio y ordenado",
+      "📋 Historial de versiones con carga instantánea",
+      "🔖 Múltiples mejoras de UX",
     ]
   },
   // ═══ 2.5.0 — CEO ═══
@@ -163,29 +159,26 @@ const CHANGELOG = [
   {
     version: "2.4.0",
     date: "2026-07-10",
-    title: "🐛 Corrección doble victoria + UI rediseñada",
+    title: "🐛 Fix doble victoria + UI renovada",
     scope: "game",
     changes: [
-      "🐛 Fix: el cartel de victoria ya no aparece dos veces cuando alguien gana",
-      "🐛 Fix: los avatares y skins de dados se cargan siempre al empezar una revancha",
-      "🐛 Fix: botón de notificaciones ahora cambia de estado visual correctamente",
-      "🎨 Cerrar sesión movido a la topbar derecha junto a la tienda",
-      "🎨 Notificaciones (campana) movidas a la topbar izquierda junto al avatar",
-      "🎨 Barra PWA rediseñada: más chica, flotando abajo centrada",
-      "🎨 Botón de cambios (changelog) movido abajo del formulario, centrado",
-      "🔒 Volver al login solo visible para invitados",
+      "🐛 Fix: cartel de victoria ya no aparece dos veces",
+      "🐛 Fix: avatares y skins se cargan siempre en revanchas",
+      "🎨 Diseño mejorado de la interfaz del lobby",
+      "🎨 Barra PWA rediseñada más compacta",
+      "🔒 Botón volver al login solo para invitados",
     ]
   },
   // ═══ 2.3.0 — GAME ═══
   {
     version: "2.3.0",
     date: "2026-07-10",
-    title: "🐛 Correcciones y mejoras de UX",
+    title: "🐛 Correcciones de UX",
     scope: "game",
     changes: [
-      "🔧 Versión dinámica: login y lobby muestran la versión actual automáticamente",
-      "🐛 Fecha inválida reparada en historial de transacciones del perfil",
-      "🧹 Cache local se limpia al detectar nueva versión del juego",
+      "🔧 Versión actual mostrada automáticamente en el lobby",
+      "🐛 Fechas correctas en historial de transacciones",
+      "🧹 Cache local se limpia al actualizar el juego",
     ]
   },
   // ═══ 2.3.0 — CEO ═══
@@ -202,11 +195,11 @@ const CHANGELOG = [
   {
     version: "2.2.0",
     date: "2026-07-09",
-    title: "🎯 Sistema de versiones y cache busting",
+    title: "📋 Historial de cambios",
     scope: "game",
     changes: [
-      "📋 Botón de historial de cambios en el lobby con registro completo",
-      "🧹 Cache automático: PWA y navegador cargan siempre la última versión",
+      "📋 Botón con historial completo de cambios del juego",
+      "🧹 Cache automático para siempre tener la última versión",
     ]
   },
   // ═══ 2.2.0 — CEO ═══
@@ -251,16 +244,16 @@ const CHANGELOG = [
     scope: "game",
     changes: [
       "✨ Rediseño visual completo con tema oscuro premium",
-      "🎨 Sistema de skins: 13 diseños de dados con efectos visuales",
-      "👤 Avatares personalizados: 13 avatares únicos",
-      "💎 Items especiales: Emotes VIP, Marco Premium, Nick Dorado y más",
+      "🎨 13 skins de dados con efectos visuales únicos",
+      "👤 13 avatares personalizados",
+      "💎 Items especiales: Emotes VIP, Marco Premium, Nick Dorado",
       "🛒 Tienda con monedas virtuales",
-      "🎯 Misiones diarias, semanales y logros",
-      "🏆 Ranking global con puntuaciones",
-      "👥 Amigos y chat global entre jugadores",
-      "💬 Chat de voz (audio efímero) en partidas",
-      "💰 Sistema de monedas con boost +50%",
-      "🎁 Cofre diario con items ultra raros",
+      "🎯 Misiones diarias y logros",
+      "🏆 Ranking global",
+      "👥 Amigos y chat global",
+      "💬 Chat de voz en partidas",
+      "💰 Sistema de monedas con boost",
+      "🎁 Cofre diario con items raros",
       "🏪 Compra de monedas vía Stripe y Mercado Pago",
     ]
   },
@@ -268,14 +261,14 @@ const CHANGELOG = [
   {
     version: "1.0.0",
     date: "2026-06-20",
-    title: "🚀 Lanzamiento inicial",
+    title: "🚀 Lanzamiento",
     scope: "game",
     changes: [
-      "🎲 Juego completo de 10.000 con dados realistas",
-      "👥 Salas privadas de 2 a 10 jugadores",
-      "🔌 WebSocket en tiempo real con reconexión automática",
-      "📱 PWA instalable como app",
-      "🔐 Registro y login con JWT",
+      "🎲 Juego completo de 10.000",
+      "👥 Salas de 2 a 10 jugadores",
+      "🔌 Conexión en tiempo real",
+      "📱 App instalable (PWA)",
+      "🔐 Registro e inicio de sesión",
       "🌙 Tema oscuro",
     ]
   },

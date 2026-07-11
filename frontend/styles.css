@@ -1466,6 +1466,105 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .shop-item-price{font-size:13px;color:var(--text2);font-weight:600;font-family:'Cinzel',serif}
 
 /* ══════════════════════════════════════
+   SHOP PREVIEW MODAL
+   ══════════════════════════════════════ */
+.shop-preview-overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,.8);z-index:10000;
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;animation:fadeIn .2s ease;
+}
+.shop-preview-box{
+  background:var(--bg-card2);border:1px solid var(--border2);
+  border-radius:16px;max-width:480px;width:100%;
+  padding:24px;animation:scaleIn .25s ease;
+  max-height:90vh;overflow-y:auto;
+}
+.shop-preview-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:16px;
+}
+.shop-preview-header h2{
+  font-size:18px;color:var(--text);font-weight:700;
+  font-family:'Cinzel',serif;
+}
+.shop-preview-close{
+  width:32px;height:32px;border-radius:8px;
+  border:1px solid var(--border2);background:transparent;
+  color:var(--text3);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.shop-preview-close:hover{
+  border-color:var(--red);color:var(--red);
+  background:rgba(255,80,80,.1);
+}
+
+/* Dice states preview */
+.dice-states-grid{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:12px;margin-top:12px;
+}
+.dice-state-card{
+  background:var(--bg-input);border-radius:10px;
+  padding:14px;text-align:center;
+  border:1px solid var(--border2);
+  transition:all .2s;
+}
+.dice-state-card:hover{
+  border-color:var(--gold);
+  transform:translateY(-2px);
+}
+.dice-state-card .die{
+  margin:0 auto;
+}
+.dice-state-label{
+  font-size:11px;color:var(--text3);margin-top:8px;
+  font-weight:500;
+}
+.dice-state-icon{
+  font-size:16px;margin-right:4px;
+}
+
+/* Avatar preview */
+.avatar-preview-display{
+  font-size:96px;text-align:center;
+  padding:30px;margin:10px 0;
+  background:rgba(255,255,255,.03);
+  border-radius:16px;border:1px solid var(--border2);
+  line-height:1.2;
+}
+.avatar-preview-display.avatar-premium{
+  border-color:var(--gold);
+  box-shadow:0 0 30px rgba(212,175,55,.15);
+}
+
+/* Special preview */
+.special-preview-icon{
+  font-size:64px;text-align:center;padding:20px 0;
+}
+.special-preview-desc{
+  font-size:14px;color:var(--text2);
+  text-align:center;padding:12px 16px;
+  background:rgba(255,255,255,.03);
+  border-radius:10px;border:1px solid var(--border2);
+  line-height:1.5;margin-top:10px;
+}
+.special-preview-effect{
+  font-size:12px;color:var(--gold);
+  text-align:center;margin-top:8px;font-weight:600;
+}
+
+@keyframes scaleIn{
+  from{transform:scale(.9);opacity:0}
+  to{transform:scale(1);opacity:1}
+}
+@keyframes fadeIn{
+  from{opacity:0}
+  to{opacity:1}
+}
+
+/* ══════════════════════════════════════
    STRIPE / PAGO
    ══════════════════════════════════════ */
 .stripe-form{

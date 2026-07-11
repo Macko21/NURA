@@ -3899,6 +3899,18 @@ async function loadShopCatalog() {
         e.target.disabled = false;
       };
     });
+    
+    // Click en items de la tienda para abrir preview
+    container.querySelectorAll('.shop-item:not(.ultra-teaser)').forEach(function(itemDiv) {
+      itemDiv.addEventListener('click', function(ev) {
+        if (ev.target.closest('.btn-buy')) return;
+        const iconEl = this.querySelector('.shop-item-preview');
+        const nameEl = this.querySelector('h3');
+        const icon = iconEl ? (iconEl.textContent || '').trim().split(/\s+/)[0] : '❓';
+        const name = nameEl ? (nameEl.textContent || 'Item') : 'Item';
+        openItemPreview(this.dataset.category, this.dataset.id, name, icon);
+      });
+    });
   } catch (err) {
     console.error("Error cargando tienda:", err);
   }
@@ -4094,6 +4106,62 @@ function initShopDicePreviews() {
     previewEl.appendChild(container);
   });
 }
+
+/* ── Preview de items en la tienda ───────────────────── */
+const SPECIAL_EFFECTS = {
+  '3': { name:'Emotes VIP', desc:'Usá emojis exclusivos en el chat de sala' },
+  '15': { name:'Marco Premium', desc:'Tu avatar brilla con marco dorado en toda la interfaz' },
+  '16': { name:'Efecto Victoria', desc:'Confetti extra al ganar una partida' },
+  '17': { name:'Tema Oscuro Ultra', desc:'Fondo más oscuro y elegante en el lobby' },
+  '28': { name:'Nick Dorado', desc:'Tu nombre brilla en dorado en el chat' },
+  '29': { name:'Dados Mágicos', desc:'Brillo mágico al rodar los dados' },
+  '30': { name:'Racha Visible', desc:'Mostrá tu racha de victorias' },
+  '31': { name:'+50% Monedas', desc:'50% más de monedas en cada partida' },
+};
+
+function openItemPreview(category, itemId, itemName, itemIcon) {
+  const old = document.querySelector('.shop-preview-overlay');
+  if (old) old.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'shop-preview-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const box = document.createElement('div');
+  box.className = 'shop-preview-box';
+  let bodyHtml = '';
+  if (category === 'dados' || category === 'dice') {
+    bodyHtml = buildDicePreviewHTML(itemId, itemName, itemIcon);
+  } else if (category === 'avatares' || category === 'avatar') {
+    const isPremium = S.specialEquipped === '15';
+    bodyHtml = '<div class="avatar-preview-display' + (isPremium ? ' avatar-premium' : '') + '">' + esc(itemIcon) + '</div><p style="text-align:center;font-size:13px;color:var(--text3)">Preview del avatar — así se ve en el juego</p>';
+  } else if (category === 'especiales' || category === 'special') {
+    const effect = SPECIAL_EFFECTS[itemId];
+    bodyHtml = '<div class="special-preview-icon">' + esc(itemIcon) + '</div><div class="special-preview-desc">' + esc(itemName) + '</div>' + (effect ? '<div class="special-preview-effect">✨ ' + esc(effect.desc) + '</div>' : '');
+  }
+  box.innerHTML = '<div class="shop-preview-header"><h2>' + esc(itemName) + '</h2><button class="shop-preview-close">✕</button></div>' + bodyHtml;
+  box.querySelector('.shop-preview-close').onclick = () => overlay.remove();
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function buildDicePreviewHTML(skinId, itemName, itemIcon) {
+  const skin = typeof DICE_SKINS !== 'undefined' ? DICE_SKINS[skinId] : null;
+  const skinName = skin ? skin.name : itemName;
+  const previewVal = (typeof SHOP_DICE_PREVIEW !== 'undefined' && SHOP_DICE_PREVIEW[skinId] && SHOP_DICE_PREVIEW[skinId].val) || 5;
+  const states = [
+    { id: 'dead', label: 'Sin puntuar / Sin entrar', icon: '⚫', val: previewVal },
+    { id: 'normal', label: 'En juego (neutral)', icon: '🔵', val: previewVal },
+    { id: 'scoring', label: 'Sumando puntos', icon: '🟢', val: previewVal },
+    { id: 'hot', label: 'Dados calientes / Victoria', icon: '🔥', val: previewVal },
+  ];
+  const diceHtml = states.map(s => {
+    const dieEl = makeDie(s.val, s.id, skinId);
+    dieEl.classList.remove('rolling');
+    dieEl.style.cssText = 'margin:0 auto;width:52px;height:52px';
+    return '<div class="dice-state-card">' + dieEl.outerHTML + '<div class="dice-state-label"><span class="dice-state-icon">' + s.icon + '</span>' + esc(s.label) + '</div></div>';
+  }).join('');
+  return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en cada estado del juego</p><div class="dice-states-grid">' + diceHtml + '</div>';
+}
+
 
 
 }
