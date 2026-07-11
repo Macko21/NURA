@@ -4127,7 +4127,9 @@ const SPECIAL_EFFECTS = {
   '31': { name:'+50% Monedas', desc:'50% más de monedas en cada partida' },
 };
 
-window.openItemPreview = function(category, itemId, itemName, itemIcon) {
+function openItemPreview(category, itemId, itemName, itemIcon) {
+  // Ensure global access even if SW serves stale cache
+  window.openItemPreview = openItemPreview;
   try {
     const old = document.querySelector('.shop-preview-overlay');
     if (old) old.remove();
@@ -4153,7 +4155,8 @@ window.openItemPreview = function(category, itemId, itemName, itemIcon) {
   } catch(e) {
     toast('⚠ Error al mostrar preview: ' + e.message);
   }
-};
+}
+window.openItemPreview = openItemPreview;;
 
 function buildDicePreviewHTML(skinId, itemName, itemIcon) {
   try {
