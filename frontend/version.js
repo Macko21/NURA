@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.3.0";
+const GAME_VERSION = "3.4.0";
 
 const CHANGELOG = [
+  {
+    version: "3.4.0",
+    date: "2026-07-11",
+    title: "🔧 Modularización + Rate limiting + Preview dados en tienda",
+    scope: "game",
+    changes: [
+      "📦 Refactor: app.js dividido en módulos (dice-renderer.js + audio.js), -18KB",
+      "🎲 Preview real de skins de dados (SVG con colores y animación) en la tienda",
+      "🔒 Rate limiting específico: shop (15req/15m), feedback (5req/15m), pagos (5req/15m), equip (30req/15m), torneos (10req/15m)",
+      "🐛 Bugfix: generateBracket no importado en tournamentManager.js",
+      "🐛 Bugfix: startMatchForRoom anidado dentro del handler WS",
+      "🐛 Bugfix: className roto en shop items (data-category inyectado en className)",
+      "🔧 CEO Panel: login JWT ya implementado correctamente",
+      "🧹 Eliminados scripts temporales de /scripts",
+    ]
+  },
   {
     version: "3.3.0",
     date: "2026-07-09",
