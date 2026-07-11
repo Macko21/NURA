@@ -163,7 +163,23 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Para assets estáticos: cache first con verificación de versión (?v=)
+  // Para JS: network first — siempre buscar la última versión del servidor
+  if (url.pathname.endsWith('.js')) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        // Cachear la nueva versión
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      }).catch(() => {
+        // Sin red — devolver JS cacheado
+        return caches.match(event.request);
+      })
+    );
+    return;
+  }
+
+  // Para otros assets estáticos: cache first
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
@@ -171,8 +187,7 @@ self.addEventListener('fetch', event => {
         // Cachear respuestas exitosas de assets estáticos
         if (
           response.ok &&
-          (url.pathname.endsWith('.js') ||
-           url.pathname.endsWith('.css') ||
+          (url.pathname.endsWith('.css') ||
            url.pathname.endsWith('.png') ||
            url.pathname.endsWith('.json') ||
            url.pathname.endsWith('.html'))

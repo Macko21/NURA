@@ -530,6 +530,28 @@
 <!-- ══ TOAST ══ -->
 <div id="toast" class="toast hidden"></div>
 
+<script>
+// Cache-busting: si la versión del SW no coincide, limpiar todo y recargar
+(function(){
+  if ('caches' in window) {
+    fetch('/api/version').then(function(r){return r.json()}).then(function(d){
+      if (!d.version) return;
+      var v = localStorage.getItem('macko_sw_ver');
+      if (v && v !== d.version) {
+        caches.keys().then(function(keys){
+          return Promise.all(keys.map(function(k){ 
+            if (k.startsWith('macko-')) return caches.delete(k);
+          }));
+        }).then(function(){
+          localStorage.setItem('macko_sw_ver', d.version);
+          window.location.reload(true);
+        });
+      }
+      if (!v) localStorage.setItem('macko_sw_ver', d.version);
+    }).catch(function(){});
+  }
+})();
+</script>
 <script src="/version.js?v=3.4.2"></script>
 <script src="/dice-renderer.js?v=3.4.2"></script>
 <script src="/audio.js?v=3.4.2"></script>

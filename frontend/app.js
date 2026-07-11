@@ -214,6 +214,8 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       console.log('SW registrado:', reg.scope);
       _swRegistration = reg;
+      // Forzar chequeo de actualización del SW en cada carga
+      setTimeout(() => reg.update(), 2000);
     }).catch(err => {
       console.warn('SW error:', err);
     });
