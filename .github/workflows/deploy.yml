@@ -75,7 +75,7 @@ jobs:
 
       - name: ⏳ Wait for deployment (up to 5 min)
         env:
-          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL || 'https://10mildemacko.onrender.com' }}
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL || 'https://los10mildemacko.onrender.com' }}
         run: |
           echo "Waiting for deployment to complete..."
           echo "  URL: ${RENDER_APP_URL}"
