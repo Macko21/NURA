@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.4.1";
+const GAME_VERSION = "3.4.2";
 
 const CHANGELOG = [
+  // ═══ 3.4.2 — GAME ═══
+  {
+    version: "3.4.2",
+    date: "2026-07-11",
+    title: "🖱️ Preview en tienda + Misiones diarias corregidas",
+    scope: "game",
+    changes: [
+      "🖱️ Click en cualquier item de la tienda para ver preview",
+      "🎲 Preview de dados: todos los estados (sin puntuar, en juego, sumando, dados calientes)",
+      "👤 Preview de avatares en tamaño grande",
+      "✨ Preview de items especiales con descripción del efecto",
+      "📅 Misiones diarias se reinician a la medianoche (00:00)",
+      "📅 Misiones semanales se reinician los lunes",
+    ]
+  },
   // ═══ 3.4.1 — GAME ═══
   {
     version: "3.4.1",

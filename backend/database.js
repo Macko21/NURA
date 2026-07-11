@@ -745,6 +745,22 @@ async function awardXP(playerId, amount) {
 }
 
 // --- MISIONES ---
+// Helper: inicio del día actual (medianoche 00:00)
+function getStartOfDay() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+// Helper: inicio de la semana actual (lunes 00:00)
+function getStartOfWeek() {
+  const d = new Date();
+  const day = d.getDay(); // 0=domingo, 1=lunes, ..., 6=sábado
+  const diff = (day === 0 ? 6 : day - 1); // días desde el lunes
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 const DAY_MS  = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
@@ -754,8 +770,11 @@ async function getPlayerMissions(playerId) {
   const now = Date.now();
   let dailyReset  = resetRes.rows[0]?.daily_reset || 0;
   let weeklyReset = resetRes.rows[0]?.weekly_reset || 0;
-  const isNewDaily  = (now - dailyReset) > DAY_MS;
-  const isNewWeekly = (now - weeklyReset) > WEEK_MS;
+  // Reset a medianoche (00:00) en vez de 24h desde última vez
+  const startOfToday = getStartOfDay();
+  const startOfWeek = getStartOfWeek();
+  const isNewDaily  = dailyReset < startOfToday;
+  const isNewWeekly = weeklyReset < startOfWeek;
 
   // Si pasó el daily reset, marcar claimed de diarias como 0 para que se puedan re-completar
   if (isNewDaily) {
@@ -766,9 +785,9 @@ async function getPlayerMissions(playerId) {
     await pool.query(
       `INSERT INTO missions_reset (player_id, daily_reset, weekly_reset) VALUES ($1, $2, $3)
        ON CONFLICT (player_id) DO UPDATE SET daily_reset = $2`,
-      [playerId, now, weeklyReset]
+      [playerId, startOfToday, weeklyReset]
     );
-    dailyReset = now;
+    dailyReset = startOfToday;
   }
   if (isNewWeekly) {
     await pool.query(
@@ -778,9 +797,9 @@ async function getPlayerMissions(playerId) {
     await pool.query(
       `INSERT INTO missions_reset (player_id, daily_reset, weekly_reset) VALUES ($1, $2, $3)
        ON CONFLICT (player_id) DO UPDATE SET weekly_reset = $2`,
-      [playerId, dailyReset, now]
+      [playerId, dailyReset, startOfWeek]
     );
-    weeklyReset = now;
+    weeklyReset = startOfWeek;
   }
 
   const res = await pool.query(
