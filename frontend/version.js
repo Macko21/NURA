@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.4.0";
+const GAME_VERSION = "3.4.1";
 
 const CHANGELOG = [
+  {
+    version: "3.4.1",
+    date: "2026-07-11",
+    title: "🤖 CI/CD: GitHub Actions + auto-deploy a Render",
+    scope: "game",
+    changes: [
+      "📦 CI/CD pipeline con GitHub Actions: syntax check, smoke tests y deploy automático",
+      "🧪 Smoke tests: verifican que el server arranque y endpoints clave respondan",
+      "🚀 Auto-deploy a Render vía Deploy Hook cuando los tests pasan en main",
+      "🩺 Health check en /api/version para monitoreo de Render",
+      "📋 .env.example con todas las variables de entorno documentadas",
+      "🎯 npm test y npm run test:syntax agregados a package.json",
+      "🔴 Badge de nueva versión en el lobby (punto rojo pulsante)",
+    ]
+  },
   {
     version: "3.4.0",
     date: "2026-07-11",
