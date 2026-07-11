@@ -13,11 +13,22 @@
 const GAME_VERSION = "3.4.1";
 
 const CHANGELOG = [
+  // ═══ 3.4.1 — GAME ═══
+  {
+    version: "3.4.1",
+    date: "2026-07-11",
+    title: "🔴 Badge de nueva versión en el lobby",
+    scope: "game",
+    changes: [
+      "🔴 Badge de nueva versión: punto rojo pulsante en el botón de versiones cuando hay cambios",
+    ]
+  },
+  // ═══ 3.4.1 — CEO ═══
   {
     version: "3.4.1",
     date: "2026-07-11",
     title: "🤖 CI/CD: GitHub Actions + auto-deploy a Render",
-    scope: "game",
+    scope: "ceo",
     changes: [
       "📦 CI/CD pipeline con GitHub Actions: syntax check, smoke tests y deploy automático",
       "🧪 Smoke tests: verifican que el server arranque y endpoints clave respondan",
@@ -25,29 +36,39 @@ const CHANGELOG = [
       "🩺 Health check en /api/version para monitoreo de Render",
       "📋 .env.example con todas las variables de entorno documentadas",
       "🎯 npm test y npm run test:syntax agregados a package.json",
-      "🔴 Badge de nueva versión en el lobby (punto rojo pulsante)",
     ]
   },
+  // ═══ 3.4.0 — GAME ═══
   {
     version: "3.4.0",
     date: "2026-07-11",
-    title: "🔧 Modularización + Rate limiting + Preview dados en tienda",
+    title: "🔧 Modularización + Rate limiting + Preview dados",
     scope: "game",
     changes: [
       "📦 Refactor: app.js dividido en módulos (dice-renderer.js + audio.js), -18KB",
       "🎲 Preview real de skins de dados (SVG con colores y animación) en la tienda",
-      "🔒 Rate limiting específico: shop (15req/15m), feedback (5req/15m), pagos (5req/15m), equip (30req/15m), torneos (10req/15m)",
+      "🔒 Rate limiting: protección contra spam en shop, feedback, pagos y torneos",
       "🐛 Bugfix: generateBracket no importado en tournamentManager.js",
       "🐛 Bugfix: startMatchForRoom anidado dentro del handler WS",
-      "🐛 Bugfix: className roto en shop items (data-category inyectado en className)",
+      "🐛 Bugfix: className roto en shop items",
+    ]
+  },
+  // ═══ 3.4.0 — CEO ═══
+  {
+    version: "3.4.0",
+    date: "2026-07-11",
+    title: "🔧 Mejoras CEO Panel",
+    scope: "ceo",
+    changes: [
       "🔧 CEO Panel: login JWT ya implementado correctamente",
       "🧹 Eliminados scripts temporales de /scripts",
     ]
   },
+  // ═══ 3.3.0 — GAME ═══
   {
     version: "3.3.0",
     date: "2026-07-09",
-    title: "Fix chat + mejoras de rendimiento",
+    title: "🐛 Fix chat + mejoras de rendimiento",
     scope: "game",
     changes: [
       "Fix: chat global y privado no llegaban (faltaba connect() post-login)",
@@ -55,27 +76,28 @@ const CHANGELOG = [
       "Fix: chat privado perdía mensajes al cambiar de amigo",
       "Debounce en búsqueda del portal (300ms)",
       "Límite DOM en chat de sala (60 mensajes)",
-      "Versión del lobby actualizada a v3.3.0",
     ]
   },
+  // ═══ 3.2.0 — GAME ═══
   {
     version: "3.2.0",
     date: "2026-07-10",
-    title: "Notificaciones + Amistad + Invitaciones + Fix tienda",
+    title: "🔔 Notificaciones + Amistad + Invitaciones + Fix tienda",
     scope: "game",
     changes: [
-      "Centro de notificaciones con panel deslizante y badge deunread",
+      "Centro de notificaciones con panel deslizante y badge de no leídas",
       "Switch de push notifications con persistencia en localStorage",
       "Solicitudes de amistad con aceptar/rechazar en notificaciones",
       "Invitaciones a partida con buscador de jugadores",
       "Broadcasts del CEO se ven en notificaciones en tiempo real",
-      "Fix: tienda mostraba items comprados incorrectamente (IDs DB vs hardcode)",
+      "Fix: tienda mostraba items comprados incorrectamente",
       "Fix: inventario perfil 5 columnas cuadradas compactas",
       "Fix: invalid date en notificaciones",
-      "Torneos envian push + WebSocket a participantes conectados",
-      "Deduplicacion de mensajes de broadcast"
+      "Torneos envían notificación a participantes conectados",
+      "Deduplicación de mensajes de broadcast",
     ]
   },
+  // ═══ 3.1.0 — GAME ═══
   {
     version: "3.1.0",
     date: "2026-07-10",
@@ -84,13 +106,23 @@ const CHANGELOG = [
     changes: [
       "⏰ Auto-inicio: cuando la inscripción vence, el torneo arranca automáticamente",
       "❌ Auto-cancelación: si no hay suficientes jugadores, se cancela solo",
-      "🔄 Torneos recurrentes: 1h, 2h, 4h, 8h, 12h, diarios y semanales",
-      "👑 CEO Panel: nuevo campo 'Programación' al crear torneos",
+      "🔄 Torneos recurrentes: cada 1h, 2h, 4h, 8h, 12h, diarios y semanales",
       "⏳ Lobby: banner con countdown del próximo torneo programado",
-      "📡 Endpoint /api/tournaments/next para consultar próximos torneos",
       "🔄 Auto-creación del siguiente torneo al completarse el anterior",
     ]
   },
+  // ═══ 3.1.0 — CEO ═══
+  {
+    version: "3.1.0",
+    date: "2026-07-10",
+    title: "👑 Programación de torneos en CEO Panel",
+    scope: "ceo",
+    changes: [
+      "👑 CEO Panel: nuevo campo 'Programación' al crear torneos (recurrencia)",
+      "📡 Endpoint /api/tournaments/next para consultar próximos torneos",
+    ]
+  },
+  // ═══ 3.0.0 — GAME ═══
   {
     version: "3.0.0",
     date: "2026-07-10",
@@ -105,18 +137,29 @@ const CHANGELOG = [
       "🔔 Notificaciones en tiempo real de avances de torneo via WebSocket",
     ]
   },
+  // ═══ 2.5.0 — GAME ═══
   {
     version: "2.5.0",
     date: "2026-07-10",
-    title: "🧹 Botón de cambios único + CEO Panel dinámico",
+    title: "🧹 Botón de cambios único + caché de versiones",
     scope: "game",
     changes: [
-      "🧹 Eliminado botón de cambios duplicado dentro del formulario (se queda solo el de afuera)",
+      "🧹 Eliminado botón de cambios duplicado dentro del formulario",
       "📋 Changelog cacheado: carga instantánea aunque el servidor esté reiniciando",
-      "👑 CEO Panel: botón de versiones ahora muestra el número dinámico (no más hardcode v2.3.0)",
       "🔖 Versión 2.5.0 consolidada con todos los cambios de UX, bugs y mejoras",
     ]
   },
+  // ═══ 2.5.0 — CEO ═══
+  {
+    version: "2.5.0",
+    date: "2026-07-10",
+    title: "👑 CEO Panel dinámico",
+    scope: "ceo",
+    changes: [
+      "👑 CEO Panel: botón de versiones ahora muestra el número dinámico",
+    ]
+  },
+  // ═══ 2.4.0 — GAME ═══
   {
     version: "2.4.0",
     date: "2026-07-10",
@@ -133,6 +176,7 @@ const CHANGELOG = [
       "🔒 Volver al login solo visible para invitados",
     ]
   },
+  // ═══ 2.3.0 — GAME ═══
   {
     version: "2.3.0",
     date: "2026-07-10",
@@ -142,9 +186,19 @@ const CHANGELOG = [
       "🔧 Versión dinámica: login y lobby muestran la versión actual automáticamente",
       "🐛 Fecha inválida reparada en historial de transacciones del perfil",
       "🧹 Cache local se limpia al detectar nueva versión del juego",
-      "📋 Changelog del CEO Panel ahora muestra TODAS las versiones (game + ceo)",
     ]
   },
+  // ═══ 2.3.0 — CEO ═══
+  {
+    version: "2.3.0",
+    date: "2026-07-10",
+    title: "📋 Changelog completo en CEO Panel",
+    scope: "ceo",
+    changes: [
+      "📋 CEO Panel: changelog ahora muestra TODAS las versiones (game + ceo)",
+    ]
+  },
+  // ═══ 2.2.0 — GAME ═══
   {
     version: "2.2.0",
     date: "2026-07-09",
@@ -153,13 +207,23 @@ const CHANGELOG = [
     changes: [
       "📋 Botón de historial de cambios en el lobby con registro completo",
       "🧹 Cache automático: PWA y navegador cargan siempre la última versión",
+    ]
+  },
+  // ═══ 2.2.0 — CEO ═══
+  {
+    version: "2.2.0",
+    date: "2026-07-09",
+    title: "📊 Analytics en CEO Panel",
+    scope: "ceo",
+    changes: [
       "🔬 Analytics con gráficos más grandes y heatmap de actividad",
     ]
   },
+  // ═══ 2.1.0 — CEO ═══
   {
     version: "2.1.0",
     date: "2026-07-08",
-    title: "👑 Mejoras internas",
+    title: "👑 CEO Panel completo",
     scope: "ceo",
     changes: [
       "🏛️ CEO Panel con login independiente y dashboard de stats",
@@ -170,7 +234,7 @@ const CHANGELOG = [
       "🛒 CRUD completo de items de la tienda desde el panel",
       "🔔 Push notifications con VAPID y broadcast masivo",
       "🔐 Roles de admin: Viewer, Editor y Admin con permisos graduales",
-      "🔑 Reseteo de contraseña para usuarios y admines desde el panel",
+      "🔑 Reseteo de contraseña para usuarios y admins desde el panel",
       "🔍 Buscador de items en la pestaña Tienda del CEO Panel",
       "🔄 Limpieza automática de invitados fantasma",
       "👑 CEO Panel: crear torneos, generar brackets, avanzar matches",
@@ -179,6 +243,7 @@ const CHANGELOG = [
       "🧹 Eliminados archivos basura (nul, server_log.txt)",
     ]
   },
+  // ═══ 2.0.0 — GAME ═══
   {
     version: "2.0.0",
     date: "2026-07-07",
@@ -196,9 +261,10 @@ const CHANGELOG = [
       "💬 Chat de voz (audio efímero) en partidas",
       "💰 Sistema de monedas con boost +50%",
       "🎁 Cofre diario con items ultra raros",
-      "🏪 Compra de monedas vía Stripe y Mercado Pago"
+      "🏪 Compra de monedas vía Stripe y Mercado Pago",
     ]
   },
+  // ═══ 1.0.0 — GAME ═══
   {
     version: "1.0.0",
     date: "2026-06-20",
@@ -210,9 +276,9 @@ const CHANGELOG = [
       "🔌 WebSocket en tiempo real con reconexión automática",
       "📱 PWA instalable como app",
       "🔐 Registro y login con JWT",
-      "🌙 Tema oscuro"
+      "🌙 Tema oscuro",
     ]
-  }
+  },
 ];
 
 // Dual-use: backend (Node.js) y frontend (browser)
