@@ -10,11 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.4.2";
+const GAME_VERSION = "3.4.3";
 
 const CHANGELOG = [
+  // ═══ 3.4.3 — GAME ═══
+  {
+    version: "3.4.3",
+    date: "2026-07-11",
+    title: "🔧 Fix: preview de tienda corregido",
+    scope: "game",
+    changes: [
+      "🔧 Fix: openItemPreview no estaba definida por cache stale del Service Worker",
+      "✨ Función ahora se declara globalmente para máxima compatibilidad",
+    ]
+  },
   // ═══ 3.4.2 — GAME ═══
   {
+
     version: "3.4.2",
     date: "2026-07-11",
     title: "🖱️ Preview en tienda + Misiones diarias corregidas",
