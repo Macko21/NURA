@@ -412,7 +412,28 @@ function getRank(xp) {
   return RANKS.find(r => xp >= r.min && xp <= r.max) || RANKS[RANKS.length - 1];
 }
 function getLevel(xp) {
-  return Math.min(Math.floor(xp / 200) + 1, MAX_LEVEL);
+  // XP no-lineal: cada 10 niveles sube la dificultad
+  // Lv1→10: 200xp/nivel, Lv11→30: 350, Lv31→60: 600, Lv61→100: 1000, Lv101→200: 1800, Lv201→300: 3000
+  let level = 1;
+  let totalXp = 0;
+  while (level < MAX_LEVEL) {
+    const cost = xpCostForLevel(level);
+    if (totalXp + cost > xp) break;
+    totalXp += cost;
+    level++;
+  }
+  return Math.min(level, MAX_LEVEL);
+}
+function xpCostForLevel(level) {
+  if (level <= 10)  return 200;
+  if (level <= 30)  return 350;
+  if (level <= 60)  return 600;
+  if (level <= 100) return 1000;
+  if (level <= 200) return 1800;
+  return 3000;
+}
+function xpToNextLevel(currentLevel) {
+  return xpCostForLevel(currentLevel);
 }
 
 // --- MISIONES ---
@@ -708,10 +729,18 @@ async function getUserProfile(userId) {
   if (!result.rows[0]) return null;
   const p = result.rows[0];
   const rank = getRank(p.xp || 0);
+  const level = p.level || 1;
+  const xp = p.xp || 0;
+  // XP total necesario para llegar al nivel actual
+  let xpForCurrentLevel = 0;
+  for (let i = 1; i < level; i++) xpForCurrentLevel += xpCostForLevel(i);
+  const xpInCurrentLevel = xp - xpForCurrentLevel;
+  const xpForNext = xpCostForLevel(level);
   return {
     id: p.id, alias: p.alias, email: p.email,
-    coins: p.coins || 0, xp: p.xp || 0, level: p.level || 1,
+    coins: p.coins || 0, xp, level,
     rank: rank.title, rankIcon: rank.icon,
+    xpForNext, xpInCurrentLevel,
     gamesPlayed: p.games_played || 0, gamesWon: p.games_won || 0,
     totalScore: p.total_score || 0, highestScore: p.highest_score || 0,
     winStreak: p.win_streak || 0

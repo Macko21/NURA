@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.4.5"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.5.0"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -159,8 +159,10 @@
   <div class="page-body">
     <p class="hint">Compartí el código · arranca cuando todos estén listos</p>
     <div id="players-list" class="players-list"></div>
-    <div id="ready-countdown" class="ready-countdown hidden"></div>
-    <button class="btn btn-gold" id="btn-ready">Estoy listo ✓</button>
+    <div id="ready-status" class="ready-status hidden">
+      <span class="ready-status-text">⏳ Esperando...</span>
+    </div>
+    <button class="btn btn-gold" id="btn-ready">Listo ✓</button>
     <button class="btn btn-ghost" id="btn-invite-player">👤 Invitar jugador</button>
     <button class="btn btn-ghost" id="btn-leave-room">← Salir de la sala</button>
     <button class="btn btn-danger hidden" id="btn-cancel-room">✕ Cancelar sala</button>
@@ -552,10 +554,10 @@
   }
 })();
 </script>
-<script src="/version.js?v=3.4.5"></script>
-<script src="/dice-renderer.js?v=3.4.5"></script>
-<script src="/audio.js?v=3.4.5"></script>
-<script src="/app.js?v=3.4.5"></script>
+<script src="/version.js?v=3.5.0"></script>
+<script src="/dice-renderer.js?v=3.5.0"></script>
+<script src="/audio.js?v=3.5.0"></script>
+<script src="/app.js?v=3.5.0"></script>
 <!-- FIN ⚠️ -->
 
 

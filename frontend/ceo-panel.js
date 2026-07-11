@@ -214,6 +214,7 @@ $('ceo-changelog-btn').onclick = async () => {
             </li>`
           ).join('')}
         </ul>
+        ${entry.files?.length ? `<div style="margin-top:6px;font-size:10px;color:var(--text3);font-family:monospace">📂 ${entry.files.join(', ')}</div>` : ''}
         ${isCurrent ? '<div style="margin-top:6px;font-size:10px;color:var(--gold);font-weight:600">⬅ Actual</div>' : ''}
       </div>`;
     }).join('');

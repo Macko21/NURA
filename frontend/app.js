@@ -686,10 +686,11 @@ function goLobby(msg) {
   S.myTurn   = false;
   S.isOwner  = false;
   $('btn-ready').disabled    = false;
-  $('btn-ready').textContent = 'Estoy listo ✓';
+  $('btn-ready').textContent = 'Listo ✓';
+  $('btn-ready').classList.remove('hidden');
+  $('ready-status')?.classList.add('hidden');
   const cm = $('chat-msgs'); if(cm) cm.innerHTML = '';
   $('modal-win').classList.add('hidden');
-  $('ready-countdown')?.classList.add('hidden');
   clearDice();
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
@@ -710,7 +711,7 @@ function goToPlayAgain(room) {
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   $('modal-win').classList.add('hidden');
-  $('ready-countdown')?.classList.add('hidden');
+  $('ready-status')?.classList.add('hidden');
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
   S.roomId   = room.id;
@@ -823,6 +824,11 @@ function sendGameInvite(targetId, targetName) {
 
 // Flag para evitar doble cartel de victoria (WIN + GAME_OVER duplicados)
 let _winShown = false;
+
+// Sistema de vidas por timeout (5 vidas, auto-roll al expirar turno)
+const MAX_LIVES = 5;
+let _playerLives = MAX_LIVES;
+let _timeoutCount = 0;
 
 function handle(type, data) {
   switch(type) {
@@ -944,10 +950,10 @@ function handle(type, data) {
 
     /* ── Countdown para auto-start ────────────────── */
     case 'READY_COUNTDOWN': {
-      const cdEl = $('ready-countdown');
+      const cdEl = $('ready-status');
       if (cdEl) {
         if (data.seconds > 0) {
-          cdEl.textContent = '⏳ Iniciando en ' + data.seconds + 's';
+          cdEl.querySelector('.ready-status-text').textContent = '⏳ Iniciando en ' + data.seconds + 's';
           cdEl.classList.remove('hidden');
         } else {
           cdEl.classList.add('hidden');
@@ -960,9 +966,11 @@ function handle(type, data) {
     case 'GAME_STARTED':
       S.match=data.match; S.entered=false;
       S.banking = false;
+      _timeoutCount = 0;
+      _playerLives = MAX_LIVES;
       saveSession();
       showScreen('screen-game');
-      $('ready-countdown')?.classList.add('hidden');
+      $('ready-status')?.classList.add('hidden');
       console.log('🎮 GAME_STARTED players:', data.match?.players?.map(p => ({ name: p.name, dice: p.equippedDice, av: p.equippedAvatar })));
       // Resetear botones al iniciar partida nueva
       $('btn-roll').disabled = false;
@@ -1130,9 +1138,58 @@ function handle(type, data) {
 
     case 'TIMEOUT':
       stopTimer();
-      sys(`⏰ ${data.playerName} tardó demasiado`);
-      toast('⏰ Tiempo agotado');
+      if (data.playerId === S.id) {
+        _timeoutCount++;
+        _playerLives = Math.max(0, MAX_LIVES - _timeoutCount);
+        if (_playerLives <= 0) {
+          sys('💀 Te quedaste sin vidas — expulsado de la partida');
+          toast('💀 Sin vidas — expulsado', 4000);
+          setTimeout(() => goLobby('Expulsado por timeouts'), 1500);
+        } else {
+          const livesStr = '❤️'.repeat(_playerLives) + '🖤'.repeat(MAX_LIVES - _playerLives);
+          sys(`⏰ Timeout — auto-tirando dados (${_playerLives} vidas restantes)`);
+          toast(`⏰ Tiempo agotado — ${livesStr}`, 3000);
+        }
+      } else {
+        sys(`⏰ ${data.playerName} tardó demasiado`);
+      }
       break;
+
+    case 'TIMEOUT_AUTO_ROLL': {
+      stopTimer();
+      S.match = data.match;
+      renderSB(data.match);
+      showDice(data.dice, 'all');
+      const resultMsg = {
+        dead: '💀 Tirada muerta — timeout',
+        bust: '💥 ¡Bust por timeout!',
+        scored: `🎲 Auto-tirada: +${data.gained} puntos`,
+        win: '🏆 ¡Victoria por timeout!'
+      };
+      sys(resultMsg[data.result] || '⏰ Auto-tirada por timeout');
+      toast(resultMsg[data.result] || '⏰ Auto-tirada', 3000);
+      if (data.playerId === S.id) {
+        _playerLives = data.lives != null ? data.lives : _playerLives;
+        const livesStr = '❤️'.repeat(_playerLives) + '🖤'.repeat(MAX_LIVES - _playerLives);
+        toast(`Vidas: ${livesStr}`, 2000);
+      }
+      updateTurnUI(data.match);
+      break;
+    }
+
+    case 'ELIMINATED_TIMEOUT': {
+      S.match = data.match;
+      renderSB(data.match);
+      if (data.playerId === S.id) {
+        sys('💀 Te quedaste sin vidas — eliminado');
+        toast('💀 Eliminado por timeouts', 4000);
+        setTimeout(() => goLobby('Eliminado por timeouts'), 2000);
+      } else {
+        sys(`💀 ${data.playerName} fue eliminado por timeouts`);
+        toast(`💀 ${data.playerName} eliminado`, 3000);
+      }
+      break;
+    }
 
     /* ── Victorias (con flag para evitar duplicados) ───── */
     case 'INSTANT_WIN': {
@@ -3117,8 +3174,12 @@ function initUI() {
 
   $('btn-ready').onclick = () => {
     wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
-    $('btn-ready').disabled    = true;
-    $('btn-ready').textContent = 'Esperando...';
+    $('btn-ready').classList.add('hidden');
+    const rs = $('ready-status');
+    if (rs) {
+      rs.querySelector('.ready-status-text').textContent = '⏳ Esperando...';
+      rs.classList.remove('hidden');
+    }
   };
 
   /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
@@ -3249,11 +3310,10 @@ async function loadProfile() {
     // Nivel y XP
     $('profile-level').textContent = p.level || 1;
     const xp = p.xp || 0;
-    const xpNext = p.xpForNext || 200;
-    const xpThisLevel = xp - ((p.level - 1) * 200);
-    const xpNeeded = xpNext;
-    const pct = Math.min(100, Math.round((xpThisLevel / Math.max(xpNeeded, 1)) * 100));
-    $('profile-xp').textContent = `${xp} XP`;
+    const xpInCurrent = p.xpInCurrentLevel || 0;
+    const xpNeeded = p.xpForNext || 200;
+    const pct = Math.min(100, Math.round((xpInCurrent / Math.max(xpNeeded, 1)) * 100));
+    $('profile-xp').textContent = `${xp} XP — ${xpInCurrent}/${xpNeeded} al siguiente nivel`;
     const bar = $('xp-bar-fill');
     if (bar) bar.style.width = pct + '%';
 

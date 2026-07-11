@@ -86,7 +86,8 @@ function snapshotMatch(match) {
       equippedAvatar:    p.equippedAvatar || null,
       equippedDice:      p.equippedDice || null,
       equippedSpecial:   p.equippedSpecial || null,
-      winStreak:         p.winStreak || 0
+      winStreak:         p.winStreak || 0,
+      lives:             p.lives != null ? p.lives : 5
     }))
   };
 }
@@ -188,8 +189,91 @@ function _handleTimeout(roomId, broadcast) {
   cur.turnExpired = true;
   cur.turnPoints = 0;
 
-  pushHistory(match, "TIMEOUT", { playerId: cur.id });
-  broadcast(roomId, "TIMEOUT", { playerId: cur.id, playerName: cur.name });
+  // Auto-roll: tirar dados automáticamente al expirar
+  if (cur.entered && !cur.mustStop) {
+    const diceCount = cur.remainingDice || TOTAL_DICE;
+    const dice = rollDice(diceCount);
+    cur.lastRoll = dice;
+    cur.rollCount++;
+
+    const { score: rollScore } = calculateScore(dice);
+
+    if (rollScore === 0) {
+      // Tirada muerta en auto-roll
+      pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "dead" });
+      broadcast(roomId, "TIMEOUT_AUTO_ROLL", {
+        playerId: cur.id, playerName: cur.name, dice,
+        result: "dead", lives: cur.lives,
+        match: snapshotMatch(match)
+      });
+    } else {
+      cur.turnPoints += rollScore;
+      const projected = cur.score + cur.turnPoints;
+
+      if (projected > MAX_SCORE) {
+        // Bust en auto-roll
+        cur.turnPoints = 0;
+        pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "bust" });
+        broadcast(roomId, "TIMEOUT_AUTO_ROLL", {
+          playerId: cur.id, playerName: cur.name, dice,
+          result: "bust", lives: cur.lives,
+          match: snapshotMatch(match)
+        });
+      } else if (projected === MAX_SCORE) {
+        // Victoria exacta en auto-roll
+        cur.score = MAX_SCORE;
+        setWinner(match, cur);
+        pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "win" });
+        broadcast(roomId, "TIMEOUT_AUTO_ROLL", {
+          playerId: cur.id, playerName: cur.name, dice,
+          result: "win", lives: cur.lives,
+          match: snapshotMatch(match)
+        });
+        _advanceTurn(match, roomId, broadcast);
+        return;
+      } else {
+        // Puntos normales en auto-roll — bancar automáticamente
+        cur.score += cur.turnPoints;
+        cur.turnPoints = 0;
+        pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "scored", gained: rollScore });
+        broadcast(roomId, "TIMEOUT_AUTO_ROLL", {
+          playerId: cur.id, playerName: cur.name, dice,
+          result: "scored", gained: rollScore, totalScore: cur.score, lives: cur.lives,
+          match: snapshotMatch(match)
+        });
+      }
+    }
+  } else {
+    pushHistory(match, "TIMEOUT", { playerId: cur.id });
+    broadcast(roomId, "TIMEOUT", { playerId: cur.id, playerName: cur.name, lives: cur.lives });
+  }
+
+  // Decrementar vida
+  if (cur.lives != null) {
+    cur.lives--;
+    if (cur.lives <= 0) {
+      // Eliminar jugador por quedarse sin vidas
+      cur.eliminated = true;
+      pushHistory(match, "ELIMINATED_TIMEOUT", { playerId: cur.id });
+      broadcast(roomId, "ELIMINATED_TIMEOUT", {
+        playerId: cur.id, playerName: cur.name,
+        match: snapshotMatch(match)
+      });
+
+      // Verificar si queda solo 1 jugador → victoria automática
+      const alive = match.players.filter(p => !p.eliminated && !p.disconnected);
+      if (alive.length === 1) {
+        setWinner(match, alive[0]);
+        pushHistory(match, "WIN", { playerId: alive[0].id, reason: "last_alive" });
+        broadcast(roomId, "WIN", {
+          playerId: alive[0].id, playerName: alive[0].name, dice: [],
+          match: snapshotMatch(match)
+        });
+        return;
+      }
+    }
+  }
+
   _advanceTurn(match, roomId, broadcast);
 }
 

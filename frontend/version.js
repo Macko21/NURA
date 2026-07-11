@@ -10,15 +10,32 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.4.5";
+const GAME_VERSION = "3.5.0";
 
 const CHANGELOG = [
+  // ═══ 3.5.0 — GAME ═══
+  {
+    version: "3.5.0",
+    date: "2026-07-11",
+    title: "🎮 Auto-roll por timeout + XP no-lineal + UX mejorada",
+    scope: "game",
+    files: ["frontend/app.js", "backend/diceManager.js", "backend/matchState.js", "backend/database.js", "frontend/index.html", "frontend/styles.css"],
+    changes: [
+      "🎲 Timeout: auto-tira dados en vez de saltar turno",
+      "❤️ Sistema de 5 vidas: 0 vidas = eliminado de la partida",
+      "📈 XP no-lineal: niveles altos requieren mucho más XP",
+      "🏆 Perfil muestra progreso de XP al siguiente nivel",
+      "⏳ Botón listo: sin countdown, muestra Esperando + Salir",
+      "📋 Changelog: CEO ve archivos modificados por versión",
+    ]
+  },
   // ═══ 3.4.5 — GAME ═══
   {
     version: "3.4.5",
     date: "2026-07-11",
     title: "🚨 Fix: syntax error login",
     scope: "game",
+    files: ["frontend/app.js"],
     changes: [
       "🔧 Fix: sendRecoveryEmail faltaba cerrar la función (stray brace fix anterior la rompió)",
     ]
@@ -29,6 +46,7 @@ const CHANGELOG = [
     date: "2026-07-11",
     title: "🔧 Fix: openItemPreview + sintaxis",
     scope: "game",
+    files: ["frontend/app.js"],
     changes: [
       "🔧 Fix: preview de tienda roto por syntax error (stray closing brace al final de app.js)",
       "🔧 Fix: doble punto y coma eliminado",
@@ -42,6 +60,7 @@ const CHANGELOG = [
     date: "2026-07-11",
     title: "🔧 Fix: preview de tienda corregido",
     scope: "game",
+    files: ["frontend/app.js"],
     changes: [
       "🔧 Fix: openItemPreview no estaba definida por cache stale del Service Worker",
       "✨ Función ahora se declara globalmente para máxima compatibilidad",
@@ -49,11 +68,11 @@ const CHANGELOG = [
   },
   // ═══ 3.4.2 — GAME ═══
   {
-
     version: "3.4.2",
     date: "2026-07-11",
     title: "🖱️ Preview en tienda + Misiones diarias corregidas",
     scope: "game",
+    files: ["frontend/app.js", "frontend/styles.css"],
     changes: [
       "🖱️ Click en cualquier item de la tienda para ver preview",
       "🎲 Preview de dados: todos los estados (sin puntuar, en juego, sumando, dados calientes)",

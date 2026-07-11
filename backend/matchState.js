@@ -73,6 +73,11 @@ function createPlayerState(player) {
 
     mustStop: false,
 
+    /**
+     * Sistema de vidas por timeout
+     */
+    lives: 5,
+
     isHotDiceTurn: false,
 
     turnExpired: false,
