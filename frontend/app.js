@@ -2298,6 +2298,45 @@ function openMissionTab() {
   if (tc) tc.style.display = 'block';
 }
 
+
+// ── Indicador visual de nuevas versiones (lobby) ─────
+const GAME_LAST_SEEN_KEY = 'game_last_seen_version';
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  }
+  return 0;
+}
+
+function checkUpdateIndicator() {
+  const btn = document.getElementById('btn-changelog-outside');
+  if (!btn) return;
+  fetch('/api/version').then(r => r.json()).then(d => {
+    if (!d.version) return;
+    const currentVersion = d.version;
+    const lastSeen = localStorage.getItem(GAME_LAST_SEEN_KEY);
+    // Actualizar texto del botón con la versión real del server
+    btn.textContent = '📋 v' + currentVersion;
+    // Badge si hay versión nueva no vista
+    if (!lastSeen || compareVersions(currentVersion, lastSeen) > 0) {
+      let badge = btn.querySelector('.game-update-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'game-update-badge';
+        btn.appendChild(badge);
+      }
+      btn.title = '📢 ¡Nueva versión disponible!';
+    } else {
+      btn.title = 'Versiones';
+      const badge = btn.querySelector('.game-update-badge');
+      if (badge) badge.remove();
+    }
+  }).catch(() => {});
+}
+
 let _globalChatMessages = [];
 
 // Cache del changelog para carga instantánea
@@ -2317,7 +2356,15 @@ async function loadChangelog() {
     const changelog = data.changelog || [];
     
     // Cachear para próxima vez
-    // Solo game para jugadores — CEO entries van solo al CEO Panel
+        // Marcar como vista la versión actual (quitar badge)
+    if (data.version) {
+      localStorage.setItem(GAME_LAST_SEEN_KEY, data.version);
+      const badge = document.getElementById('btn-changelog-outside')?.querySelector('.game-update-badge');
+      if (badge) badge.remove();
+      const btn = document.getElementById('btn-changelog-outside');
+      if (btn) btn.title = 'Versiones';
+    }
+        // Solo game para jugadores — CEO entries van solo al CEO Panel
     const gameEntries = changelog.filter(e => e.scope === 'game');
     _changelogCache = { version, entries: gameEntries };
     
@@ -2476,6 +2523,9 @@ function initUI() {
   const appVerEl = document.querySelector('.app-version');
   if (appVerEl) appVerEl.textContent = 'v' + appVersion;
   $('btn-changelog-outside') && ($('btn-changelog-outside').textContent = '📋 v' + appVersion);
+  // Check update indicator al cargar la UI
+  setTimeout(checkUpdateIndicator, 500);
+  initBgCanvas();
   initBgCanvas();
 
   /* PWA — botón instalar */

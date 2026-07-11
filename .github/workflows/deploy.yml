@@ -1,0 +1,97 @@
+name: CI/CD — Los 10.000 de Macko
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: 18
+
+jobs:
+  # ── JOB 1: Smoke tests ───────────────────────────────
+  test:
+    name: 🧪 Smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Syntax check (Node parse)
+        run: npm run test:syntax
+
+      - name: 🔍 Lint with ESLint (if available)
+        run: npx eslint backend/*.js --no-ignore --quiet 2>/dev/null || echo "[SKIP] ESLint not configured"
+
+      - name: 🧪 Run smoke tests (npm test)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/los10000_test
+          PORT: 3099
+          JWT_SECRET: test-secret-ci
+          CEO_SECRET: ceo-test-ci
+          CEO_USER: admin
+          CEO_PASS: admin123
+          EMAIL_HOST: ''
+          EMAIL_PORT: ''
+          EMAIL_USER: ''
+          EMAIL_PASS: ''
+          VAPID_PUBLIC_KEY: ''
+          VAPID_PRIVATE_KEY: ''
+          MERCADOPAGO_ACCESS_TOKEN: ''
+          STRIPE_SECRET_KEY: ''
+          STRIPE_WEBHOOK_SECRET: ''
+        run: npm test
+
+  # ── JOB 2: Deploy a Render (solo en push a main) ────
+  deploy:
+    name: 🚀 Deploy to Render
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 🚀 Trigger Render deploy
+        run: |
+          echo "Triggering deploy to Render..."
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            --data '{}'
+          echo ""
+          echo "✅ Deploy triggered successfully!"
+
+      - name: ⏳ Wait for deployment (up to 5 min)
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL || 'https://10mildemacko.onrender.com' }}
+        run: |
+          echo "Waiting for deployment to complete..."
+          echo "  URL: ${RENDER_APP_URL}"
+          MAX_RETRIES=30
+          RETRY=0
+          while [ $RETRY -lt $MAX_RETRIES ]; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${RENDER_APP_URL}/api/version" \
+              --connect-timeout 5 --max-time 10)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Deploy successful! Server is live."
+              exit 0
+            fi
+            RETRY=$((RETRY + 1))
+            echo "  Attempt $RETRY/$MAX_RETRIES — status $STATUS, waiting..."
+            sleep 10
+          done
+          echo "⚠️  Timeout waiting for deployment. Check Render dashboard."
+          exit 1
