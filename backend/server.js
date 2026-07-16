@@ -1731,15 +1731,16 @@ wss.on("connection", socket => {
       /* ── ESTADO DE SALA ────────────────────────────────── */
       if (type === "GET_ROOM_STATE") {
         const room = getRoom(data.roomId);
-        if (room) send(socket, "PLAY_AGAIN", { room });
+        if (room) send(socket, "PLAY_AGAIN", { room, immediate: !!data.immediate });
         return;
       }
 
       /* ── CREAR SALA ────────────────────────────────────── */
       if (type === "CREATE_ROOM") {
+        const playerName = data.playerName || socket.playerName || 'Jugador';
         const room = createRoom({
-          ownerId:    data.playerId,
-          ownerName:  data.playerName,
+          ownerId:    data.playerId || socket.playerId,
+          ownerName:  playerName,
           isPrivate:  data.isPrivate,
           maxPlayers: data.maxPlayers || 10
         });
@@ -1817,7 +1818,8 @@ wss.on("connection", socket => {
 
         // Sala de espera: entrada normal
         if (room.status === "waiting") {
-          const player = addPlayer(room.id, data.playerId, data.playerName);
+          const safePlayerName = data.playerName || socket.playerName || 'Jugador';
+          const player = addPlayer(room.id, data.playerId, safePlayerName);
           // Cargar items equipados del jugador para que todos lo vean
           await loadEquippedToRoomPlayer(player, data.playerId);
           // Fallback: usar valores del frontend si la BD no tenía datos
@@ -2053,15 +2055,17 @@ wss.on("connection", socket => {
         if (room.players.length >= room.maxPlayers) {
           send(socket, 'ERROR', { message: 'Sala llena' }); return;
         }
-        // Unir al jugador a la sala
-        const newPlayer = addPlayer(room, {
-          id: data.playerId,
-          name: data.playerName
-        });
+        // Unir al jugador a la sala (usar socket.playerId/playerName para evitar undefined)
+        const invPlayerId = data.playerId || socket.playerId;
+        const invPlayerName = data.playerName || socket.playerName;
+        if (!invPlayerId || !invPlayerName) {
+          send(socket, 'ERROR', { message: 'Datos de jugador incompletos' }); return;
+        }
+        const newPlayer = addPlayer(roomId, invPlayerId, invPlayerName);
         if (newPlayer) {
-          await loadEquippedToRoomPlayer(newPlayer, data.playerId);
-          clients.set(data.playerId, socket);
-          socket.playerId = data.playerId;
+          await loadEquippedToRoomPlayer(newPlayer, invPlayerId);
+          clients.set(invPlayerId, socket);
+          socket.playerId = invPlayerId;
           socket.roomId = roomId;
           send(socket, 'JOIN_SUCCESS', { room });
           broadcastRoomState(roomId);
@@ -2180,10 +2184,11 @@ wss.on("connection", socket => {
         const { roomId, playerId } = data;
         const room = getRoom(roomId);
         if (!room || room.status !== "waiting") return;
-        send(socket, "PLAYER_REMOVED", { playerId });
+        // Notificar a todos que este jugador se fue
+        broadcastRoom(roomId, "PLAYER_REMOVED", { playerId });
         removePlayer(roomId, playerId);
         socket.roomId = null;
-        clients.delete(playerId);
+        // No eliminar de clients: el jugador sigue conectado al lobby
         cancelReadyCountdown(roomId);
         broadcastRoomState(roomId);
         return;

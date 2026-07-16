@@ -487,12 +487,13 @@ function handleRoll(roomId, playerId, broadcast) {
       autoBank: true, match: snapshotMatch(match)
     });
 
+    // Banco inmediato (con yield al event loop para que el cliente procese ROLL_RESULT)
     setTimeout(() => {
       const m = matches.get(roomId);
       if (!m || m.status !== "playing") return;
       if (advancing.has(roomId)) return;
       _bank(match, roomId, broadcast, false);
-    }, 1500);
+    }, 0);
 
     return { ok: true, event: "ROLL_RESULT_AUTOBANK", dice };
   }
@@ -514,12 +515,13 @@ function handleRoll(roomId, playerId, broadcast) {
       autoBank: true, match: snapshotMatch(match)
     });
 
+    // Banco inmediato (con yield al event loop para que el cliente procese ROLL_RESULT)
     setTimeout(() => {
       const m = matches.get(roomId);
       if (!m || m.status !== "playing") return;
       if (advancing.has(roomId)) return;
       _bank(match, roomId, broadcast, false);
-    }, 1500);
+    }, 0);
 
     return { ok: true, event: "ROLL_RESULT_AUTOBANK", dice };
 

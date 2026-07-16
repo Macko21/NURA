@@ -419,6 +419,9 @@ rooms.delete(roomId);
 return true;
 }
 
+// Si se fue el creador (primer jugador), el nuevo index 0 es el nuevo dueño implícitamente
+// La reassignación es automática por el orden del array
+
 if (
 room.currentTurnIndex >=
 room.players.length

@@ -75,9 +75,9 @@ function calculateScore(dice) {
       scoringDice += 5;
 
     } else if (count === 4) {
-      // Cuarteto = face × 1000
+      // Cuarteto
       if (face === 1) {
-        score += 2000;
+        score += 1100;  // Cuatro 1s = 1100 (no 2000)
       } else {
         score += face * 1000;
       }

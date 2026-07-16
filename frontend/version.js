@@ -10,9 +10,29 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.5.0";
+const GAME_VERSION = "3.6.0";
 
 const CHANGELOG = [
+  // ═══ 3.6.0 — GAME ═══
+  {
+    version: "3.6.0",
+    date: "2026-07-16",
+    title: "🐛 Bugfixes masivos: tienda, login, sala, victoria + revancha",
+    scope: "game",
+    files: ["frontend/app.js", "backend/server.js", "backend/database.js", "backend/diceManager.js", "backend/gameEngine.js", "backend/roomManager.js"],
+    changes: [
+      "🛒 Fix: items comprados ahora aparecen como 'Tuyo' (IDs inconsistentes entre BD y catálogo)",
+      "🔐 Fix: login 'debe ingresar un nombre' — helper getPlayerName() con fallbacks robustos",
+      "🏆 Fix: doble cartel de victoria al terminar la partida (flags _winShown/_gameOverShown)",
+      "🎲 Fix: error 'recoger recompensa' no crashea la pantalla de victoria (try/catch)",
+      "🔄 Fix: revancha funcionando correctamente (PLAY_AGAIN con flag _rematchInProgress)",
+      "👑 Fix: al irse el creador, el dueño se reasigna al siguiente jugador",
+      "💰 Fix: cuatro 1s ahora dan 1100 puntos (no 2000)",
+      "⚡ Fix: auto-bank instantáneo (sin delay de 1.5s)",
+      "🔧 Fix: safePlayerName en JOIN_ROOM del server",
+      "🧹 Código muerto eliminado (_lastRoomData)",
+    ]
+  },
   // ═══ 3.5.0 — GAME ═══
   {
     version: "3.5.0",

@@ -570,7 +570,14 @@ async function getShopCatalog() {
     }
   } catch(e) {}
   // Fallback: solo si la tabla shop_items no existe aún
-  return SHOP_CATALOG.map(item => ({
+  // Filtrar duplicados del catálogo hardcodeado (por nombre+categoría)
+  const seen = new Set();
+  return SHOP_CATALOG.filter(item => {
+    const key = item.name + '|' + item.category;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(item => ({
     ...item,
     priceDisplay: item.price.toLocaleString('es-AR')
   }));
@@ -981,9 +988,9 @@ async function getOwnedItems(userId) {
         }));
       }
     } catch(e) {}
-    // Agregar items del catálogo hardcodeado que no estén en DB
+    // Agregar items del catálogo hardcodeado que no existan en DB (comparar por nombre+categoría)
     for (const item of SHOP_CATALOG) {
-      if (!allItems.find(i => i.id === item.id)) {
+      if (!allItems.find(i => i.name === item.name && i.category === item.category)) {
         allItems.push(item);
       }
     }
@@ -1626,12 +1633,16 @@ async function seedShopItemsFromCatalog() {
     if (parseInt(existing.rows[0].count) > 0) return; // Ya hay datos
     const now = Date.now();
     for (const item of SHOP_CATALOG) {
+      // Insertar con ID explícito para que coincida con el catálogo hardcodeado
       await pool.query(`
-        INSERT INTO shop_items (category, name, icon, price, description, enabled, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, TRUE, $6, $6)
-      `, [item.category, item.name, item.icon, item.price, item.desc || '', now]);
+        INSERT INTO shop_items (id, category, name, icon, price, description, enabled, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $7)
+        ON CONFLICT (id) DO NOTHING
+      `, [item.id, item.category, item.name, item.icon, item.price, item.desc || '', now]);
     }
-    console.log(`🛒 Seed: ${SHOP_CATALOG.length} items del catálogo importados a shop_items`);
+    // Sincronizar la secuencia serial para que el CEO panel pueda crear items sin conflictos
+    await pool.query(`SELECT setval('shop_items_id_seq', (SELECT MAX(id) FROM shop_items))`);
+    console.log(`🛒 Seed: ${SHOP_CATALOG.length} items del catálogo importados a shop_items con IDs explícitos`);
   } catch(e) { console.error('Error seeding shop_items:', e.message); }
 }
 

@@ -582,6 +582,19 @@ const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 const uid = () => 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
 const formatNum = n => Number(n).toLocaleString('es-AR');
 
+/* Obtener nombre del jugador con fallbacks robustos */
+function getPlayerName() {
+  if (S.name && S.name.trim()) return S.name.trim();
+  const auth = loadAuth();
+  if (auth && auth.username && auth.username.trim()) return auth.username.trim();
+  // Direct parse for session (bypasses 4h expiry — stale name > 'Jugador')
+  try {
+    const sess = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if (sess && sess.name && sess.name.trim()) return sess.name.trim();
+  } catch(e) {}
+  return 'Jugador';
+}
+
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
@@ -666,6 +679,9 @@ function resetJoinBtn() {
 
 /* ── Volver al lobby limpio ──────────────────────────── */
 function goLobby(msg) {
+  _winShown = false;
+  _gameOverShown = false;
+  _rematchInProgress = false;
   stopTimer();
   clearSession();
   // Limpiar grabación de audio si está activa
@@ -708,6 +724,7 @@ function goLobby(msg) {
 
 /* ── Ir a sala de revancha ───────────────────────────── */
 function goToPlayAgain(room) {
+  _rematchInProgress = false; // Resetear para permitir próxima revancha
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   $('modal-win').classList.add('hidden');
@@ -780,7 +797,7 @@ function connect(cb) {
   S.ws.onopen = () => {
     console.log('WS conectado');
     // Siempre mandar roomId para reconexión automática
-    wsSend('IDENTIFY', { playerId:S.id, playerName:S.name, roomId:S.roomId });
+    wsSend('IDENTIFY', { playerId:S.id, playerName:getPlayerName(), roomId:S.roomId });
     cb?.();
 
     // Ping cada 25s para mantener viva la conexión
@@ -822,8 +839,10 @@ function sendGameInvite(targetId, targetName) {
    MANEJADOR DE MENSAJES
    ════════════════════════════════════════════════════════ */
 
-// Flag para evitar doble cartel de victoria (WIN + GAME_OVER duplicados)
+// Flags para evitar doble cartel de victoria (WIN + GAME_OVER duplicados)
 let _winShown = false;
+let _gameOverShown = false;
+let _rematchInProgress = false; // Evita doble PLAY_AGAIN
 
 // Sistema de vidas por timeout (5 vidas, auto-roll al expirar turno)
 const MAX_LIVES = 5;
@@ -916,7 +935,10 @@ function handle(type, data) {
       break;
 
     case 'PLAYER_REMOVED':
-      goLobby('Saliste de la sala');
+      // Solo ir al lobby si YO fui removido, no cuando otro jugador se va
+      if (data.playerId === S.id) {
+        goLobby('Saliste de la sala');
+      }
       break;
 
     case 'LEFT_GAME':
@@ -946,6 +968,14 @@ function handle(type, data) {
 
     case 'ROOM_STATE':
       renderRoom(data.room);
+      // Actualizar ownership: el primer jugador es el dueño de la sala
+      S.isOwner = data.room.players[0]?.id === S.id;
+      if ($('btn-cancel-room')) {
+        $('btn-cancel-room').classList.toggle('hidden', !S.isOwner);
+      }
+      if ($('btn-leave-room')) {
+        $('btn-leave-room').classList.toggle('hidden', S.isOwner);
+      }
       break;
 
     /* ── Countdown para auto-start ────────────────── */
@@ -1193,6 +1223,7 @@ function handle(type, data) {
 
     /* ── Victorias (con flag para evitar duplicados) ───── */
     case 'INSTANT_WIN': {
+      if (_gameOverShown) { break; }
       _winShown = true;
       S.match=data.match;
       S.banking=false;
@@ -1207,6 +1238,7 @@ function handle(type, data) {
     }
 
     case 'WIN': {
+      if (_gameOverShown) { break; }
       _winShown = true;
       S.match=data.match;
       S.banking=false;
@@ -1221,13 +1253,15 @@ function handle(type, data) {
     }
 
     case 'GAME_OVER': {
-      // Si ya se mostró WIN/INSTANT_WIN, ignorar GAME_OVER duplicado
-      if (_winShown) { _winShown = false; break; }
+      // Si ya se mostró WIN/INSTANT_WIN o ya se procesó GAME_OVER, ignorar
+      if (_winShown || _gameOverShown) { break; }
+      _gameOverShown = true;
       S.banking = false;
       $('btn-roll').disabled = true;
       stopTimer();
-      updateGameCoins();
-      checkPendingMissions();
+      // Envolver en try/catch para evitar que errores de red arruinen la pantalla de victoria
+      try { updateGameCoins(); } catch(e) { console.warn('Error actualizando monedas:', e); }
+      try { checkPendingMissions(); } catch(e) { console.warn('Error revisando misiones:', e); }
       const winnerId = data.winner?.id;
       const winSkin = winnerId && S.match 
         ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
@@ -1244,9 +1278,23 @@ function handle(type, data) {
 
     /* ── Revancha ────────────────────────────────────── */
     case 'PLAY_AGAIN': {
-      _winShown = false; // Resetear flag para próxima partida
+      // Si ya se inició revancha, ignorar este evento duplicado
+      if (_rematchInProgress) { break; }
+      // Si ya estamos en lobby después de revancha manual, ignorar auto countdown
+      if (S.roomId && !S.match && !data.immediate) {
+        break;
+      }
+      _winShown = false;
+      _gameOverShown = false;
       S.match = null; S.entered = false; S.myTurn = false;
       stopTimer();
+      // Si es inmediato (por click en Revancha), saltar countdown
+      if (data.immediate) {
+        _rematchInProgress = true;
+        $('modal-win').classList.add('hidden');
+        goToPlayAgain(data.room);
+        break;
+      }
       const hint  = $('play-again-hint');
       const cdEl  = $('play-again-countdown');
       const btnPA = $('btn-play-again');
@@ -1261,6 +1309,7 @@ function handle(type, data) {
         if (cd <= 0) {
           clearInterval(_playAgainTimer);
           _playAgainTimer = null;
+          _rematchInProgress = true;
           goToPlayAgain(data.room);
         }
       }, 1000);
@@ -2718,7 +2767,7 @@ function initUI() {
     if (!name) { toast('Ingresá tu nombre'); return; }
     S.name = name; S.id = uid();
     connect(() => setTimeout(() =>
-      wsSend('CREATE_ROOM', { playerId:S.id, playerName:S.name, isPrivate:true, maxPlayers:10, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped })
+      wsSend('CREATE_ROOM', { playerId:S.id, playerName:getPlayerName(), isPrivate:true, maxPlayers:10, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped })
     , 200));
   };
 
@@ -3140,7 +3189,7 @@ function initUI() {
     S.joiningRoom = true;
     $('btn-join-confirm').disabled    = true;
     $('btn-join-confirm').textContent = 'Entrando...';
-    const doJoin = () => wsSend('JOIN_ROOM', { playerId:S.id, playerName:S.name, code, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
+    const doJoin = () => wsSend('JOIN_ROOM', { playerId:S.id, playerName:getPlayerName(), code, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
     if (!S.ws || S.ws.readyState !== WebSocket.OPEN) connect(() => setTimeout(doJoin, 300));
     else doJoin();
   };
@@ -3239,14 +3288,18 @@ function initUI() {
   $('btn-back-ranking').onclick = navigateToLobbyOrAuth;
 
   /* Modal victoria */
-  $('btn-play-again').onclick = () => {
-    clearInterval(_playAgainTimer);
-    _playAgainTimer = null;
-    $('play-again-hint')?.classList.add('hidden');
-    $('modal-win').classList.add('hidden');
-    if (S.roomId) wsSend('GET_ROOM_STATE', { roomId:S.roomId });
-    else goLobby(null);
-  };
+$('btn-play-again').onclick = () => {
+  clearInterval(_playAgainTimer);
+  _playAgainTimer = null;
+  $('play-again-hint')?.classList.add('hidden');
+  $('modal-win').classList.add('hidden');
+  // Siempre pedir datos frescos al servidor (la sala ya fue reseteada)
+  if (S.roomId) {
+    wsSend('GET_ROOM_STATE', { roomId:S.roomId, immediate: true });
+  } else {
+    goLobby(null);
+  }
+};
 
   $('btn-new-game').onclick = () => {
     if (S.roomId) wsSend('LEAVE_ROOM', { roomId:S.roomId, playerId:S.id });
@@ -3767,12 +3820,25 @@ async function loadEquippedItems() {
     S.diceEquipped = inv.equipped.dice || null;
     S.specialEquipped = inv.equipped.special || null;
     // Avatar equipado
+    let avatarLoaded = false;
     if (inv.equipped.avatar) {
       const item = inv.owned.find(i => i.id === parseInt(inv.equipped.avatar));
-      if (item) S.avatarEquipped = item.icon;
+      if (item) {
+        S.avatarEquipped = item.icon;
+        avatarLoaded = true;
+      }
+    }
+    if (!avatarLoaded) {
+      S.avatarEquipped = null;
     }
     // Guardar en cache local
     saveEquippedCache();
+    // Actualizar avatar en lobby si estamos en él
+    const lobbyAv = $('lobby-avatar');
+    if (lobbyAv) {
+      lobbyAv.textContent = S.avatarEquipped || '👤';
+      lobbyAv.classList.toggle('avatar-icon', !!S.avatarEquipped);
+    }
     // Aplicar Tema Oscuro Ultra (item 17)
     applyUltraDarkTheme(S.specialEquipped === '17');
     // Item 15: Marco Premium en todos los avatares
