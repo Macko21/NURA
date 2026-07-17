@@ -19,9 +19,9 @@
  * Trío de 4s          = 400
  * Trío de 5s          = 500
  * Trío de 6s          = 600
- * Cuarteto de X       = trío × 2
+ * Cuarteto de X       = face × 1000 (cuatro 1s = 1100)
  * Quinteto de 1s      = 10000 (victoria instantánea)
- * Quinteto de X       = face * 1000 + 1000  (max 7000 con 6)
+ * Quinteto de X       = face * 1100  (max 6600 con 6)
  * ============================================================
  */
 
@@ -70,7 +70,7 @@ function calculateScore(dice) {
       if (face === 1) {
         score += 10000;  // Victoria instantánea
       } else {
-        score += face * 1000 + 1000; // 5 sixes = 7000, 5 fives = 6000, etc.
+        score += face * 1100; // 5 sixes = 6600, 5 fives = 5500, etc.
       }
       scoringDice += 5;
 

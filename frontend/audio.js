@@ -38,22 +38,23 @@ const SFX = {
 const SKIN_SOUND = {
   '1':  { freq: 500, wave: 'square' },
   '2':  { freq: 180, wave: 'sawtooth' },
-  '3':  { freq: 660, wave: 'sine' },
-  '4':  { freq: 880, wave: 'sine' },
-  '5':  { freq: 1100,wave: 'sine' },
-  '6':  { freq: 160, wave: 'sawtooth' },
-  '7':  { freq: 440, wave: 'sine' },
-  '8':  { freq: 520, wave: 'sine' },
-  '9':  { freq: 140, wave: 'sawtooth' },
-  '10': { freq: 770, wave: 'triangle' },
+  '4':  { freq: 660, wave: 'sine' },
+  '5':  { freq: 880, wave: 'sine' },
+  '6':  { freq: 1100,wave: 'sine' },
+  '18': { freq: 160, wave: 'sawtooth' },
+  '19': { freq: 440, wave: 'sine' },
+  '20': { freq: 520, wave: 'sine' },
+  '21': { freq: 140, wave: 'sawtooth' },
+  '22': { freq: 770, wave: 'triangle' },
   '32': { freq: 1200,wave: 'sine' },
   '33': { freq: 200, wave: 'triangle' },
 };
 
 // Obtener perfil de audio del jugador que está tirando
 function getActiveSkinAudio() {
-  if (!window.S?.match?.players || window.S.match.currentPlayerIndex === undefined) return null;
-  const player = window.S.match.players[window.S.match.currentPlayerIndex];
+  const gameState = typeof S !== 'undefined' ? S : null;
+  if (!gameState?.match?.players || gameState.match.currentPlayerIndex === undefined) return null;
+  const player = gameState.match.players[gameState.match.currentPlayerIndex];
   if (!player?.equippedDice) return null;
   const skinId = String(player.equippedDice);
   return SKIN_SOUND[skinId] || null;
@@ -83,4 +84,8 @@ function playSkinHot() {
   [s.freq, s.freq * 1.26, s.freq * 1.5, s.freq * 2].forEach((f,i) =>
     tone(f, 'sine', .18, .38, i * .08)
   );
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { SKIN_SOUND };
 }

@@ -227,6 +227,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       console.log('SW registrado:', reg.scope);
       _swRegistration = reg;
+      void checkPushStatus();
       // Forzar chequeo de actualización del SW en cada carga
       setTimeout(() => reg.update(), 2000);
     }).catch(err => {
@@ -235,6 +236,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+if ('serviceWorker' in navigator) {
   // Escuchar mensajes del Service Worker (push recibidos, actualizaciones, etc.)
   navigator.serviceWorker.addEventListener('message', event => {
     const msg = event.data;
@@ -287,8 +289,20 @@ if ('serviceWorker' in navigator) {
       setTimeout(() => window.location.reload(), 1500);
     }
   });
+}
 /* ── Push Notifications ─────────────────────────────── */
 let _pushSubscribed = localStorage.getItem('macko_push') === 'subscribed';
+
+async function getServiceWorkerRegistration() {
+  if (_swRegistration) return _swRegistration;
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    _swRegistration = await navigator.serviceWorker.ready;
+    return _swRegistration;
+  } catch(e) {
+    return null;
+  }
+}
 
 // Convertir VAPID key de base64 a Uint8Array (requerido por Push API)
 function urlBase64ToUint8Array(base64String) {
@@ -300,66 +314,92 @@ function urlBase64ToUint8Array(base64String) {
 
 async function subscribeToPush() {
   const token = localStorage.getItem('gameToken');
-  if (!token || !_swRegistration) { toast('Debés iniciar sesión'); return; }
+  if (!token) { toast('Debés iniciar sesión'); return false; }
   try {
+    const registration = await getServiceWorkerRegistration();
+    if (!registration) throw new Error('Service Worker no disponible');
     // Obtener VAPID public key
     const keyRes = await fetch('/api/push/vapid-key');
+    if (!keyRes.ok) throw new Error('No se pudo obtener la configuración push');
     const keyData = await keyRes.json();
     if (!keyData.publicKey) {
       toast('🔔 Push no disponible (sin configuración)', 'error');
-      return;
+      return false;
     }
     // Subscription (convertir key a Uint8Array)
-    const sub = await _swRegistration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
-    });
-    await fetch('/api/push/subscribe', {
+    let sub = await registration.pushManager.getSubscription();
+    if (!sub) {
+      sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+      });
+    }
+    const saveRes = await fetch('/api/push/subscribe', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ subscription: sub.toJSON() })
     });
+    if (!saveRes.ok) throw new Error('No se pudo guardar la suscripción');
     _pushSubscribed = true;
     localStorage.setItem('macko_push', 'subscribed');
     updatePushBtn();
     toast('🔔 Notificaciones activadas', 'success');
+    return true;
   } catch (e) {
+    _pushSubscribed = false;
+    localStorage.removeItem('macko_push');
+    updatePushBtn();
     if (e.name === 'NotAllowedError' || e.code === 20) {
       toast('🔔 Permití las notificaciones en el navegador', 'error');
     } else {
       toast('Error al activar push: ' + e.message, 'error');
     }
+    return false;
   }
 }
 
 async function unsubscribeFromPush() {
   const token = localStorage.getItem('gameToken');
-  if (!token || !_swRegistration) return;
   try {
-    const sub = await _swRegistration.pushManager.getSubscription();
+    const registration = await getServiceWorkerRegistration();
+    const sub = registration ? await registration.pushManager.getSubscription() : null;
     if (sub) await sub.unsubscribe();
-    await fetch('/api/push/unsubscribe', {
-      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
-    });
+    if (token) {
+      await fetch('/api/push/unsubscribe', {
+        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+      });
+    }
   } catch(e) {}
   _pushSubscribed = false;
   localStorage.removeItem('macko_push');
   updatePushBtn();
   toast('🔔 Notificaciones desactivadas', 'info');
+  return true;
 }
 
 async function checkPushStatus() {
-  if (!_swRegistration || !isLogged()) return;
+  if (!isLogged()) return false;
   try {
-    const sub = await _swRegistration.pushManager.getSubscription();
+    const registration = await getServiceWorkerRegistration();
+    if (!registration) return false;
+    const sub = await registration.pushManager.getSubscription();
     const browserSubscribed = !!sub;
     const savedPref = localStorage.getItem('macko_push') === 'subscribed';
-    if (savedPref && !browserSubscribed) {
-      subscribeToPush();
+    if (browserSubscribed) {
+      _pushSubscribed = true;
+      localStorage.setItem('macko_push', 'subscribed');
+      updatePushBtn();
+    } else if (savedPref && (typeof Notification === 'undefined' || Notification.permission !== 'denied')) {
+      return await subscribeToPush();
     } else {
-      _pushSubscribed = browserSubscribed;
+      _pushSubscribed = false;
+      localStorage.removeItem('macko_push');
       updatePushBtn();
     }
-  } catch(e) {}
+    return _pushSubscribed;
+  } catch(e) {
+    updatePushBtn();
+    return false;
+  }
 }
 
 function updatePushBtn() {
@@ -369,9 +409,7 @@ function updatePushBtn() {
 
 // También llamar al login y después de register SW
 setTimeout(() => {
-  if (localStorage.getItem('macko_push') === 'subscribed') {
-    subscribeToPush(); // re-suscribir si ya estaba
-  }
+  if (isLogged()) void checkPushStatus();
 }, 6000);
 
 /* Capturar evento de instalación PWA */
@@ -477,6 +515,27 @@ function loadAuth() {
   try {
     return JSON.parse(localStorage.getItem(AUTH_KEY));
   } catch {
+    return null;
+  }
+}
+
+function loadAuthenticatedIdentity() {
+  const auth = loadAuth();
+  if (auth?.id && auth?.username) return auth;
+  try {
+    const token = localStorage.getItem('gameToken');
+    if (!token) return null;
+    let encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    encoded += '='.repeat((4 - encoded.length % 4) % 4);
+    const payload = JSON.parse(atob(encoded));
+    const identity = {
+      id: payload.playerId,
+      username: payload.username || 'Jugador'
+    };
+    if (!identity.id) return null;
+    localStorage.setItem(AUTH_KEY, JSON.stringify(identity));
+    return identity;
+  } catch(e) {
     return null;
   }
 }
@@ -615,7 +674,7 @@ const formatNum = n => Number(n).toLocaleString('es-AR');
 /* Obtener nombre del jugador con fallbacks robustos */
 function getPlayerName() {
   if (S.name && S.name.trim()) return S.name.trim();
-  const auth = loadAuth();
+  const auth = loadAuthenticatedIdentity();
   if (auth && auth.username && auth.username.trim()) return auth.username.trim();
   // Direct parse for session (bypasses 4h expiry — stale name > 'Jugador')
   try {
@@ -623,6 +682,26 @@ function getPlayerName() {
     if (sess && sess.name && sess.name.trim()) return sess.name.trim();
   } catch(e) {}
   return 'Jugador';
+}
+
+function preparePlayerIdentity() {
+  if (isLogged()) {
+    const auth = loadAuthenticatedIdentity();
+    if (!auth?.id || !auth?.username) return false;
+    S.logged = true;
+    S.id = auth.id;
+    S.userId = auth.id;
+    S.name = auth.username.trim();
+    const input = $('input-name');
+    if (input) input.value = S.name;
+    return true;
+  }
+
+  const name = $('input-name')?.value.trim();
+  if (!name) return false;
+  S.name = name;
+  if (!S.id) S.id = uid();
+  return true;
 }
 
 function showScreen(id) {
@@ -633,6 +712,9 @@ function showScreen(id) {
 let _toastT;
 function toast(msg, ms=2800) {
   const el=$('toast');
+  // Muchos llamados historicos usan "success", "error" o "info" como
+  // segundo argumento. Esos valores no son una duracion valida.
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) ms = 2800;
   el.textContent=msg; el.classList.remove('hidden');
   clearTimeout(_toastT);
   _toastT=setTimeout(()=>el.classList.add('hidden'), ms);
@@ -758,6 +840,11 @@ function goToPlayAgain(room) {
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   $('modal-win').classList.add('hidden');
+  const playAgainBtn = $('btn-play-again');
+  if (playAgainBtn) {
+    playAgainBtn.disabled = false;
+    playAgainBtn.textContent = '🎲 Revancha';
+  }
   $('ready-status')?.classList.add('hidden');
   const hint = $('play-again-hint');
   if (hint) hint.classList.add('hidden');
@@ -769,13 +856,16 @@ function goToPlayAgain(room) {
   saveSession();
   $('btn-ready').disabled    = false;
   $('btn-ready').textContent = 'Estoy listo ✓';
+  $('btn-ready').classList.remove('hidden'); // Asegurar que el botón sea visible
   const c2 = $('chat-msgs'); if(c2) c2.innerHTML = '';
   clearDice();
   renderRoom(room);
   const amOwner = room.players[0]?.id === S.id;
+  const hasOthers = room.players.length > 1;
   S.isOwner = amOwner;
   $('btn-cancel-room').classList.toggle('hidden', !amOwner);
-  $('btn-leave-room').classList.toggle('hidden', amOwner);
+  $('btn-leave-room').classList.toggle('hidden', amOwner && !hasOthers);
+  $('btn-leave-room').textContent = amOwner ? 'Salir (delegar dueño)' : 'Salir de la sala';
   // Cargar items equipados al reiniciar partida
   loadEquippedCache();
   loadEquippedItems();
@@ -905,6 +995,7 @@ function handle(type, data) {
     /* ── Reconexión ─────────────────────────────────── */
     case 'RECONNECTED':
       S.roomId      = data.match.roomId;
+      S.roomCode    = data.room?.code || data.match.roomCode || S.roomCode;
       S.match       = data.match;
       S.entered     = data.match.players.find(p=>p.id===S.id)?.entered || false;
       S.joiningRoom = false;
@@ -947,6 +1038,7 @@ function handle(type, data) {
     /* ── Unirse a partida en curso ───────────────────── */
     case 'JOINED_ACTIVE_GAME':
       S.roomId      = data.match.roomId;
+      S.roomCode    = data.room?.code || data.match.roomCode || null;
       S.match       = data.match;
       S.entered     = false;
       S.isOwner     = false;
@@ -995,6 +1087,9 @@ function handle(type, data) {
       showScreen('screen-room');
       $('btn-cancel-room').classList.remove('hidden');
       $('btn-leave-room').classList.add('hidden');
+      // Forzar carga de items equipados
+      loadEquippedCache();
+      loadEquippedItems();
       break;
 
     case 'JOIN_SUCCESS':
@@ -1006,10 +1101,17 @@ function handle(type, data) {
       showScreen('screen-room');
       $('btn-cancel-room').classList.add('hidden');
       $('btn-leave-room').classList.remove('hidden');
+      // Forzar carga de items equipados
+      loadEquippedCache();
+      loadEquippedItems();
       break;
 
     case 'ROOM_STATE':
       renderRoom(data.room);
+      // Forzar carga de items equipados al recibir estado de sala
+      if (isLogged()) {
+        loadEquippedItems();
+      }
       // Actualizar ownership: el primer jugador es el dueño de la sala
       S.isOwner = data.room.players[0]?.id === S.id;
       const hasOthers = data.room.players.length > 1;
@@ -1113,11 +1215,10 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'scored');
-      setMsg(
-        `Tiro ${data.rollCount}/3 — +${data.rollScore} pts` +
-        (data.autoBank ? ' — Banco automático...' : ''),
-        'good'
-      );
+      setMsg(data.autoBank
+        ? `Ganaste ${data.turnPoints} pts — se anotarán ahora...`
+        : `Tiro ${data.rollCount}/3 — +${data.rollScore} pts`,
+        'good');
       $('turn-points').textContent = data.turnPoints;
       $('roll-count').textContent  = data.rollCount + ' / 3';
       $('bank-pts').textContent    = data.turnPoints>0 ? '+'+data.turnPoints : '';
@@ -1165,7 +1266,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
-      setMsg('🔥 DADOS CALIENTES — Tiro extra. Si saca algo, suma y termina','hot');
+      setMsg('🔥 DADOS CALIENTES — Si puntúan todos, seguís; si puntúa parcialmente, suma y termina','hot');
       $('turn-points').textContent = data.turnPoints;
       $('bank-pts').textContent    = data.turnPoints>0 ? '+'+data.turnPoints : '';
       if (data.playerId===S.id) { flashTurnPoints(); startTimer(TURN_SECS); }
@@ -1301,15 +1402,16 @@ function handle(type, data) {
     }
 
     case 'GAME_OVER': {
-      // Si ya se mostró WIN/INSTANT_WIN o ya se procesó GAME_OVER, ignorar
-      if (_winShown || _gameOverShown) { break; }
+      const victoryAlreadyShown = _winShown || _gameOverShown;
       _gameOverShown = true;
       S.banking = false;
+      if (data.match) S.match = data.match;
       $('btn-roll').disabled = true;
       stopTimer();
       // Envolver en try/catch para evitar que errores de red arruinen la pantalla de victoria
       try { updateGameCoins(); } catch(e) { console.warn('Error actualizando monedas:', e); }
       try { checkPendingMissions(); } catch(e) { console.warn('Error revisando misiones:', e); }
+      if (victoryAlreadyShown) break;
       const winnerId = data.winner?.id;
       const winSkin = winnerId && S.match 
         ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
@@ -1326,41 +1428,13 @@ function handle(type, data) {
 
     /* ── Revancha ────────────────────────────────────── */
     case 'PLAY_AGAIN': {
-      // Si ya se inició revancha, ignorar este evento duplicado
-      if (_rematchInProgress) { break; }
-      // Si ya estamos en lobby después de revancha manual, ignorar auto countdown
-      if (S.roomId && !S.match && !data.immediate) {
-        break;
-      }
+      if (!data.room || _rematchInProgress) break;
       _winShown = false;
       _gameOverShown = false;
       S.match = null; S.entered = false; S.myTurn = false;
       stopTimer();
-      // Si es inmediato (por click en Revancha), saltar countdown
-      if (data.immediate) {
-        _rematchInProgress = true;
-        $('modal-win').classList.add('hidden');
-        goToPlayAgain(data.room);
-        break;
-      }
-      const hint  = $('play-again-hint');
-      const cdEl  = $('play-again-countdown');
-      const btnPA = $('btn-play-again');
-      if (hint)  hint.classList.remove('hidden');
-      if (btnPA) btnPA.textContent = '🎲 ¡Jugar de nuevo!';
-      let cd = 4;
-      if (cdEl) cdEl.textContent = cd;
-      clearInterval(_playAgainTimer);
-      _playAgainTimer = setInterval(() => {
-        cd--;
-        if (cdEl) cdEl.textContent = cd;
-        if (cd <= 0) {
-          clearInterval(_playAgainTimer);
-          _playAgainTimer = null;
-          _rematchInProgress = true;
-          goToPlayAgain(data.room);
-        }
-      }, 1000);
+      _rematchInProgress = true;
+      goToPlayAgain(data.room);
       break;
     }
 
@@ -1513,6 +1587,11 @@ function handle(type, data) {
       S.joiningRoom = false;
       const joinBtn = $('btn-join-confirm');
       if (joinBtn) { joinBtn.disabled=false; joinBtn.textContent='Entrar →'; }
+      const rematchBtn = $('btn-play-again');
+      if (rematchBtn?.disabled) {
+        rematchBtn.disabled = false;
+        rematchBtn.textContent = '🎲 Revancha';
+      }
       toast('⚠ ' + data.message);
       break;
   }
@@ -1529,9 +1608,9 @@ function renderRoom(room) {
     let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
     // Mostrar avatar equipado para TODOS los jugadores (se carga desde BD al unirse)
     if (p.equippedAvatar) {
-      avContent = p.equippedAvatar;
+      avContent = esc(p.equippedAvatar);
     } else if (p.id === S.id && S.avatarEquipped) {
-      avContent = S.avatarEquipped;
+      avContent = esc(S.avatarEquipped);
     }
     // Detectar si es icono personalizado (no solo letra)
     const hasCustomAvatar = avContent.length > 1 && !(/^[A-Z]$/i.test(avContent));
@@ -1544,6 +1623,25 @@ function renderRoom(room) {
     }
     list.appendChild(d);
   });
+
+  // El servidor es la fuente de verdad del estado "listo". Esto recupera el
+  // boton correctamente al volver de una partida o al reconectarse al lobby.
+  const me = room.players.find(p => p.id === S.id);
+  const readyBtn = $('btn-ready');
+  const readyStatus = $('ready-status');
+  if (readyBtn) {
+    readyBtn.disabled = false;
+    readyBtn.textContent = 'Estoy listo ✓';
+    readyBtn.classList.toggle('hidden', !me || !!me.ready);
+  }
+  if (readyStatus && me?.ready) {
+    const text = readyStatus.querySelector('.ready-status-text');
+    if (text) text.textContent = '⏳ Esperando...';
+    readyStatus.classList.remove('hidden');
+  } else if (readyStatus) {
+    const text = readyStatus.querySelector('.ready-status-text');
+    if (!text || !text.textContent.includes('Iniciando')) readyStatus.classList.add('hidden');
+  }
 }
 
 /* ── Sincronizar items equipados desde match state ──── */
@@ -1551,9 +1649,9 @@ function syncEquippedFromMatch(match) {
   if (!match || !match.players) return;
   const me = match.players.find(p => p.id === S.id);
   if (!me) return;
-  if (me.equippedDice)    S.diceEquipped    = me.equippedDice;
-  if (me.equippedAvatar)  S.avatarEquipped  = me.equippedAvatar;
-  if (me.equippedSpecial) S.specialEquipped = me.equippedSpecial;
+  S.diceEquipped    = me.equippedDice || null;
+  S.avatarEquipped  = me.equippedAvatar || null;
+  S.specialEquipped = me.equippedSpecial || null;
   saveEquippedCache();
   // Aplicar efectos especiales INMEDIATAMENTE (sin esperar loadEquippedItems async)
   // Item 17: Tema Oscuro Ultra
@@ -1597,9 +1695,9 @@ function renderSB(match) {
     // Mostrar avatar equipado (del match state para todos, o local si es el jugador actual)
     let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
     if (p.equippedAvatar) {
-      avContent = p.equippedAvatar;
+      avContent = esc(p.equippedAvatar);
     } else if (isMe && S.avatarEquipped) {
-      avContent = S.avatarEquipped;
+      avContent = esc(S.avatarEquipped);
     }
     // Determinar si tiene avatar personalizado (icono) o es solo letra
     const hasCustomAvatar = avContent.length > 1 && !(/^[A-Z]$/i.test(avContent));
@@ -2643,6 +2741,12 @@ function renderRanking(rows) {
 /* ── Modal victoria ──────────────────────────────────── */
 function showWin(playerName, desc, dice, skinId) {
   if (!$('modal-win').classList.contains('hidden')) return;
+  const playAgainBtn = $('btn-play-again');
+  if (playAgainBtn) {
+    playAgainBtn.disabled = false;
+    playAgainBtn.textContent = '🎲 Revancha';
+  }
+  $('play-again-hint')?.classList.add('hidden');
   $('win-name').textContent = '¡'+playerName+'!';
   $('win-desc').textContent = desc;
   const wr = $('win-dice');
@@ -2811,18 +2915,14 @@ function initUI() {
 
   /* Lobby */
   $('btn-create').onclick = () => {
-    const name = $('input-name').value.trim();
-    if (!name) { toast('Ingresá tu nombre'); return; }
-    S.name = name; S.id = uid();
+    if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }
     connect(() => setTimeout(() =>
       wsSend('CREATE_ROOM', { playerId:S.id, playerName:getPlayerName(), isPrivate:true, maxPlayers:10, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped })
     , 200));
   };
 
   $('btn-join-open').onclick = () => {
-    const name = $('input-name').value.trim();
-    if (!name) { toast('Ingresá tu nombre'); return; }
-    S.name = name; S.id = uid();
+    if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }
     showScreen('screen-join');
   };
 
@@ -3022,9 +3122,13 @@ function initUI() {
   /* ── Push notifications toggle via switch ──── */
   const pushSwitch = $('notif-push-switch');
   if (pushSwitch) {
-    pushSwitch.addEventListener('change', () => {
-      if (pushSwitch.checked) subscribeToPush();
-      else unsubscribeFromPush();
+    pushSwitch.addEventListener('change', async () => {
+      const shouldEnable = pushSwitch.checked;
+      pushSwitch.disabled = true;
+      if (shouldEnable) await subscribeToPush();
+      else await unsubscribeFromPush();
+      await checkPushStatus();
+      pushSwitch.disabled = false;
     });
     updatePushBtn();
   }
@@ -3039,7 +3143,7 @@ function initUI() {
     if (!panel.classList.contains('hidden')) {
       renderNotifPanel();
       markAllRead();
-      updatePushBtn(); // Sync switch cada vez que se abre
+      void checkPushStatus();
     }
   });
   $('btn-notif-mark-read')?.addEventListener('click', () => {
@@ -3231,6 +3335,7 @@ function initUI() {
   $('input-code').oninput = function() { this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6); };
 
   $('btn-join-confirm').onclick = () => {
+    if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }
     const code = $('input-code').value.trim().replace(/[^0-9]/g, '');
     if (code.length < 4 || !/^[0-9]+$/.test(code)) { toast('Código inválido — solo números'); return; }
     if (S.joiningRoom)   { toast('Ya estás intentando entrar...'); return; }
@@ -3340,9 +3445,10 @@ $('btn-play-again').onclick = () => {
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   $('play-again-hint')?.classList.add('hidden');
-  $('modal-win').classList.add('hidden');
-  // Siempre pedir datos frescos al servidor (la sala ya fue reseteada)
+  const btn = $('btn-play-again');
   if (S.roomId) {
+    btn.disabled = true;
+    btn.textContent = 'Preparando revancha...';
     wsSend('GET_ROOM_STATE', { roomId:S.roomId, immediate: true });
   } else {
     goLobby(null);
@@ -3441,6 +3547,22 @@ async function loadProfile() {
 }
 
 /* ── Renderizar inventario (con datos ya obtenidos) ── */
+const ULTRA_ITEM_EQUIP_CATEGORIES = Object.freeze({
+  32: 'dice',
+  33: 'dice',
+  34: 'avatar',
+  35: 'avatar',
+  36: 'special'
+});
+
+function getItemEquipCategory(item) {
+  if (!item) return null;
+  if (item.category === 'avatares') return 'avatar';
+  if (item.category === 'dados') return 'dice';
+  if (item.category === 'especiales') return 'special';
+  return ULTRA_ITEM_EQUIP_CATEGORIES[Number(item.id)] || null;
+}
+
 function loadInventoryData(invData) {
   const container = $('profile-inventory');
   if (!container) return;
@@ -3454,34 +3576,36 @@ function loadInventoryData(invData) {
     container.innerHTML = '<p class="inv-empty">Todavía no compraste nada 🛒</p>';
     return;
   }
-  const categories = { avatares: 'Avatares', dados: 'Dados', especiales: 'Especiales' };
+  const categories = {
+    avatar: { label: 'Avatares', icon: '👤' },
+    dice: { label: 'Dados', icon: '🎲' },
+    special: { label: 'Especiales', icon: '✨' }
+  };
   container.innerHTML = '';
-  for (const [catKey, catLabel] of Object.entries(categories)) {
-    const items = owned.filter(i => i.category === catKey);
+  for (const [equipCategory, categoryInfo] of Object.entries(categories)) {
+    const items = owned.filter(item => getItemEquipCategory(item) === equipCategory);
     if (!items.length) continue;
     const section = document.createElement('div');
     section.className = 'inv-cat';
-    section.innerHTML = `<p class="inv-cat-title">${catLabel}</p><div class="inv-items"></div>`;
+    section.innerHTML = `<p class="inv-cat-title">${categoryInfo.label}</p><div class="inv-items"></div>`;
     container.appendChild(section);
     const grid = section.querySelector('.inv-items');
     // Botón para default
-    const isAvatar = catKey === 'avatares';
     const defaultDiv = document.createElement('div');
-    defaultDiv.className = 'inv-item' + (equipped[catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special'] === '' ? ' equipped' : '');
-    defaultDiv.innerHTML = `<div class="inv-item-icon">${isAvatar ? '👤' : '🎲'}</div><span class="inv-item-name">Original</span>`;
-    defaultDiv.onclick = () => equipItemFromProfile('default', catKey === 'avatares' ? 'avatar' : catKey === 'dados' ? 'dice' : 'special');
+    defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
+    defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
+    defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
     grid.appendChild(defaultDiv);
     items.forEach(item => {
-      const cat = item.category === 'avatares' ? 'avatar' : item.category === 'dados' ? 'dice' : 'special';
-      const isEquipped = equipped[cat] === String(item.id);
+      const isEquipped = String(equipped[equipCategory] || '') === String(item.id);
       const div = document.createElement('div');
       div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
       div.innerHTML = `
-        <div class="inv-item-icon">${item.icon}</div>
-        <span class="inv-item-name">${item.name}</span>
+        <div class="inv-item-icon">${esc(String(item.icon || ''))}</div>
+        <span class="inv-item-name">${esc(String(item.name || 'Cosmético'))}</span>
         ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
       `;
-      div.onclick = () => !isEquipped && equipItemFromProfile(String(item.id), cat);
+      div.onclick = () => !isEquipped && equipItemFromProfile(String(item.id), equipCategory);
       if (!isEquipped) div.style.cursor = 'pointer';
       grid.appendChild(div);
     });
@@ -4164,15 +4288,18 @@ async function loadCoinPacks() {
 document.addEventListener('DOMContentLoaded', () => {
   initUI();
 
-  const auth = loadAuth();
+  const auth = loadAuthenticatedIdentity();
 
-  if(isLogged()){
+  if(isLogged() && auth?.id){
     S.logged = true;
     S.userId = auth.id;
+    S.id = auth.id;
     S.name = auth.username;
     // LLAMADA CLAVE: Al cargar, pedimos el saldo al backend
     loadUserBalance();
     loadEquippedItems();
+  } else if (isLogged()) {
+    clearAuth();
   }
 
   const session = loadSession();

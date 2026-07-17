@@ -10,9 +10,26 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.6.1";
+const GAME_VERSION = "3.6.2";
 
 const CHANGELOG = [
+  // ═══ 3.6.2 — GAME ═══
+  {
+    version: "3.6.2",
+    date: "2026-07-16",
+    title: "🎲 Reglas restauradas + revancha, identidad y cosméticos",
+    scope: "game",
+    files: ["backend/gameEngine.js", "backend/diceManager.js", "backend/server.js", "frontend/app.js", "frontend/dice-renderer.js", "frontend/audio.js"],
+    changes: [
+      "🎯 Cinco 6 vuelven a valer 6600; no existe la jugada de 7000 puntos",
+      "🚪 Entrar consume exactamente 1000 puntos y conserva solo el excedente",
+      "🔥 Dados calientes pueden encadenarse y muestran el total 1,6s antes de anotarlo",
+      "🔄 Revancha usa un solo cartel y restaura siempre el botón Estoy listo",
+      "👤 Crear/unirse recupera la identidad autenticada sin exigir nombre de invitado",
+      "🎨 Dados y avatares usan los cosméticos del jugador correcto, incluidos los Ultra",
+      "🔔 El interruptor push refleja y conserva la suscripción real del navegador"
+    ]
+  },
   // ═══ 3.6.1 — GAME ═══
   {
     version: "3.6.1",

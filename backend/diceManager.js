@@ -8,7 +8,7 @@
 
 const {
   TOTAL_DICE, DICE_MIN, DICE_MAX,
-  MAX_SCORE, TURN_TIMEOUT_MS, MOVE_HISTORY_LIMIT
+  MAX_SCORE, TURN_TIMEOUT_MS, AUTO_BANK_DELAY_MS, MOVE_HISTORY_LIMIT
 } = require("./constants");
 
 const {
@@ -22,6 +22,8 @@ const {
 
 const matches    = new Map();
 const turnTimers = new Map();
+const autoBankTimers = new Map();
+const finishHandlers = new Map();
 
 // Lock por sala: evita que _advanceTurn corra dos veces en paralelo
 const advancing  = new Set();
@@ -48,6 +50,36 @@ function clearTurnTimer(roomId) {
   }
 }
 
+function clearAutoBankTimer(roomId) {
+  if (autoBankTimers.has(roomId)) {
+    clearTimeout(autoBankTimers.get(roomId));
+    autoBankTimers.delete(roomId);
+  }
+}
+
+function notifyFinished(match, roomId) {
+  const handler = finishHandlers.get(roomId);
+  if (!handler || match.finishNotified) return;
+  match.finishNotified = true;
+  Promise.resolve(handler(match, roomId)).catch(err => {
+    console.error("Error finalizando partida:", err.message);
+  });
+}
+
+function scheduleAutoBank(match, roomId, playerId, broadcast) {
+  clearAutoBankTimer(roomId);
+  const timer = setTimeout(() => {
+    autoBankTimers.delete(roomId);
+    const activeMatch = matches.get(roomId);
+    if (activeMatch !== match || activeMatch.status !== "playing") return;
+    if (advancing.has(roomId)) return;
+    const current = getCurrentPlayer(activeMatch);
+    if (!current || current.id !== playerId || !current.mustStop) return;
+    _bank(activeMatch, roomId, broadcast, true);
+  }, AUTO_BANK_DELAY_MS);
+  autoBankTimers.set(roomId, timer);
+}
+
 function resetTurnTimer(roomId, onTimeout) {
   clearTurnTimer(roomId);
   const id = setTimeout(() => {
@@ -62,6 +94,7 @@ function resetTurnTimer(roomId, onTimeout) {
 function snapshotMatch(match) {
   return {
     roomId:             match.roomId,
+    roomCode:           match.roomCode,
     status:             match.status,
     currentPlayerIndex: match.currentPlayerIndex,
     entryAttempts:      match.entryAttempts,
@@ -100,6 +133,7 @@ function _advanceTurn(match, roomId, broadcast) {
 
   try {
     clearTurnTimer(roomId);
+    clearAutoBankTimer(roomId);
 
     const total = match.players.length;
     if (total === 0) return;
@@ -160,6 +194,7 @@ function _bank(match, roomId, broadcast, auto = false) {
       playerId: cur.id, playerName: cur.name, dice: [],
       rollScore: gained, match: snapshotMatch(match)
     });
+    notifyFinished(match, roomId);
     return; // No avanzar turno, la partida terminó
   }
 
@@ -229,7 +264,7 @@ function _handleTimeout(roomId, broadcast) {
           result: "win", lives: cur.lives,
           match: snapshotMatch(match)
         });
-        _advanceTurn(match, roomId, broadcast);
+        notifyFinished(match, roomId);
         return;
       } else {
         // Puntos normales en auto-roll — bancar automáticamente
@@ -269,6 +304,7 @@ function _handleTimeout(roomId, broadcast) {
           playerId: alive[0].id, playerName: alive[0].name, dice: [],
           match: snapshotMatch(match)
         });
+        notifyFinished(match, roomId);
         return;
       }
     }
@@ -281,13 +317,14 @@ function _handleTimeout(roomId, broadcast) {
    API PÚBLICA
    ════════════════════════════════════════════════════════════ */
 
-function createMatch(room) {
+function createMatch(room, onFinished) {
   const match = createMatchState(room);
   match.status    = "playing";
   match.startedAt = Date.now();
   match.currentPlayerIndex = room.currentTurnIndex;
   startTurn(match);
   matches.set(room.id, match);
+  if (typeof onFinished === "function") finishHandlers.set(room.id, onFinished);
   pushHistory(match, "MATCH_STARTED", { firstPlayer: getCurrentPlayer(match)?.id });
   return match;
 }
@@ -306,7 +343,9 @@ function getMatch(roomId)     { return matches.get(roomId) || null; }
 
 function destroyMatch(roomId) {
   clearTurnTimer(roomId);
+  clearAutoBankTimer(roomId);
   advancing.delete(roomId);
+  finishHandlers.delete(roomId);
   matches.delete(roomId);
 }
 
@@ -332,6 +371,7 @@ function handleEntryRoll(roomId, playerId, broadcast) {
   const attemptsLeft = maxAttempts - cur.entryAttemptsUsed;
 
   if (isInstantWin(dice, cur.score)) {
+    cur.fiveOnes++;
     cur.score   = MAX_SCORE;
     cur.entered = true;
     setWinner(match, cur);
@@ -340,6 +380,7 @@ function handleEntryRoll(roomId, playerId, broadcast) {
     broadcast(roomId, "INSTANT_WIN", {
       playerId, playerName: cur.name, dice, match: snapshotMatch(match)
     });
+    notifyFinished(match, roomId);
     return { ok: true, event: "INSTANT_WIN", dice };
   }
 
@@ -408,6 +449,25 @@ function handleRoll(roomId, playerId, broadcast) {
   cur.lastRoll    = dice;
   cur.rollCount++;
 
+  const rolledFiveOnes = dice.length === TOTAL_DICE && dice.every(d => d === 1);
+  if (rolledFiveOnes) {
+    cur.fiveOnes++;
+    // Cinco 1s solo gana de inmediato si el puntaje bancado sigue en cero.
+    // Con cualquier puntaje previo, los 10.000 de la tirada provocaran bust.
+    if (isInstantWin(dice, cur.score)) {
+      cur.score = MAX_SCORE;
+      cur.turnPoints = 0;
+      setWinner(match, cur);
+      clearTurnTimer(roomId);
+      pushHistory(match, "INSTANT_WIN", { playerId, dice });
+      broadcast(roomId, "INSTANT_WIN", {
+        playerId, playerName: cur.name, dice, match: snapshotMatch(match)
+      });
+      notifyFinished(match, roomId);
+      return { ok: true, event: "INSTANT_WIN", dice };
+    }
+  }
+
   const { score: rollScore, scoringDice, allDiceScoring, straight } =
     calculateScore(dice);
 
@@ -449,10 +509,12 @@ function handleRoll(roomId, playerId, broadcast) {
       playerId, playerName: cur.name, dice, rollScore,
       match: snapshotMatch(match)
     });
+    notifyFinished(match, roomId);
     return { ok: true, event: "WIN", dice };
   }
 
-  // Dados calientes
+  // Dados calientes: si todos los dados vuelven a puntuar, el beneficio se
+  // encadena y habilita otro tiro completo, sin limite mientras siga ocurriendo.
   if (allDiceScoring) {
     cur.extraRolls++;
     cur.remainingDice = TOTAL_DICE;
@@ -471,13 +533,13 @@ function handleRoll(roomId, playerId, broadcast) {
     return { ok: true, event: "HOT_DICE", dice };
   }
 
-  // Tiro extra caliente → banco automático
+  // En un tiro extra caliente, una puntuacion parcial se muestra y luego se
+  // banca automaticamente. Una tirada muerta ya fue resuelta arriba y pierde
+  // todos los puntos acumulados del turno.
   if (cur.isHotDiceTurn) {
     cur.isHotDiceTurn = false;
     cur.mustStop      = true;
     cur.canContinue   = false;
-
-
     clearTurnTimer(roomId);
 
     broadcast(roomId, "ROLL_RESULT", {
@@ -487,14 +549,7 @@ function handleRoll(roomId, playerId, broadcast) {
       autoBank: true, match: snapshotMatch(match)
     });
 
-    // Banco inmediato (con yield al event loop para que el cliente procese ROLL_RESULT)
-    setTimeout(() => {
-      const m = matches.get(roomId);
-      if (!m || m.status !== "playing") return;
-      if (advancing.has(roomId)) return;
-      _bank(match, roomId, broadcast, false);
-    }, 0);
-
+    scheduleAutoBank(match, roomId, playerId, broadcast);
     return { ok: true, event: "ROLL_RESULT_AUTOBANK", dice };
   }
 
@@ -515,13 +570,7 @@ function handleRoll(roomId, playerId, broadcast) {
       autoBank: true, match: snapshotMatch(match)
     });
 
-    // Banco inmediato (con yield al event loop para que el cliente procese ROLL_RESULT)
-    setTimeout(() => {
-      const m = matches.get(roomId);
-      if (!m || m.status !== "playing") return;
-      if (advancing.has(roomId)) return;
-      _bank(match, roomId, broadcast, false);
-    }, 0);
+    scheduleAutoBank(match, roomId, playerId, broadcast);
 
     return { ok: true, event: "ROLL_RESULT_AUTOBANK", dice };
 

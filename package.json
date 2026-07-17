@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "test": "node scripts/smoke-test.js",
+    "test": "node scripts/game-rules-test.js && node scripts/smoke-test.js",
+    "test:rules": "node scripts/game-rules-test.js",
     "test:syntax": "node -c backend/server.js && node -c backend/database.js && node -c backend/authManager.js && node -c backend/gameEngine.js && node -c backend/roomManager.js && node -c backend/playerManager.js && node -c backend/diceManager.js && node -c backend/matchState.js && node -c backend/emailManager.js && node -c backend/paymentManager.js && node -c backend/pushManager.js && node -c backend/tournamentManager.js && node -c frontend/version.js && node -c frontend/dice-renderer.js && node -c frontend/audio.js && node -c frontend/app.js && node -c frontend/sw.js"
   },
   "dependencies": {

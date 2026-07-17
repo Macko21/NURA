@@ -43,7 +43,7 @@ const {
   snapshotMatch
 } = require("./diceManager");
 
-const { createPlayerState } = require("./matchState");
+const { createPlayerState, setWinner } = require("./matchState");
 const { register, login, requireAuth, requestPasswordReset } = require("./authManager");
 
 const {
@@ -1496,7 +1496,7 @@ async function checkIfGuest(playerId) {
 const _avatarIconCache = new Map();
 async function loadAvatarIconCache() {
   try {
-    const res = await pool.query("SELECT id, icon FROM shop_items WHERE category = 'avatares'");
+    const res = await pool.query("SELECT id, icon FROM shop_items WHERE category = 'avatares' OR id IN (34, 35)");
     for (const row of res.rows) {
       _avatarIconCache.set(String(row.id), row.icon);
     }
@@ -1509,7 +1509,9 @@ function resolveAvatarIcon(itemId) {
   if (!itemId) return '';
   const id = String(itemId);
   if (_avatarIconCache.has(id)) return _avatarIconCache.get(id);
-  const item = SHOP_CATALOG.find(i => i.id === parseInt(itemId) && i.category === 'avatares');
+  const item = SHOP_CATALOG.find(i =>
+    i.id === parseInt(itemId) && (i.category === 'avatares' || [34, 35].includes(i.id))
+  );
   return item ? item.icon : '';
 }
 
@@ -1531,7 +1533,29 @@ async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
 /* ── Post-victoria ───────────────────────────────────────── */
 async function onMatchWon(match, roomId) {
   const winner = match.winner;
-  if (!winner) return;
+  if (!winner || match.finalizing) return;
+  match.finalizing = true;
+
+  // Cerrar la partida y resetear la sala antes de tocar la base de datos.
+  // Asi el boton Revancha nunca compite con las recompensas o estadisticas.
+  const finalSnapshot = snapshotMatch(match);
+  const room = getRoom(roomId);
+  if (room) {
+    cancelReadyCountdown(roomId);
+    room.status = "waiting";
+    for (const p of room.players) {
+      p.ready   = false;
+      p.score   = 0;
+      p.entered = false;
+    }
+  }
+  broadcastRoom(roomId, "GAME_OVER", {
+    winner,
+    match: finalSnapshot,
+    room
+  });
+  destroyMatch(roomId);
+
   try {
     await registerWin(winner.id);
     
@@ -1568,13 +1592,7 @@ async function onMatchWon(match, roomId) {
     }
   } catch (e) { console.error("DB post-win:", e.message); }
 
-  broadcastRoom(roomId, "GAME_OVER", {
-    winner, match: snapshotMatch(match)
-  });
-  destroyMatch(roomId);
-
-  const room = getRoom(roomId);
-  if (room) {
+  if (room && room.status === "waiting") {
     // Limpiar invitados desconectados al terminar la partida
     for (const p of [...room.players]) {
       if (p.disconnected) {
@@ -1588,15 +1606,7 @@ async function onMatchWon(match, roomId) {
         } catch(e) {}
       }
     }
-    room.status = "waiting";
-    for (const p of room.players) {
-      p.ready   = false;
-      p.score   = 0;
-      p.entered = false;
-    }
-    setTimeout(() => {
-      broadcastRoom(roomId, "PLAY_AGAIN", { room });
-    }, 4000);
+    broadcastRoomState(roomId);
   }
 }
 
@@ -1613,10 +1623,17 @@ function eliminatePlayer(roomId, playerId) {
   if (match) {
     const winner = getAutomaticWinner(roomId);
     if (winner) {
-      broadcastRoom(roomId, "GAME_OVER", {
-        winner, match: snapshotMatch(match)
-      });
-      destroyMatch(roomId);
+      const matchWinner = match.players.find(p => p.id === winner.id);
+      if (matchWinner) {
+        setWinner(match, matchWinner);
+        broadcastRoom(roomId, "WIN", {
+          playerId: matchWinner.id,
+          playerName: matchWinner.name,
+          dice: [],
+          match: snapshotMatch(match)
+        });
+        void onMatchWon(match, roomId);
+      }
       return;
     }
   }
@@ -1625,9 +1642,10 @@ function eliminatePlayer(roomId, playerId) {
 
 /* ── Helper: iniciar match para una sala ─────────────────── */
 async function startMatchForRoom(roomId, triggerData) {
+  const room = getRoom(roomId);
+  if (!room || room.status !== "waiting") return null;
   const firstPlayer = startGame(roomId);
-  const room  = getRoom(roomId);
-  const match = createMatch(room);
+  const match = createMatch(room, onMatchWon);
   for (const p of match.players) {
     if (p.id) {
       try {
@@ -1716,6 +1734,7 @@ wss.on("connection", socket => {
         const { playerId, playerName, roomId } = data;
 
         socket.playerId = playerId;
+        socket.playerName = playerName || "Jugador";
         socket.roomId   = roomId || null;
         clients.set(playerId, socket);
 
@@ -1756,32 +1775,46 @@ wss.on("connection", socket => {
       /* ── ESTADO DE SALA ────────────────────────────────── */
       if (type === "GET_ROOM_STATE") {
         const room = getRoom(data.roomId);
-        if (room) send(socket, "PLAY_AGAIN", { room, immediate: !!data.immediate });
+        if (!room) {
+          send(socket, "ERROR", { message: "La sala ya no existe" });
+          return;
+        }
+        if (room.status !== "waiting") {
+          send(socket, "ERROR", { message: "La revancha todavia se esta preparando" });
+          return;
+        }
+        send(socket, "PLAY_AGAIN", { room, immediate: !!data.immediate });
         return;
       }
 
       /* ── CREAR SALA ────────────────────────────────────── */
       if (type === "CREATE_ROOM") {
         const playerName = data.playerName || socket.playerName || 'Jugador';
+        const ownerId = data.playerId || socket.playerId;
+        if (!ownerId) {
+          send(socket, "ERROR", { message: "No se pudo recuperar tu usuario" });
+          return;
+        }
         const room = createRoom({
-          ownerId:    data.playerId || socket.playerId,
+          ownerId,
           ownerName:  playerName,
           isPrivate:  data.isPrivate,
           maxPlayers: data.maxPlayers || 10
         });
         // Cargar items equipados del owner para que todos lo vean
         try {
-          const owner = room.players.find(p => p.id === data.playerId);
+          const owner = room.players.find(p => p.id === ownerId);
           if (owner) {
-            await loadEquippedToRoomPlayer(owner, data.playerId);
+            await loadEquippedToRoomPlayer(owner, ownerId);
             // Fallback: usar valores del frontend si la BD no tenía datos
             if (!owner.equippedAvatar && data.equippedAvatar) owner.equippedAvatar = data.equippedAvatar;
             if (!owner.equippedDice && data.equippedDice) owner.equippedDice = data.equippedDice;
             if (!owner.equippedSpecial && data.equippedSpecial) owner.equippedSpecial = data.equippedSpecial;
           }
         } catch(e) { console.error('Error loading owner equipped:', e.message); }
-        clients.set(data.playerId, socket);
-        socket.playerId = data.playerId;
+        clients.set(ownerId, socket);
+        socket.playerId = ownerId;
+        socket.playerName = playerName;
         socket.roomId   = room.id;
         send(socket, "ROOM_CREATED", { room });
         return;
@@ -1789,6 +1822,12 @@ wss.on("connection", socket => {
 
       /* ── UNIRSE ────────────────────────────────────────── */
       if (type === "JOIN_ROOM") {
+        const joiningPlayerId = data.playerId || socket.playerId;
+        const joiningPlayerName = String(data.playerName || socket.playerName || 'Jugador').trim() || 'Jugador';
+        if (!joiningPlayerId) {
+          send(socket, "ERROR", { message: "No se pudo recuperar tu usuario" });
+          return;
+        }
         const room = getRoomByCode(data.code);
         if (!room) {
           send(socket, "ERROR", { message: "Sala no encontrada" });
@@ -1796,11 +1835,11 @@ wss.on("connection", socket => {
         }
 
         // Buscar si ya está en la sala (por playerId)
-        const alreadyById = room.players.find(p => p.id === data.playerId);
+        const alreadyById = room.players.find(p => p.id === joiningPlayerId);
         if (alreadyById) {
           // Ya está — reconectar
           const match = getMatch(room.id);
-          doReconnect(socket, data.playerId, room, match || null);
+          doReconnect(socket, joiningPlayerId, room, match || null);
           return;
         }
 
@@ -1808,21 +1847,21 @@ wss.on("connection", socket => {
         // Si existe, reconectarlo en vez de crear uno nuevo
         const match = getMatch(room.id);
         const disconnectedSameName = room.players.find(p =>
-          p.name.toLowerCase() === data.playerName.toLowerCase() &&
+          String(p.name || '').toLowerCase() === joiningPlayerName.toLowerCase() &&
           p.disconnected === true
         );
         if (disconnectedSameName) {
-          console.log(`🔄 Reconectando por nombre: ${data.playerName} → ${disconnectedSameName.id}`);
+          console.log(`🔄 Reconectando por nombre: ${joiningPlayerName} → ${disconnectedSameName.id}`);
           // Actualizar el id del jugador al nuevo playerId del cliente
           const oldId = disconnectedSameName.id;
-          disconnectedSameName.id        = data.playerId;
+          disconnectedSameName.id        = joiningPlayerId;
           disconnectedSameName.connected  = true;
           disconnectedSameName.disconnected = false;
 
           // Actualizar en el match también
           if (match) {
             const mp = match.players.find(p => p.id === oldId);
-            if (mp) mp.id = data.playerId;
+            if (mp) mp.id = joiningPlayerId;
           }
 
           // Cancelar timer de eliminación del ID viejo
@@ -1832,7 +1871,7 @@ wss.on("connection", socket => {
             clients.delete(oldId);
           }
 
-          doReconnect(socket, data.playerId, room, match || null);
+          doReconnect(socket, joiningPlayerId, room, match || null);
           return;
         }
 
@@ -1843,16 +1882,16 @@ wss.on("connection", socket => {
 
         // Sala de espera: entrada normal
         if (room.status === "waiting") {
-          const safePlayerName = data.playerName || socket.playerName || 'Jugador';
-          const player = addPlayer(room.id, data.playerId, safePlayerName);
+          const player = addPlayer(room.id, joiningPlayerId, joiningPlayerName);
           // Cargar items equipados del jugador para que todos lo vean
-          await loadEquippedToRoomPlayer(player, data.playerId);
+          await loadEquippedToRoomPlayer(player, joiningPlayerId);
           // Fallback: usar valores del frontend si la BD no tenía datos
           if (!player.equippedAvatar && data.equippedAvatar) player.equippedAvatar = data.equippedAvatar;
           if (!player.equippedDice && data.equippedDice) player.equippedDice = data.equippedDice;
           if (!player.equippedSpecial && data.equippedSpecial) player.equippedSpecial = data.equippedSpecial;
-          clients.set(data.playerId, socket);
-          socket.playerId = data.playerId;
+          clients.set(joiningPlayerId, socket);
+          socket.playerId = joiningPlayerId;
+          socket.playerName = joiningPlayerName;
           socket.roomId   = room.id;
           send(socket, "JOIN_SUCCESS", { room, player });
           broadcastRoomState(room.id);
@@ -1867,9 +1906,9 @@ wss.on("connection", socket => {
           }
 
           const newPlayer = {
-            id:                data.playerId,
-            name:              data.playerName,
-            alias:             data.playerName + "#" + Math.floor(1000 + Math.random() * 9000),
+            id:                joiningPlayerId,
+            name:              joiningPlayerName,
+            alias:             joiningPlayerName + "#" + Math.floor(1000 + Math.random() * 9000),
             ready:             true,
             score:             0,
             entered:           false,
@@ -1883,7 +1922,7 @@ wss.on("connection", socket => {
           match.players.push(playerState);
           // Cargar items equipados y racha del jugador que se une
           try {
-            const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [data.playerId]);
+            const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [joiningPlayerId]);
             if (plRes.rows[0]) {
               playerState.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
               playerState.equippedDice = plRes.rows[0].equipped_dice || null;
@@ -1896,19 +1935,20 @@ wss.on("connection", socket => {
           if (!playerState.equippedAvatar && data.equippedAvatar) playerState.equippedAvatar = data.equippedAvatar;
           if (!playerState.equippedSpecial && data.equippedSpecial) playerState.equippedSpecial = data.equippedSpecial;
 
-          clients.set(data.playerId, socket);
-          socket.playerId = data.playerId;
+          clients.set(joiningPlayerId, socket);
+          socket.playerId = joiningPlayerId;
+          socket.playerName = joiningPlayerName;
           socket.roomId   = room.id;
 
           send(socket, "JOINED_ACTIVE_GAME", {
             room,
             match:    snapshotMatch(match),
-            playerId: data.playerId
+            playerId: joiningPlayerId
           });
 
           broadcastRoom(room.id, "PLAYER_JOINED_GAME", {
-            playerId:   data.playerId,
-            playerName: data.playerName,
+            playerId:   joiningPlayerId,
+            playerName: joiningPlayerName,
             match:      snapshotMatch(match)
           });
           return;
@@ -1922,7 +1962,15 @@ wss.on("connection", socket => {
 
       /* ── LISTO ─────────────────────────────────────────── */
       if (type === "PLAYER_READY") {
-        setReady(data.roomId, data.playerId, true);
+        const readyRoom = getRoom(data.roomId);
+        if (!readyRoom || readyRoom.status !== "waiting") {
+          send(socket, "ERROR", { message: "La sala no esta lista para comenzar" });
+          return;
+        }
+        if (!setReady(data.roomId, data.playerId, true)) {
+          send(socket, "ERROR", { message: "No se encontro tu jugador en la sala" });
+          return;
+        }
         broadcastRoomState(data.roomId);
         if (allPlayersReady(data.roomId)) {
           cancelReadyCountdown(data.roomId);

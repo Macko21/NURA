@@ -50,6 +50,9 @@ const DICE_MAX = 6;
 
 const TURN_TIMEOUT_MS = 15000;
 
+// Pausa para que el cliente muestre los puntos antes del banco automatico.
+const AUTO_BANK_DELAY_MS = 1600;
+
 const INACTIVITY_LIMIT = 3;
 
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -160,6 +163,8 @@ module.exports = {
   DICE_MAX,
 
   TURN_TIMEOUT_MS,
+
+  AUTO_BANK_DELAY_MS,
 
   INACTIVITY_LIMIT,
 

@@ -1039,7 +1039,9 @@ async function getAvatarUrl(playerId) {
   if (!res.rows[0]) return null;
   const avatarId = res.rows[0].equipped_avatar;
   if (!avatarId) return null;
-  const item = SHOP_CATALOG.find(i => i.id === parseInt(avatarId) && i.category === 'avatares');
+  const item = SHOP_CATALOG.find(i =>
+    i.id === parseInt(avatarId) && (i.category === 'avatares' || [34, 35].includes(i.id))
+  );
   return item ? item.icon : null;
 }
 

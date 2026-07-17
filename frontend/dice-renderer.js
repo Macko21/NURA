@@ -19,14 +19,14 @@ const DOT_POSITIONS = {
 const DICE_SKINS = {
   '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',       icon:'🎲' },
   '2':  { bg: ['#FF6B35','#E05020'], dot:'#fff',    sh:'#B03010', name:'Fuego',      icon:'🔥' },
-  '3':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',      icon:'💎' },
-  '4':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma',   icon:'👻' },
-  '5':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',      icon:'❄️' },
-  '6':  { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',      icon:'🔴' },
-  '7':  { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',    icon:'🏅' },
-  '8':  { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',  icon:'💚' },
-  '9':  { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',     icon:'🧟' },
-  '10': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris',   icon:'🌈' },
+  '4':  { bg: ['#B8D8F8','#88B8E8'], dot:'#1a2a4e', sh:'#6898C8', name:'Élite',      icon:'💎' },
+  '5':  { bg: ['#70E8FF','#10C0E0'], dot:'#003A4A', sh:'#0090B0', name:'Fantasma',   icon:'👻' },
+  '6':  { bg: ['#C8E8F8','#A8D0E8'], dot:'#1a3a4e', sh:'#78B0C8', name:'Hielo',      icon:'❄️' },
+  '18': { bg: ['#FF2222','#CC0000'], dot:'#fff',    sh:'#880000', name:'Láser',      icon:'🔴' },
+  '19': { bg: ['#FFD700','#DAA520'], dot:'#5a3a00', sh:'#B8860B', name:'Dorados',    icon:'🏅' },
+  '20': { bg: ['#50C878','#2EA85E'], dot:'#fff',    sh:'#1A7840', name:'Esmeralda',  icon:'💚' },
+  '21': { bg: ['#6B8E23','#4A6E10'], dot:'#d0d0a0', sh:'#2A4E00', name:'Zombie',     icon:'🧟' },
+  '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris',   icon:'🌈' },
   '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante',   icon:'💠' },
   '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos', icon:'🌌' },
 };
@@ -36,14 +36,14 @@ const DICE_SKINS = {
 const SHOP_DICE_PREVIEW = {
   '1':  { val: 5, label: '5 pts' },
   '2':  { val: 1, label: '100 pts' },
-  '3':  { val: 6, label: 'Dado de la suerte' },
-  '4':  { val: 3, label: 'Triple amenaza' },
-  '5':  { val: 4, label: 'Frío mortal' },
-  '6':  { val: 6, label: 'Precisión láser' },
-  '7':  { val: 5, label: '50 pts' },
-  '8':  { val: 2, label: 'Doble esmeralda' },
-  '9':  { val: 1, label: 'Mordida zombie' },
-  '10': { val: 5, label: 'Arcoíris total' },
+  '4':  { val: 6, label: 'Dado de la suerte' },
+  '5':  { val: 3, label: 'Triple amenaza' },
+  '6':  { val: 4, label: 'Frío mortal' },
+  '18': { val: 6, label: 'Precisión láser' },
+  '19': { val: 5, label: '50 pts' },
+  '20': { val: 2, label: 'Doble esmeralda' },
+  '21': { val: 1, label: 'Mordida zombie' },
+  '22': { val: 5, label: 'Arcoíris total' },
   '32': { val: 3, label: 'Brillo puro' },
   '33': { val: 6, label: 'Nebulosa cósmica' },
 };
@@ -156,10 +156,17 @@ function showDice(dice, mode) {
   row.innerHTML = '';
 
   let activeSkinId = null;
-  if (window.S && window.S.match && window.S.match.players && window.S.match.currentPlayerIndex !== undefined) {
-    const rollingPlayer = window.S.match.players[window.S.match.currentPlayerIndex];
+  let activeSpecialId = null;
+  // S es un binding global de app.js, pero los `const` globales no viven en
+  // window. Consultarlo directamente permite usar la skin del jugador que tira.
+  const gameState = typeof S !== 'undefined' ? S : null;
+  if (gameState?.match?.players && gameState.match.currentPlayerIndex !== undefined) {
+    const rollingPlayer = gameState.match.players[gameState.match.currentPlayerIndex];
     if (rollingPlayer && rollingPlayer.equippedDice) {
       activeSkinId = String(rollingPlayer.equippedDice);
+    }
+    if (rollingPlayer && rollingPlayer.equippedSpecial) {
+      activeSpecialId = String(rollingPlayer.equippedSpecial);
     }
   }
 
@@ -181,7 +188,7 @@ function showDice(dice, mode) {
     if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
     const die = makeDie(val, state, activeSkinId);
     die.style.animationDelay = (i * 55) + 'ms';
-    if (window.S && window.S.specialEquipped === '29' && mode !== 'dead') {
+    if (activeSpecialId === '29' && mode !== 'dead') {
       die.classList.add('magic-dice');
     }
     row.appendChild(die);
@@ -302,4 +309,8 @@ function createDicePreviewDiv(skinId, size = 'small') {
   container.appendChild(label);
 
   return container;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { DICE_SKINS, SHOP_DICE_PREVIEW };
 }
