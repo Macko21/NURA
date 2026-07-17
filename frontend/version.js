@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.6.0";
+const GAME_VERSION = "3.6.1";
 
 const CHANGELOG = [
+  // ═══ 3.6.1 — GAME ═══
+  {
+    version: "3.6.1",
+    date: "2026-07-16",
+    title: "🔔 Push invite + fijar puntaje 7000 + leave delegar + avatar init",
+    scope: "game",
+    files: ["frontend/app.js", "frontend/sw.js", "backend/server.js", "backend/pushManager.js", "backend/gameEngine.js"],
+    changes: [
+      "🔔 Fix: invitación push desde OS tray ahora funciona (WS offline → push notification)",
+      "🎲 Fix: puntaje máximo 7000 (5 seis = 7000, antes 6600)",
+      "🚪 Fix: dueño puede salir de sala sin cancelarla (delega al siguiente)",
+      "👤 Fix: avatar/skin cargado al primer ingreso (loadEquippedItems en IDENTIFIED)",
+      "📩 Fix: GAME_INVITE_ACCEPT con connection guard y playerId/playerName",
+      "🛡️ macko_equipped preservado en cache busting",
+    ]
+  },
   // ═══ 3.6.0 — GAME ═══
   {
     version: "3.6.0",

@@ -157,8 +157,21 @@ function _handleNotifAction(notifId, action) {
     wsSend('FRIEND_REJECT', { requestId: notif.data.requestId });
     toast('Solicitud rechazada', 'info');
   } else if (action === 'accept_invite' && notif.data) {
-    wsSend('GAME_INVITE_ACCEPT', { roomId: notif.data.roomId, roomCode: notif.data.roomCode });
-    toast('Uniéndote a la partida...', 'success');
+    const invitePayload = {
+      roomId: notif.data.roomId,
+      roomCode: notif.data.roomCode,
+      playerId: S.id,
+      playerName: getPlayerName()
+    };
+    if (S.ws?.readyState === WebSocket.OPEN) {
+      wsSend('GAME_INVITE_ACCEPT', invitePayload);
+      toast('Uniéndote a la partida...', 'success');
+    } else {
+      // Si no hay WS conectado, conectar y enviar después
+      toast('Conectando para unirte...', 2000);
+      _pendingInviteAccept = invitePayload;
+      connect();
+    }
   } else if (action === 'reject_invite' && notif.data) {
     wsSend('GAME_INVITE_REJECT', { inviteId: notif.data.inviteId, fromId: notif.data.fromId });
     toast('Invitación rechazada', 'info');
@@ -250,6 +263,23 @@ if ('serviceWorker' in navigator) {
           clearTimeout(_toastT);
           _toastT = setTimeout(() => el.classList.add('hidden'), 5000);
         }
+      }
+    }
+    if (msg.type === 'INVITE_RECEIVED' && msg.roomId) {
+      // Invitación a partida desde push notification (OS tray)
+      const invitePayload = {
+        roomId: msg.roomId,
+        roomCode: msg.roomCode || '',
+        playerId: S.id,
+        playerName: getPlayerName()
+      };
+      if (S.ws?.readyState === WebSocket.OPEN) {
+        wsSend('GAME_INVITE_ACCEPT', invitePayload);
+        toast('🎮 Uniéndote a la partida...', 'success');
+      } else {
+        toast('Conectando para unirte...', 2000);
+        _pendingInviteAccept = invitePayload;
+        connect();
       }
     }
     if (msg.type === 'SW_UPDATED') {
@@ -394,7 +424,7 @@ function checkCacheVersion() {
   const cachedVersion = localStorage.getItem(GAME_CACHE_KEY);
   if (cachedVersion !== appVersion) {
     // Nueva versión: limpiar todo lo que no sea sesión activa
-    const keptKeys = [AUTH_KEY, 'gameToken', SESSION_KEY, GAME_CACHE_KEY, 'macko_push'];
+    const keptKeys = [AUTH_KEY, 'gameToken', SESSION_KEY, GAME_CACHE_KEY, 'macko_push', 'macko_equipped'];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && !keptKeys.includes(key)) {
@@ -843,6 +873,7 @@ function sendGameInvite(targetId, targetName) {
 let _winShown = false;
 let _gameOverShown = false;
 let _rematchInProgress = false; // Evita doble PLAY_AGAIN
+let _pendingInviteAccept = null; // Invitación aceptada pendiente de conexión WS
 
 // Sistema de vidas por timeout (5 vidas, auto-roll al expirar turno)
 const MAX_LIVES = 5;
@@ -853,10 +884,21 @@ function handle(type, data) {
   switch(type) {
 
     case 'IDENTIFIED':
+      // Si hay invitación pendiente, enviarla ahora que estamos conectados
+      if (_pendingInviteAccept) {
+        const p = _pendingInviteAccept;
+        _pendingInviteAccept = null;
+        wsSend('GAME_INVITE_ACCEPT', p);
+        toast('Uniéndote a la partida...', 'success');
+      }
       // Si había un joiningRoom pendiente, puede reintentar
       if (S.joiningRoom) {
         S.joiningRoom = false;
         resetJoinBtn();
+      }
+      // Cargar items equipados desde el servidor ahora que hay conexión WS
+      if (isLogged()) {
+        loadEquippedItems();
       }
       break;
 
@@ -970,11 +1012,17 @@ function handle(type, data) {
       renderRoom(data.room);
       // Actualizar ownership: el primer jugador es el dueño de la sala
       S.isOwner = data.room.players[0]?.id === S.id;
+      const hasOthers = data.room.players.length > 1;
       if ($('btn-cancel-room')) {
+        // Cancelar sala: solo el dueño cuando hay otros jugadores (o solo)
         $('btn-cancel-room').classList.toggle('hidden', !S.isOwner);
       }
       if ($('btn-leave-room')) {
-        $('btn-leave-room').classList.toggle('hidden', S.isOwner);
+        // Salir: el dueño también puede dejar la sala sin cancelarla (si hay otros)
+        // Si está solo, se esconde para que use Cancelar sala
+        $('btn-leave-room').classList.toggle('hidden', S.isOwner && !hasOthers);
+        // El texto cambia según el rol
+        $('btn-leave-room').textContent = S.isOwner ? 'Salir (delegar dueño)' : 'Salir de la sala';
       }
       break;
 
@@ -4137,6 +4185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (inp) inp.value = session.name || '';
     
     if(isLogged()){
+      loadEquippedCache(); // Carga instantánea desde localStorage
       showScreen('screen-lobby');
     } else {
       showScreen('screen-auth');

@@ -412,10 +412,11 @@ app.post("/api/games/invite", requireAuth, async (req, res) => {
     // Enviar notificación WebSocket al jugador objetivo
     const targetSock = clients.get(targetPlayerId);
     const fromPlayer = await getUserProfile(req.user.userId);
+    const inviterName = fromPlayer?.alias || req.user.username;
     if (targetSock && targetSock.readyState === WebSocket.OPEN) {
       send(targetSock, 'GAME_INVITE', {
         inviteId: Date.now().toString(),
-        fromName: fromPlayer?.alias || req.user.username,
+        fromName: inviterName,
         fromAvatar: fromPlayer?.equipped_avatar || '👤',
         roomId: room.id,
         roomCode: room.code,
@@ -423,8 +424,32 @@ app.post("/api/games/invite", requireAuth, async (req, res) => {
         maxPlayers: room.maxPlayers
       });
       res.json({ success: true, sent: true });
+    } else if (isPushReady()) {
+      // Jugador no conectado — enviar push notification con datos de invitación
+      let pushSent = false;
+      try {
+        const subRes = await pool.query(
+          `SELECT subscription FROM push_subscriptions WHERE player_id = $1`,
+          [targetPlayerId]
+        );
+        if (subRes.rows[0]) {
+          const sub = typeof subRes.rows[0].subscription === 'string'
+            ? JSON.parse(subRes.rows[0].subscription)
+            : subRes.rows[0].subscription;
+          await sendPushNotification(
+            sub,
+            `🎮 ${inviterName} te invitó a jugar`,
+            `Unite a la partida (${room.players.length}/${room.maxPlayers} jugadores)`,
+            '/',
+            { action: 'game_invite', roomId: room.id, roomCode: room.code }
+          );
+          pushSent = true;
+        }
+      } catch(e) {
+        console.error('Error sending push invite:', e.message);
+      }
+      res.json({ success: true, sent: false, offline: true, pushSent });
     } else {
-      // Jugador no conectado - enviar push si tiene suscripción
       res.json({ success: true, sent: false, offline: true });
     }
   } catch (err) {
@@ -2032,38 +2057,83 @@ wss.on("connection", socket => {
         );
         const room = rooms.get(roomId);
         const targetSock = clients.get(targetId);
+        const inviterName = fromProfile?.alias || data.playerName || 'Jugador';
         if (targetSock && targetSock.readyState === WebSocket.OPEN) {
           send(targetSock, 'GAME_INVITE', {
             inviteId: Date.now().toString(),
             fromId: data.playerId,
-            fromName: fromProfile?.alias || data.playerName || 'Jugador',
+            fromName: inviterName,
             fromAvatar: fromProfile?.equipped_avatar || '👤',
             roomId,
             roomCode: roomCode || room?.code || '',
             playerCount: room?.players?.length || 0,
             maxPlayers: room?.maxPlayers || 10
           });
+        } else if (isPushReady()) {
+          // Target offline: enviar push notification con datos de invitación
+          try {
+            const subRes = await pool.query(
+              `SELECT subscription FROM push_subscriptions WHERE player_id = $1`,
+              [targetId]
+            );
+            if (subRes.rows[0]) {
+              const sub = typeof subRes.rows[0].subscription === 'string'
+                ? JSON.parse(subRes.rows[0].subscription)
+                : subRes.rows[0].subscription;
+              const playerCount = room?.players?.length || 0;
+              const maxPlayers = room?.maxPlayers || 10;
+              await sendPushNotification(
+                sub,
+                `🎮 ${inviterName} te invitó a jugar`,
+                `Unite a la partida (${playerCount}/${maxPlayers} jugadores)`,
+                '/',
+                { action: 'game_invite', roomId, roomCode: roomCode || room?.code || '' }
+              );
+            }
+          } catch(e) {
+            console.error('Error sending push invite:', e.message);
+          }
         }
         send(socket, 'GAME_INVITE_SENT', { targetId });
         return;
       }
 
       if (type === "GAME_INVITE_ACCEPT") {
-        const { roomId, roomCode } = data;
+        const { roomId, roomCode, playerId: dataPlayerId, playerName: dataPlayerName } = data;
         const room = rooms.get(roomId);
         if (!room) { send(socket, 'ERROR', { message: 'Sala no encontrada' }); return; }
         if (room.players.length >= room.maxPlayers) {
           send(socket, 'ERROR', { message: 'Sala llena' }); return;
         }
-        // Unir al jugador a la sala (usar socket.playerId/playerName para evitar undefined)
-        const invPlayerId = data.playerId || socket.playerId;
-        const invPlayerName = data.playerName || socket.playerName;
-        if (!invPlayerId || !invPlayerName) {
+        // Verificar si el jugador ya está en la sala (reconexión)
+        const alreadyInRoom = room.players.find(p => p.id === dataPlayerId || p.id === socket.playerId);
+        if (alreadyInRoom) {
+          // Ya está — reconectar en vez de duplicar
+          clients.set(alreadyInRoom.id, socket);
+          socket.playerId = alreadyInRoom.id;
+          socket.roomId = roomId;
+          send(socket, 'JOIN_SUCCESS', { room });
+          broadcastRoomState(roomId);
+          return;
+        }
+        // Unir al jugador a la sala (usar data enviada desde el frontend primero, luego socket)
+        const invPlayerId = dataPlayerId || socket.playerId;
+        const safePlayerName = dataPlayerName || socket.playerName || 'Jugador';
+        if (!invPlayerId) {
           send(socket, 'ERROR', { message: 'Datos de jugador incompletos' }); return;
         }
-        const newPlayer = addPlayer(roomId, invPlayerId, invPlayerName);
+        let newPlayer;
+        try {
+          newPlayer = addPlayer(roomId, invPlayerId, safePlayerName);
+        } catch (e) {
+          send(socket, 'ERROR', { message: e.message || 'Error al unirse a la sala' }); return;
+        }
         if (newPlayer) {
           await loadEquippedToRoomPlayer(newPlayer, invPlayerId);
+          // Fallback: usar valores del frontend si la BD no tenía datos
+          if (!newPlayer.equippedAvatar && data.equippedAvatar) newPlayer.equippedAvatar = data.equippedAvatar;
+          if (!newPlayer.equippedDice && data.equippedDice) newPlayer.equippedDice = data.equippedDice;
+          if (!newPlayer.equippedSpecial && data.equippedSpecial) newPlayer.equippedSpecial = data.equippedSpecial;
           clients.set(invPlayerId, socket);
           socket.playerId = invPlayerId;
           socket.roomId = roomId;

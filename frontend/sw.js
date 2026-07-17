@@ -11,7 +11,7 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '3.6.0';
+const GAME_VERSION = '3.6.1';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [
@@ -83,7 +83,12 @@ self.addEventListener('push', event => {
       body: data.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      data: { url: data.url || '/' },
+      data: {
+        url: data.url || '/',
+        action: data.action || null,
+        roomId: data.roomId || null,
+        roomCode: data.roomCode || null
+      },
       vibrate: [200, 100, 200],
       timestamp: data.timestamp || Date.now()
     };
@@ -97,7 +102,10 @@ self.addEventListener('push', event => {
               title: title,
               body: data.body || '',
               url: data.url || '/',
-              timestamp: data.timestamp || Date.now()
+              timestamp: data.timestamp || Date.now(),
+              action: data.action || null,
+              roomId: data.roomId || null,
+              roomCode: data.roomCode || null
             });
           });
         });
@@ -113,20 +121,44 @@ self.addEventListener('push', event => {
   }
 });
 
-/* ── Click en notificación: redirigir a la URL ──────── */
+/* ── Click en notificación: redirigir a la URL + pasar datos a la app ── */
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const url = event.notification.data?.url || '/';
+  const nd = event.notification.data || {};
+  const url = nd.url || '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) {
         if (client.url.includes(location.host) && 'focus' in client) {
           client.focus();
+          // Si la invitación tiene datos, avisar a la app
+          if (nd.action === 'game_invite' && nd.roomId) {
+            client.postMessage({
+              type: 'INVITE_RECEIVED',
+              roomId: nd.roomId,
+              roomCode: nd.roomCode || ''
+            });
+          }
           if (url !== '/') client.navigate(url);
           return;
         }
       }
-      if (clients.openWindow) clients.openWindow(url);
+      if (clients.openWindow) {
+        clients.openWindow(url).then(newWin => {
+          // Si se abrió una nueva ventana y hay datos de invitación, esperar y postear
+          if (newWin && nd.action === 'game_invite' && nd.roomId) {
+            setTimeout(() => {
+              try {
+                newWin.postMessage({
+                  type: 'INVITE_RECEIVED',
+                  roomId: nd.roomId,
+                  roomCode: nd.roomCode || ''
+                }, '*');
+              } catch(e) {}
+            }, 2000);
+          }
+        });
+      }
     })
   );
 });

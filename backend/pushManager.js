@@ -41,14 +41,15 @@ function getVapidPublicKey() {
   return VAPID_PUBLIC_KEY || "";
 }
 
-async function sendPushNotification(subscription, title, body, url) {
+async function sendPushNotification(subscription, title, body, url, extraData) {
   if (!vapidReady) return { success: false, error: "Push no configurado" };
   try {
     const payload = JSON.stringify({
       title,
       body,
       url: url || "/",
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...(extraData || {})
     });
     await webPush.sendNotification(subscription, payload);
     return { success: true };
