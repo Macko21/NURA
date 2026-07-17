@@ -29,9 +29,15 @@ const S = {
   specialEquipped: null  // ID del item especial equipado
 };
 
+function getInitial(name) {
+  const match = String(name || '').trim().match(/[\p{L}\p{N}]/u);
+  return match ? match[0].toLocaleUpperCase('es-AR') : '?';
+}
+
 /* ── Sistema de notificaciones ───────────────────────── */
 let _notifications = [];
 const MAX_NOTIFICATIONS = 50;
+const NOTIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 function addNotification(title, message, type, extra) {
   type = type || 'broadcast';
@@ -47,6 +53,7 @@ function addNotification(title, message, type, extra) {
     msg: message,
     type: type,
     ts: extra.timestamp || now,
+    expiresAt: extra.expiresAt || now + NOTIFICATION_TTL_MS,
     read: false,
     actions: extra.actions || null,
     data: extra.notifData || null
@@ -61,6 +68,7 @@ function _saveNotifs() {
 }
 
 function _loadNotifs() {
+  let originalCount = 0;
   try {
     // Cargar del key nuevo, o migrar del viejo
     let raw = localStorage.getItem('macko_notifs');
@@ -72,6 +80,8 @@ function _loadNotifs() {
       }
     }
     _notifications = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(_notifications)) _notifications = [];
+    originalCount = Array.isArray(_notifications) ? _notifications.length : 0;
   } catch(e) { _notifications = []; }
   // Limpiar formato viejo
   let changed = false;
@@ -80,9 +90,10 @@ function _loadNotifs() {
     if (typeof n !== 'object') return false;
     if (!n.msg && n.message) { n.msg = n.message; delete n.message; changed = true; }
     if (!n.ts && n.timestamp) { n.ts = n.timestamp; delete n.timestamp; changed = true; }
-    return n.msg;
+    const ts = Number(n.ts) || 0;
+    return n.msg && ts > 0 && (Number(n.expiresAt) || ts + NOTIFICATION_TTL_MS) > Date.now();
   });
-  if (changed) _saveNotifs();
+  if (changed || _notifications.length !== originalCount) _saveNotifs();
   _updateBadge();
 }
 
@@ -147,6 +158,21 @@ function _timeAgo(ts) {
   return new Date(num).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
+async function _deleteNotification(notifId, syncServer) {
+  _notifications = _notifications.filter(n => n.id !== notifId);
+  _saveNotifs();
+  _updateBadge();
+  renderNotifPanel();
+  if (syncServer && isLogged()) {
+    try {
+      await fetch('/api/notifications/' + encodeURIComponent(notifId), {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('gameToken') }
+      });
+    } catch(e) {}
+  }
+}
+
 function _handleNotifAction(notifId, action) {
   const notif = _notifications.find(n => n.id === notifId);
   if (!notif) return;
@@ -158,6 +184,7 @@ function _handleNotifAction(notifId, action) {
     toast('Solicitud rechazada', 'info');
   } else if (action === 'accept_invite' && notif.data) {
     const invitePayload = {
+      inviteId: notif.data.inviteId || notifId,
       roomId: notif.data.roomId,
       roomCode: notif.data.roomCode,
       playerId: S.id,
@@ -176,10 +203,14 @@ function _handleNotifAction(notifId, action) {
     wsSend('GAME_INVITE_REJECT', { inviteId: notif.data.inviteId, fromId: notif.data.fromId });
     toast('Invitación rechazada', 'info');
   }
-  notif.read = true;
-  _saveNotifs();
-  _updateBadge();
-  renderNotifPanel();
+  const removeNow = action === 'accept_invite' || action === 'reject_invite' || action === 'accept_friend' || action === 'reject_friend';
+  if (removeNow) void _deleteNotification(notifId, notif.type === 'game_invite');
+  else {
+    notif.read = true;
+    _saveNotifs();
+    _updateBadge();
+    renderNotifPanel();
+  }
 }
 
 /* Cargar notificaciones del servidor (broadcasts recientes) */
@@ -192,29 +223,36 @@ async function loadServerNotifications() {
     });
     if (!res.ok) return;
     const data = await res.json();
-    const notifications = data.notifications;
-    if (!notifications || !notifications.length) return;
-    const existingMsgs = new Set(_notifications.map(n => n.msg));
+    const notifications = data.notifications || [];
+    const existingIds = new Set(_notifications.map(n => String(n.id)));
     let added = 0;
     for (const n of notifications) {
-      if (!existingMsgs.has(n.message)) {
+      const id = String(n.id);
+      if (!existingIds.has(id)) {
+        const isInvite = n.type === 'game_invite';
         _notifications.unshift({
-          id: 'srv_' + new Date(n.created_at).getTime(),
-          title: n.username || '📢 CEO',
+          id,
+          title: n.title || (n.type === 'broadcast' ? '📢 Anuncio' : 'Notificación'),
           msg: n.message,
-          type: 'broadcast',
-          ts: new Date(n.created_at).getTime(),
-          read: true
+          type: n.type || 'broadcast',
+          ts: Number(n.created_at) || Date.now(),
+          expiresAt: Number(n.expires_at) || Date.now() + NOTIFICATION_TTL_MS,
+          read: !!n.read,
+          actions: isInvite ? [
+            { label: 'Unirse', action: 'accept_invite', style: 'notif-accept' },
+            { label: 'Rechazar', action: 'reject_invite', style: 'notif-reject' }
+          ] : null,
+          data: n.data || null
         });
+        existingIds.add(id);
         added++;
       }
     }
-    if (added > 0) {
-      _notifications.sort((a, b) => b.ts - a.ts);
-      if (_notifications.length > MAX_NOTIFICATIONS) _notifications.length = MAX_NOTIFICATIONS;
-      _saveNotifs();
-      _updateBadge();
-    }
+    _notifications = _notifications.filter(n => (Number(n.expiresAt) || Number(n.ts) + NOTIFICATION_TTL_MS) > Date.now());
+    _notifications.sort((a, b) => b.ts - a.ts);
+    if (_notifications.length > MAX_NOTIFICATIONS) _notifications.length = MAX_NOTIFICATIONS;
+    _saveNotifs();
+    _updateBadge();
   } catch(e) {}
 }
 let _playAgainTimer  = null;
@@ -228,8 +266,16 @@ if ('serviceWorker' in navigator) {
       console.log('SW registrado:', reg.scope);
       _swRegistration = reg;
       void checkPushStatus();
-      // Forzar chequeo de actualización del SW en cada carga
-      setTimeout(() => reg.update(), 2000);
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdatePrompt(_availableVersion || 'nueva');
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdatePrompt(_availableVersion || 'nueva');
+          }
+        });
+      });
+      setTimeout(() => { reg.update(); checkUpdateIndicator(); }, 1500);
     }).catch(err => {
       console.warn('SW error:', err);
     });
@@ -242,6 +288,17 @@ if ('serviceWorker' in navigator) {
     const msg = event.data;
     if (!msg || !msg.type) return;
     if (msg.type === 'PUSH_RECEIVED') {
+      if (msg.action === 'game_invite' && msg.inviteId) {
+        addNotification(msg.title || 'Invitación', msg.body || 'Te invitaron a una partida', 'game_invite', {
+          id: String(msg.inviteId),
+          timestamp: msg.timestamp,
+          actions: [
+            { label: 'Unirse', action: 'accept_invite', style: 'notif-accept' },
+            { label: 'Rechazar', action: 'reject_invite', style: 'notif-reject' }
+          ],
+          notifData: { roomId: msg.roomId, roomCode: msg.roomCode, inviteId: msg.inviteId, fromId: msg.fromId }
+        });
+      }
       // Mostrar badge en el botón de torneos
       const badge = document.getElementById('tournament-push-badge');
       if (badge) {
@@ -270,6 +327,7 @@ if ('serviceWorker' in navigator) {
     if (msg.type === 'INVITE_RECEIVED' && msg.roomId) {
       // Invitación a partida desde push notification (OS tray)
       const invitePayload = {
+        inviteId: msg.inviteId || '',
         roomId: msg.roomId,
         roomCode: msg.roomCode || '',
         playerId: S.id,
@@ -285,8 +343,7 @@ if ('serviceWorker' in navigator) {
       }
     }
     if (msg.type === 'SW_UPDATED') {
-      toast('🔄 Nueva versión ' + msg.version + ' disponible. Actualizando...', 3000);
-      setTimeout(() => window.location.reload(), 1500);
+      if (_appUpdateInProgress) window.location.replace('/?updated=' + Date.now());
     }
   });
 }
@@ -461,10 +518,10 @@ function checkCacheVersion() {
   const appVersion = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : '0.0.0';
   const cachedVersion = localStorage.getItem(GAME_CACHE_KEY);
   if (cachedVersion !== appVersion) {
+    if (cachedVersion) sessionStorage.setItem('macko_show_changelog_after_update', '1');
     // Nueva versión: limpiar todo lo que no sea sesión activa
-    const keptKeys = [AUTH_KEY, 'gameToken', SESSION_KEY, GAME_CACHE_KEY, 'macko_push', 'macko_equipped'];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    const keptKeys = [AUTH_KEY, 'gameToken', SESSION_KEY, GAME_CACHE_KEY, 'macko_push', 'macko_equipped', 'macko_notifs', 'game_last_seen_version'];
+    for (const key of Object.keys(localStorage)) {
       if (key && !keptKeys.includes(key)) {
         localStorage.removeItem(key);
       }
@@ -735,7 +792,7 @@ function updateUserPanel(name, coins) {
       lobbyAv.textContent = S.avatarEquipped;
       lobbyAv.classList.add('avatar-icon');
     } else {
-      lobbyAv.textContent = name.charAt(0).toUpperCase();
+      lobbyAv.textContent = getInitial(name);
       lobbyAv.classList.remove('avatar-icon');
     }
     // Marco Premium en avatar del lobby
@@ -748,8 +805,6 @@ function updateUserPanel(name, coins) {
     // Mostrar botón de notificaciones
     const notifWrapper = document.querySelector('.notif-wrapper');
     if (notifWrapper) notifWrapper.classList.remove('hidden');
-    $('btn-changelog-outside')?.classList.remove('hidden');
-    $('btn-check-update')?.classList.remove('hidden');
     $('btn-logout')?.classList.add('hidden'); // ocultar el viejo del form
   } else {
     // No logueado: ocultar topbar, mostrar campo nombre
@@ -758,8 +813,6 @@ function updateUserPanel(name, coins) {
     const notifWrapper = document.querySelector('.notif-wrapper');
     if (notifWrapper) notifWrapper.classList.add('hidden');
     $('btn-back-to-auth')?.classList.remove('hidden');
-    $('btn-changelog-outside')?.classList.remove('hidden');
-    $('btn-check-update')?.classList.remove('hidden');
     $('guest-name-field').classList.remove('hidden');
   }
 }
@@ -1381,7 +1434,7 @@ function handle(type, data) {
       showDice(data.dice,'all');
       stopTimer();
       const winP = S.match.players.find(p => p.id === data.playerId);
-      showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice, winP?.equippedDice || null);
+      showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
       SFX.win();
       break;
     }
@@ -1396,7 +1449,7 @@ function handle(type, data) {
       showDice(data.dice,'all');
       stopTimer();
       const winP = S.match.players.find(p => p.id === data.playerId);
-      showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice, winP?.equippedDice || null);
+      showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
       SFX.win();
       break;
     }
@@ -1416,11 +1469,15 @@ function handle(type, data) {
       const winSkin = winnerId && S.match 
         ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
         : null;
+      const winSpecial = winnerId && S.match
+        ? (S.match.players.find(p => p.id === winnerId)?.equippedSpecial || null)
+        : null;
       showWin(
         data.winner?.alias||data.winner?.name||'?',
         `Ganó la partida con ${data.winner?.score} puntos`,
         [],
-        winSkin
+        winSkin,
+        winSpecial
       );
       SFX.win();
       break;
@@ -1506,7 +1563,7 @@ function handle(type, data) {
     case 'GAME_INVITE':
       toast(`🎮 ${data.fromName} te invitó a jugar`, 6000);
       addNotification(`${data.fromName}`, `Te invitó a una partida (${data.playerCount}/${data.maxPlayers} jugadores)`, 'game_invite', {
-        id: 'gi_' + data.inviteId,
+        id: String(data.inviteId),
         actions: [
           { label: 'Unirse', action: 'accept_invite', style: 'notif-accept' },
           { label: 'Rechazar', action: 'reject_invite', style: 'notif-reject' }
@@ -1525,7 +1582,7 @@ function handle(type, data) {
 
     /* ── Chat de sala ─────────────────────────────────── */
     case 'CHAT_MESSAGE':
-      addChat(data.playerName, data.message);
+      addChat(data.playerName, data.message, data.equippedSpecial);
       SFX.chat();
       break;
 
@@ -1607,6 +1664,7 @@ function renderRoom(room) {
     d.className = 'p-item';
     let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
     // Mostrar avatar equipado para TODOS los jugadores (se carga desde BD al unirse)
+    avContent = esc(getInitial(p.name));
     if (p.equippedAvatar) {
       avContent = esc(p.equippedAvatar);
     } else if (p.id === S.id && S.avatarEquipped) {
@@ -1693,7 +1751,7 @@ function renderSB(match) {
     }
     const yoTag = isMe ? '<span class="sc-yo">YO</span>' : '';
     // Mostrar avatar equipado (del match state para todos, o local si es el jugador actual)
-    let avContent = esc(p.name ? p.name.charAt(0).toUpperCase() : '?');
+    let avContent = esc(getInitial(p.name));
     if (p.equippedAvatar) {
       avContent = esc(p.equippedAvatar);
     } else if (isMe && S.avatarEquipped) {
@@ -1799,12 +1857,12 @@ function updateTurnUI(match) {
 }
 
 /* ── Chat ────────────────────────────────────────────── */
-function addChat(name, text) {
+function addChat(name, text, equippedSpecial) {
   const msgs = $('chat-msgs');
   const d    = document.createElement('div');
   d.className = 'cm';
   // Nick Dorado: si el que habla tiene el item especial 28 equipado, su nombre brilla
-  const hasNickDorado = S.specialEquipped === '28';
+  const hasNickDorado = String(equippedSpecial || '') === '28';
   const nameStyle = hasNickDorado ? ' style="color:var(--gold2);text-shadow:0 0 8px rgba(212,175,55,.4)"' : '';
   d.innerHTML = `<span class="cn"${nameStyle}>${esc(name)}</span>: ${esc(text)}`;
   msgs.appendChild(d);
@@ -2495,17 +2553,16 @@ async function loadLobbyMissions() {
     $('lobby-missions-desktop')?.classList.add('hidden');
     return;
   }
+  const desktopList = $('lobby-missions-list-desktop');
+  $('lobby-missions-desktop')?.classList.remove('hidden');
+  if (desktopList) desktopList.innerHTML = '<div class="lobby-missions-state">Cargando misiones...</div>';
   try {
     const res = await fetch('/api/user/missions', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    if (!res.ok) { 
-      $('btn-missions-mobile')?.classList.add('hidden');
-      $('lobby-missions-desktop')?.classList.add('hidden');
-      return;
-    }
+    if (!res.ok) throw new Error('No se pudieron cargar las misiones');
     const { missions } = await res.json();
-    const dailies = missions.filter(m => m.type === 'daily');
+    const dailies = (Array.isArray(missions) ? missions : []).filter(m => m.type === 'daily');
     if (!dailies.length) { 
       $('btn-missions-mobile')?.classList.add('hidden');
       $('lobby-missions-desktop')?.classList.add('hidden');
@@ -2528,14 +2585,14 @@ async function loadLobbyMissions() {
     // Móvil: mostrar botón que abre modal de misiones
     $('btn-missions-mobile')?.classList.remove('hidden');
     // Desktop: poblar tarjeta de misiones
-    const desktopList = $('lobby-missions-list-desktop');
     if (desktopList) { 
       desktopList.innerHTML = html;
       $('lobby-missions-desktop')?.classList.remove('hidden');
     }
   } catch(e) { 
-    $('btn-missions-mobile')?.classList.add('hidden');
-    $('lobby-missions-desktop')?.classList.add('hidden');
+    $('btn-missions-mobile')?.classList.remove('hidden');
+    $('lobby-missions-desktop')?.classList.remove('hidden');
+    if (desktopList) desktopList.innerHTML = '<button class="missions-retry" onclick="loadLobbyMissions()">Reintentar</button>';
   }
 }
 
@@ -2555,6 +2612,9 @@ function openMissionTab() {
 
 // ── Indicador visual de nuevas versiones (lobby) ─────
 const GAME_LAST_SEEN_KEY = 'game_last_seen_version';
+let _availableVersion = null;
+let _appUpdateInProgress = false;
+let _updatePromptOpen = false;
 
 function compareVersions(a, b) {
   const pa = a.split('.').map(Number);
@@ -2566,29 +2626,74 @@ function compareVersions(a, b) {
 }
 
 function checkUpdateIndicator() {
-  const btn = document.getElementById('btn-changelog-outside');
-  if (!btn) return;
-  fetch('/api/version').then(r => r.json()).then(d => {
+  fetch('/api/version?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).then(d => {
     if (!d.version) return;
-    const currentVersion = d.version;
-    const lastSeen = localStorage.getItem(GAME_LAST_SEEN_KEY);
-    // Actualizar texto del botón con la versión real del server
-    btn.textContent = '📋 v' + currentVersion;
-    // Badge si hay versión nueva no vista
-    if (!lastSeen || compareVersions(currentVersion, lastSeen) > 0) {
-      let badge = btn.querySelector('.game-update-badge');
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'game-update-badge';
-        btn.appendChild(badge);
-      }
-      btn.title = '📢 ¡Nueva versión disponible!';
-    } else {
-      btn.title = 'Versiones';
-      const badge = btn.querySelector('.game-update-badge');
-      if (badge) badge.remove();
+    const localVersion = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : '0.0.0';
+    if (compareVersions(d.version, localVersion) > 0) {
+      _availableVersion = d.version;
+      $('btn-user-update')?.classList.add('has-update');
+      showUpdatePrompt(d.version);
     }
   }).catch(() => {});
+}
+
+function showUpdatePrompt(version) {
+  if (_updatePromptOpen || _appUpdateInProgress || !navigator.serviceWorker?.controller) return;
+  _updatePromptOpen = true;
+  const overlay = document.createElement('div');
+  overlay.className = 'app-update-overlay';
+  overlay.innerHTML = `<div class="app-update-card">
+    <div class="app-update-icon">🔄</div>
+    <h2>Nueva versión ${esc(String(version || ''))}</h2>
+    <p>Actualizá primero para cargar todos los cambios. Después vas a ver las notas de la versión.</p>
+    <button class="btn btn-gold" id="btn-apply-update">Actualizar ahora</button>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#btn-apply-update').onclick = () => performAppUpdate(version);
+}
+
+async function performAppUpdate(version, manual = false) {
+  if (_appUpdateInProgress) return;
+  _appUpdateInProgress = true;
+  sessionStorage.setItem('macko_show_changelog_after_update', '1');
+  toast(manual ? '🔄 Actualizando la aplicación...' : `🔄 Instalando versión ${version || ''}...`, 5000);
+  document.querySelector('#btn-apply-update')?.setAttribute('disabled', 'disabled');
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(k => k.startsWith('macko-')).map(k => caches.delete(k)));
+    }
+    const reg = _swRegistration || await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.update();
+      let waiting = reg.waiting;
+      if (!waiting && reg.installing) {
+        await new Promise(resolve => {
+          const worker = reg.installing;
+          const done = () => {
+            if (worker.state === 'installed' || worker.state === 'activated' || worker.state === 'redundant') resolve();
+          };
+          worker.addEventListener('statechange', done);
+          setTimeout(resolve, 5000);
+        });
+        waiting = reg.waiting;
+      }
+      if (waiting) {
+        let changed = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (changed) return;
+          changed = true;
+          window.location.replace('/?updated=' + Date.now());
+        }, { once: true });
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+        setTimeout(() => { if (!changed) window.location.replace('/?updated=' + Date.now()); }, 4000);
+        return;
+      }
+    }
+  } catch(e) {
+    console.warn('No se pudo activar el nuevo Service Worker:', e);
+  }
+  window.location.replace('/?updated=' + Date.now());
 }
 
 let _globalChatMessages = [];
@@ -2613,10 +2718,7 @@ async function loadChangelog() {
         // Marcar como vista la versión actual (quitar badge)
     if (data.version) {
       localStorage.setItem(GAME_LAST_SEEN_KEY, data.version);
-      const badge = document.getElementById('btn-changelog-outside')?.querySelector('.game-update-badge');
-      if (badge) badge.remove();
-      const btn = document.getElementById('btn-changelog-outside');
-      if (btn) btn.title = 'Versiones';
+      $('btn-user-update')?.classList.remove('has-update');
     }
         // Solo game para jugadores — CEO entries van solo al CEO Panel
     const gameEntries = changelog.filter(e => e.scope === 'game');
@@ -2739,7 +2841,7 @@ function renderRanking(rows) {
 }
 
 /* ── Modal victoria ──────────────────────────────────── */
-function showWin(playerName, desc, dice, skinId) {
+function showWin(playerName, desc, dice, skinId, specialId) {
   if (!$('modal-win').classList.contains('hidden')) return;
   const playAgainBtn = $('btn-play-again');
   if (playAgainBtn) {
@@ -2768,10 +2870,24 @@ function showWin(playerName, desc, dice, skinId) {
   $('modal-win').classList.remove('hidden');
   launchConfetti();
   // Efecto Victoria: si el jugador local tiene item 16 equipado, confetti extra
-  if (S.specialEquipped === '16') {
+  if (String(specialId || '') === '16') {
     setTimeout(() => launchConfetti(), 1000);
     setTimeout(() => launchConfetti(), 2000);
   }
+  if (String(specialId || '') === '36') launchLaserVictory();
+}
+
+function launchLaserVictory() {
+  const layer = document.createElement('div');
+  layer.className = 'victory-laser-layer';
+  for (let i = 0; i < 12; i++) {
+    const beam = document.createElement('span');
+    beam.style.setProperty('--angle', `${i * 30}deg`);
+    beam.style.setProperty('--delay', `${(i % 4) * 0.08}s`);
+    layer.appendChild(beam);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 2300);
 }
 
 /* ── Init UI ─────────────────────────────────────────── */
@@ -2782,7 +2898,6 @@ function initUI() {
   if (authSub) authSub.textContent = 'Juego de dados · 2 a 10 jugadores · v' + appVersion;
   const appVerEl = document.querySelector('.app-version');
   if (appVerEl) appVerEl.textContent = 'v' + appVersion;
-  $('btn-changelog-outside') && ($('btn-changelog-outside').textContent = '📋 v' + appVersion);
   // Check update indicator al cargar la UI
   setTimeout(checkUpdateIndicator, 500);
   initBgCanvas();
@@ -2868,7 +2983,7 @@ function initUI() {
           return;
         }
         $('invite-search-results').innerHTML = players.map(p => {
-          const av = p.equipped_avatar || (p.alias ? p.alias.charAt(0).toUpperCase() : '?');
+          const av = p.equipped_avatar || getInitial(p.alias);
           return `<div class="invite-player-item">
             <div class="invite-player-av">${av}</div>
             <div class="invite-player-info">
@@ -2904,9 +3019,24 @@ function initUI() {
   $('lobby-avatar').onclick = () => {
     if (isLogged()) { loadProfile(); }
   };
-  $('lobby-username').onclick = () => {
-    if (isLogged()) { loadProfile(); }
-  };
+  $('btn-user-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = $('user-menu');
+    const open = menu.classList.toggle('hidden') === false;
+    $('btn-user-menu').setAttribute('aria-expanded', String(open));
+  });
+  $('btn-user-profile')?.addEventListener('click', () => {
+    $('user-menu')?.classList.add('hidden');
+    if (isLogged()) loadProfile();
+  });
+  $('btn-user-changelog')?.addEventListener('click', () => {
+    $('user-menu')?.classList.add('hidden');
+    loadChangelog();
+  });
+  $('btn-user-update')?.addEventListener('click', () => {
+    $('user-menu')?.classList.add('hidden');
+    performAppUpdate(_availableVersion, true);
+  });
   // Click en avatar del perfil → scrollear al inventario
   $('profile-avatar').onclick = () => {
     const inv = $('profile-inventory-section');
@@ -2944,13 +3074,12 @@ function initUI() {
       let msg = `🎁 +${d.coins} monedas`;
       if (d.itemGained) msg += ` + ¡${d.itemGained.icon} ${d.itemGained.name}!`;
       toast(msg);
-      loadChestStatus();
+      await loadChestStatus();
       loadUserBalance();
     } catch (err) {
       toast('⚠ ' + err.message);
     }
-    btn.disabled = false;
-    btn.textContent = '🎁';
+    await loadChestStatus();
   };
 
   /* ── Portal Social ────────────────────────────────── */
@@ -3056,24 +3185,7 @@ function initUI() {
   };
 
   /* ── Changelog ────────────────────────────────────────── */
-  $('btn-changelog-outside').onclick = () => loadChangelog();
   $('btn-close-changelog').onclick = () => $('modal-changelog').classList.add('hidden');
-
-  /* ── Check for updates ──────────────────────────────── */
-  $('btn-check-update').onclick = async () => {
-    if (!_swRegistration) { toast('Service Worker no disponible'); return; }
-    try {
-      await _swRegistration.update();
-      toast('🔄 Buscando actualizaciones...', 2000);
-      setTimeout(() => {
-        if (_swRegistration.waiting) {
-          _swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        } else {
-          toast('✅ Estás en la última versión', 2000);
-        }
-      }, 2000);
-    } catch(e) { toast('Error al buscar actualización'); }
-  };
 
   /* ── Torneos ────────────────────────────────────────── */
   $('btn-tournaments').onclick = async () => {
@@ -3155,6 +3267,10 @@ function initUI() {
     const panel = $('notif-panel');
     const wrapper = e.target.closest('.notif-wrapper');
     if (panel && !wrapper) panel.classList.add('hidden');
+    if (!e.target.closest('.user-menu-wrap')) {
+      $('user-menu')?.classList.add('hidden');
+      $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
+    }
   });
 
   // Check push status after login — also triggered reliably inside btn-login's handler
@@ -3221,6 +3337,10 @@ function initUI() {
 
     if (!email || !username || !password) {
       toast('Completá email, usuario y contraseña');
+      return;
+    }
+    if (!/^\p{L}/u.test(username)) {
+      toast('El usuario debe comenzar con una letra');
       return;
     }
 
@@ -3312,8 +3432,6 @@ function initUI() {
       if (notifWrapper) notifWrapper.classList.remove('hidden');
       checkPushStatus();
       $('btn-back-to-auth')?.classList.add('hidden');
-      $('btn-changelog-outside')?.classList.remove('hidden');
-      $('btn-check-update')?.classList.remove('hidden');
       loadChestStatus();
       loadLobbyMissions();
       showScreen('screen-lobby');
@@ -3485,7 +3603,7 @@ async function loadProfile() {
     const inv = invRes.ok ? await invRes.json() : null;
 
     // Avatar y header — mostrar icono equipado si tiene (SIN fondo dorado)
-    let avatarDisplay = (p.alias || '?').charAt(0).toUpperCase();
+    let avatarDisplay = getInitial(p.alias);
     let hasCustomAvatar = false;
     const profileAv = $('profile-avatar');
     S.avatarEquipped = null;
@@ -3856,6 +3974,30 @@ function showMissionComplete(mission) {
 }
 
 /* ── Cargar estado del cofre diario ─────────────────── */
+let _chestReadyAt = 0;
+let _chestTimer = null;
+
+function renderChestCountdown() {
+  const btn = $('btn-chest');
+  if (!btn || !_chestReadyAt) return;
+  const remaining = Math.max(0, _chestReadyAt - Date.now());
+  if (remaining <= 0) {
+    clearInterval(_chestTimer);
+    _chestTimer = null;
+    _chestReadyAt = 0;
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-chest-icon">🎁</span><span class="btn-chest-copy"><strong>Cofre listo</strong><small>Reclamar</small></span>';
+    btn.title = '¡Reclamá tu cofre diario!';
+    return;
+  }
+  const totalMinutes = Math.ceil(remaining / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="btn-chest-icon">⏳</span><span class="btn-chest-copy"><strong>Nuevo cofre</strong><small>${hours}h ${mins}m</small></span>`;
+  btn.title = `Cofre disponible en ${hours}h ${mins}min`;
+}
+
 async function loadChestStatus() {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
@@ -3868,15 +4010,17 @@ async function loadChestStatus() {
     if (!res.ok) return;
     const d = await res.json();
     if (d.canClaim) {
+      _chestReadyAt = 0;
+      clearInterval(_chestTimer);
+      _chestTimer = null;
       btn.disabled = false;
-      btn.textContent = '🎁';
+      btn.innerHTML = '<span class="btn-chest-icon">🎁</span><span class="btn-chest-copy"><strong>Cofre listo</strong><small>Reclamar</small></span>';
       btn.title = '¡Reclamá tu cofre diario!';
     } else {
-      btn.disabled = true;
-      const hours = Math.floor(d.remaining / 3600000);
-      const mins = Math.floor((d.remaining % 3600000) / 60000);
-      btn.innerHTML = `⏳<span class="btn-chest-timer">${hours}h ${mins}m</span>`;
-      btn.title = `Cofre disponible en ${hours}h ${mins}min`;
+      _chestReadyAt = Date.now() + Number(d.remaining || 0);
+      renderChestCountdown();
+      clearInterval(_chestTimer);
+      _chestTimer = setInterval(renderChestCountdown, 30000);
     }
   } catch (e) {}
 }
@@ -4008,7 +4152,7 @@ async function loadEquippedItems() {
     // Actualizar avatar en lobby si estamos en él
     const lobbyAv = $('lobby-avatar');
     if (lobbyAv) {
-      lobbyAv.textContent = S.avatarEquipped || '👤';
+      lobbyAv.textContent = S.avatarEquipped || getInitial(S.name);
       lobbyAv.classList.toggle('avatar-icon', !!S.avatarEquipped);
     }
     // Aplicar Tema Oscuro Ultra (item 17)
@@ -4048,6 +4192,26 @@ async function loadUserBalance() {
 }
 
 /* ── Cargar items Ultra (exclusivos del cofre) ────── */
+async function equipShopItem(itemId, category) {
+  const token = localStorage.getItem('gameToken');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/user/equip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ itemId: String(itemId), category })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'No se pudo equipar');
+    await loadEquippedItems();
+    updateUserPanel(S.name, parseInt($('lobby-coins')?.textContent) || 0);
+    toast('✔ Item aplicado en el lobby');
+    await Promise.all([loadShopCatalog(), loadUltraItems()]);
+  } catch (err) {
+    toast('⚠ ' + err.message);
+  }
+}
+
 async function loadUltraItems() {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
@@ -4058,7 +4222,8 @@ async function loadUltraItems() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) { container.innerHTML = '<p class="shop-desc">Error al cargar</p>'; return; }
-    const { items } = await res.json();
+    const { items, ownedIds, equipped } = await res.json();
+    const ownedSet = new Set((ownedIds || []).map(Number));
     const ultraItems = items.filter(i => i.category === 'ultra');
     if (!ultraItems.length) {
       container.innerHTML = '<p class="shop-desc" style="padding:20px;text-align:center">Próximamente...</p>';
@@ -4073,16 +4238,24 @@ async function loadUltraItems() {
     `;
     const grid = container.querySelector('.shop-grid');
     ultraItems.forEach(item => {
+      const category = getItemEquipCategory(item);
+      const owned = ownedSet.has(Number(item.id));
+      const isEquipped = owned && String(equipped?.[category] || '') === String(item.id);
       const div = document.createElement('div');
-      div.className = 'shop-item ultra-teaser';
+      div.className = 'shop-item ultra-teaser' + (owned ? ' owned' : '');
       div.innerHTML = `
         <div class="shop-item-preview" style="font-size:44px">${item.icon}</div>
         <h3>${item.name}</h3>
         <p class="shop-item-desc">${item.desc}</p>
         <span class="shop-item-price" style="font-size:12px;color:var(--gold2);font-weight:600">💰 ${item.priceDisplay}</span>
-        <span class="ultra-badge">🎁 Solo Cofre</span>
+        ${owned
+          ? `<button class="btn btn-ghost btn-equip-shop" data-id="${item.id}" data-cat="${category}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>`
+          : '<span class="ultra-badge">🎁 Solo Cofre</span>'}
       `;
       grid.appendChild(div);
+    });
+    grid.querySelectorAll('.btn-equip-shop:not([disabled])').forEach(btn => {
+      btn.onclick = () => equipShopItem(btn.dataset.id, btn.dataset.cat);
     });
   } catch (err) {
     container.innerHTML = '<p class="shop-desc">Error al cargar</p>';
@@ -4141,7 +4314,7 @@ async function loadShopCatalog() {
             <div class="shop-item-preview">${item.icon}</div>
             <h3>${item.name}</h3>
             <p class="shop-item-desc">${item.desc}</p>
-            <span class="shop-owned-badge">${isEquipped ? '✔ Equipado' : '✔ Tuyo'}</span>
+            <button class="btn btn-ghost btn-equip-shop" data-id="${item.id}" data-cat="${cat}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>
           `;
         } else {
           div.innerHTML = `
@@ -4215,6 +4388,9 @@ async function loadShopCatalog() {
         e.target.disabled = false;
       };
     });
+    container.querySelectorAll('.btn-equip-shop:not([disabled])').forEach(btn => {
+      btn.onclick = () => equipShopItem(btn.dataset.id, btn.dataset.cat);
+    });
     
         // (event delegation moved to initUI)
   } catch (err) {
@@ -4287,6 +4463,11 @@ async function loadCoinPacks() {
 /* ── Arranque ────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initUI();
+  setInterval(checkUpdateIndicator, 5 * 60 * 1000);
+  if (sessionStorage.getItem('macko_show_changelog_after_update') === '1') {
+    sessionStorage.removeItem('macko_show_changelog_after_update');
+    setTimeout(() => loadChangelog(), 900);
+  }
 
   const auth = loadAuthenticatedIdentity();
 
@@ -4428,6 +4609,7 @@ const SPECIAL_EFFECTS = {
   '29': { name:'Dados Mágicos', desc:'Brillo mágico al rodar los dados' },
   '30': { name:'Racha Visible', desc:'Mostrá tu racha de victorias' },
   '31': { name:'+50% Monedas', desc:'50% más de monedas en cada partida' },
+  '36': { name:'Efecto Láser', desc:'Una explosión de rayos ilumina tu victoria' },
 };
 
 function openItemPreview(category, itemId, itemName, itemIcon) {

@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.6.2"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.6.3"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -51,7 +51,17 @@
   <div id="user-top-bar" class="user-top-bar hidden">
     <div class="user-profile">
       <div class="user-avatar" id="lobby-avatar">M</div>
-      <span class="user-name" id="lobby-username">Jugador</span>
+      <div class="user-menu-wrap">
+        <button id="btn-user-menu" class="user-menu-trigger" type="button" aria-expanded="false">
+          <span class="user-name" id="lobby-username">Jugador</span><span class="user-menu-chevron">▾</span>
+        </button>
+        <div id="user-menu" class="user-menu-dropdown hidden">
+          <button id="btn-user-profile" type="button">👤 Mi perfil</button>
+          <button id="btn-user-changelog" type="button">📋 Notas de la versión</button>
+          <button id="btn-user-update" type="button">🔄 Actualizar</button>
+          <button id="btn-logout-topbar" class="user-menu-logout hidden" type="button">🚪 Cerrar sesión</button>
+        </div>
+      </div>
       <div class="notif-wrapper hidden">
         <button id="btn-notif" class="btn-notif-bell" title="Notificaciones">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
         <div id="notif-panel" class="notif-panel hidden">
@@ -80,7 +90,6 @@
         <button id="btn-chest" class="btn-chest" title="Cofre diario">🎁</button>
         <button id="btn-open-shop" class="btn-shop">Tienda</button>
       </div>
-      <button id="btn-logout-topbar" class="btn-logout-topbar hidden" title="Cerrar sesión">✕</button>
     </div>
   </div>    <div class="lobby-content">
     <div class="logo-block">
@@ -111,10 +120,6 @@
       <button id="btn-logout" class="btn btn-danger-link hidden" style="display:none">Cerrar sesión</button>
       <button id="btn-back-to-auth" class="btn btn-link">← Volver al login</button>
     </div>
-    <!-- Changelog button fuera del form, abajo centrado -->
-    <button id="btn-changelog-outside" class="btn-changelog-outside hidden">📋 Actualizaciones</button>
-    <button id="btn-check-update" class="btn-check-update hidden" title="Buscar actualizaciones">🔄</button>
-
     <!-- Banner próximo torneo programado -->
     <div id="next-tournament-banner" class="hidden" style="
       background:rgba(26,20,48,.9);border:1px solid rgba(212,175,55,.3);
@@ -553,10 +558,10 @@
     }).catch(function(){});
   }
 })();
-</script><script src="/version.js?v=3.6.2"></script>
-  <script src="/dice-renderer.js?v=3.6.2"></script>
-  <script src="/audio.js?v=3.6.2"></script>
-  <script src="/app.js?v=3.6.2"></script>
+</script><script src="/version.js?v=3.6.3"></script>
+  <script src="/dice-renderer.js?v=3.6.3"></script>
+  <script src="/audio.js?v=3.6.3"></script>
+  <script src="/app.js?v=3.6.3"></script>
 <!-- FIN ⚠️ -->
 
 

@@ -218,25 +218,6 @@ html,body{
 .btn-push-topbar.push-active{color:var(--green-lt);border-color:var(--green)}
 .btn-push-topbar.hidden{display:none}
 
-/* ── Changelog outside form (abajo centrado) ──────────── */
-.btn-changelog-outside{
-  background:transparent;border:1px solid var(--border2);
-  color:var(--text3);border-radius:var(--r-sm);
-  padding:8px 16px;font-family:inherit;font-size:11px;
-  cursor:pointer;transition:all .18s;width:100%;max-width:340px;
-  margin-top:6px;
-}
-.btn-changelog-outside:hover{border-color:var(--gold);color:var(--gold);background:var(--bg-hover)}
-.btn-changelog-outside.hidden{display:none}
-.btn-check-update{
-  background:transparent;border:1px solid var(--border2);
-  color:var(--text3);border-radius:var(--r-sm);
-  padding:6px 12px;font-size:16px;cursor:pointer;transition:all .18s;
-  margin-top:4px;width:100%;max-width:340px;
-}
-.btn-check-update:hover{border-color:var(--gold);color:var(--gold);background:var(--bg-hover)}
-.btn-check-update.hidden{display:none}
-
 /* ── PWA Install Bar rediseñada ──────────────────────── */
 .pwa-install-bar{
   position:fixed;bottom:0;left:50%;transform:translateX(-50%);
@@ -311,6 +292,32 @@ html,body{
 }
 .user-name{font-family:'Cinzel',serif;font-size:13px;font-weight:600;color:var(--gold);cursor:pointer}
 .user-name:hover{color:var(--gold2)}
+.user-menu-wrap{position:relative}
+.user-menu-trigger{
+  display:flex;align-items:center;gap:5px;background:transparent;border:none;
+  color:inherit;padding:6px 4px;border-radius:8px;cursor:pointer;font-family:inherit;
+}
+.user-menu-trigger:hover,.user-menu-trigger[aria-expanded="true"]{background:var(--bg-hover)}
+.user-menu-chevron{font-size:10px;color:var(--text3);transition:transform .18s}
+.user-menu-trigger[aria-expanded="true"] .user-menu-chevron{transform:rotate(180deg)}
+.user-menu-dropdown{
+  position:absolute;top:calc(100% + 7px);left:0;width:210px;padding:7px;
+  background:rgba(16,15,29,.98);border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--sh-lg);backdrop-filter:blur(18px);z-index:1100;
+  display:flex;flex-direction:column;gap:3px;
+}
+.user-menu-dropdown button{
+  position:relative;width:100%;border:none;background:transparent;color:var(--text2);
+  text-align:left;padding:10px 11px;border-radius:8px;font:600 12px 'Sora',sans-serif;
+  cursor:pointer;transition:background .15s,color .15s;
+}
+.user-menu-dropdown button:hover{background:var(--bg-hover);color:var(--gold)}
+.user-menu-dropdown .user-menu-logout{border-top:1px solid var(--border2);border-radius:0 0 8px 8px;color:var(--red-lt);margin-top:3px}
+.user-menu-dropdown .user-menu-logout:hover{background:rgba(200,60,48,.12);color:var(--red-lt)}
+#btn-user-update.has-update::after{
+  content:'';position:absolute;right:10px;top:50%;width:8px;height:8px;margin-top:-4px;
+  background:#ff4a4a;border-radius:50%;box-shadow:0 0 8px rgba(255,74,74,.7);
+}
 .user-wallet{
   display:flex;align-items:center;gap:8px;
   background:var(--bg-card);backdrop-filter:blur(12px);
@@ -323,8 +330,8 @@ html,body{
 .btn-chest{
   background:linear-gradient(135deg,#F0D060,#C8961E);
   color:#1A1200;border:none;border-radius:8px;
-  width:auto;min-width:36px;height:32px;font-size:13px;font-weight:700;
-  padding:0 8px;
+  width:auto;min-width:112px;height:38px;font-size:13px;font-weight:700;
+  padding:0 10px;
   cursor:pointer;font-family:'Cinzel',serif;
   display:flex;align-items:center;justify-content:center;gap:4px;
   transition:filter .18s,transform .12s;
@@ -332,7 +339,10 @@ html,body{
 }
 .btn-chest:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-1px) scale(1.05)}
 .btn-chest:disabled{opacity:.5;cursor:not-allowed}
-.btn-chest-timer{font-size:10px;color:#1A1200;font-weight:700;opacity:.8}
+.btn-chest-icon{font-size:15px;line-height:1}
+.btn-chest-copy{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05;white-space:nowrap}
+.btn-chest-copy strong{font:700 10px 'Sora',sans-serif}
+.btn-chest-copy small{font:800 11px 'Cinzel',serif;margin-top:3px}
 
 /* Marco dorado premium en cualquier avatar (item 15) */
 .avatar-premium{
@@ -418,6 +428,8 @@ html,body{
   margin-bottom:6px;letter-spacing:.5px;
 }
 .lobby-missions-list{display:flex;flex-direction:column;gap:4px}
+.lobby-missions-state{padding:12px 4px;text-align:center;color:var(--text3);font-size:11px}
+.missions-retry{width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-hover);color:var(--gold);font:600 11px 'Sora',sans-serif;cursor:pointer}
 
 /* Misiones desktop: posicionado absoluto en esquina superior derecha */
 .lobby-missions-desktop{display:none !important}
@@ -1228,6 +1240,7 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
    PERFIL
    ══════════════════════════════════════ */
 .profile-body{padding:20px 16px;gap:16px}
+.profile-body #profile-content:not(.hidden){display:flex;flex-direction:column;gap:12px}
 .profile-header{
   display:flex;align-items:center;gap:16px;
   background:var(--bg-card);backdrop-filter:blur(12px);
@@ -1338,7 +1351,7 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .inventory-grid{display:flex;flex-direction:column;gap:6px}
 .inv-cat{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .inv-cat-title{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:2px}
-.inv-items{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
+.inv-items{display:grid;grid-template-columns:repeat(auto-fill,64px);gap:10px;justify-content:start}
 .inv-item{
   background:var(--bg-card2);backdrop-filter:blur(8px);
   border:1.5px solid var(--border2);border-radius:10px;
@@ -1394,7 +1407,8 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 }
 
 @media(max-width:420px){
-  .inv-items{grid-template-columns:repeat(4,1fr);gap:3px}
+  .inv-items{grid-template-columns:repeat(auto-fill,58px);gap:8px}
+  .inv-item{max-width:58px}
   .inv-item-icon{font-size:15px}
   .inv-item-name{font-size:6px}
 }
@@ -1831,6 +1845,22 @@ input[type=number]{-moz-appearance:textfield}
   .pwa-install-text{font-size:10px}
   .chat-mic-btn{width:30px;height:30px;font-size:13px}
   .chat-send-btn{width:30px;height:30px;font-size:14px}
+  .user-top-bar{padding:6px 8px;min-height:48px}
+  .user-profile{gap:3px;min-width:0}
+  .user-avatar{width:32px;height:32px}
+  .user-avatar.avatar-icon{width:34px;height:34px}
+  .user-menu-trigger{padding:5px 2px;max-width:108px}
+  .user-name{font-size:11px;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .user-menu-dropdown{position:fixed;top:48px;left:8px;width:min(230px,calc(100vw - 16px))}
+  .user-wallet{gap:5px;padding:5px 8px}
+  #lobby-coins{font-size:12px;min-width:12px}
+  .coin-icon{font-size:12px}
+  .btn-chest{min-width:104px;height:36px}
+  .notif-panel{position:fixed;top:48px;left:8px;right:8px;width:auto;max-height:calc(100vh - 60px)}
+  .profile-body{padding:14px 10px}
+  .profile-header{padding:16px;gap:12px}
+  .profile-level-box{padding:12px}
+  .xp-label{font-size:10px;max-width:65%;text-align:right}
 }
 
 /* 421px - 768px: Tablets y phablets */
@@ -1843,6 +1873,9 @@ input[type=number]{-moz-appearance:textfield}
   
   .lobby-content{max-width:420px}
   .game-table{padding:20px 24px 14px}
+  .user-top-bar{padding:8px 12px}
+  .profile-body{padding:18px 14px}
+  .user-menu-dropdown{width:220px}
 }
 
 /* > 768px: Desktop */
@@ -1880,8 +1913,32 @@ input[type=number]{-moz-appearance:textfield}
     box-shadow:var(--sh);
     display:flex !important;flex-direction:column;
   }
+  .lobby-missions-desktop.hidden{display:none !important}
   #btn-missions-mobile{display:none !important}
 }
+
+/* Actualización bloqueante: primero instala, luego muestra las notas */
+.app-update-overlay{
+  position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(4,4,10,.82);backdrop-filter:blur(10px);
+}
+.app-update-card{
+  width:min(390px,100%);padding:28px 24px;text-align:center;background:var(--bg-card);
+  border:1px solid var(--border);border-radius:18px;box-shadow:var(--sh-lg);
+}
+.app-update-icon{font-size:40px;margin-bottom:8px}
+.app-update-card h2{font:700 19px 'Cinzel',serif;color:var(--gold);margin-bottom:10px}
+.app-update-card p{font-size:12px;line-height:1.6;color:var(--text2);margin-bottom:18px}
+
+/* Efecto Láser (item 36) */
+.victory-laser-layer{position:fixed;inset:0;z-index:2500;pointer-events:none;overflow:hidden}
+.victory-laser-layer span{
+  --angle:0deg;--delay:0s;position:absolute;left:50%;top:50%;width:70vw;height:4px;
+  transform-origin:left center;transform:rotate(var(--angle)) scaleX(0);
+  background:linear-gradient(90deg,#fff,#7ee8ff 20%,#af5cff 55%,transparent);
+  box-shadow:0 0 8px #fff,0 0 24px #48dfff;animation:victoryLaser 1.5s var(--delay) ease-out forwards;
+}
+@keyframes victoryLaser{0%{opacity:0;transform:rotate(var(--angle)) scaleX(0)}18%{opacity:1;transform:rotate(var(--angle)) scaleX(1)}100%{opacity:0;transform:rotate(var(--angle)) scaleX(1.25)}}
 
 /* ── Badge de notificación push en botón de torneos ── */
 .push-badge {
@@ -2054,28 +2111,6 @@ input[type=number]{-moz-appearance:textfield}
 }
 .invite-send-btn:hover { background: var(--gold2); }
 .invite-send-btn:disabled { opacity: .4; cursor: default; }
-
-/* ── Update badge (nuevas versiones disponibles) ── */
-.btn-changelog-outside {
-  position: relative;
-}
-.game-update-badge {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 10px;
-  height: 10px;
-  background: #FF4444;
-  border-radius: 50%;
-  border: 2px solid var(--bg-card);
-  animation: gamePulseBadge 2s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 1;
-}
-@keyframes gamePulseBadge {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.25); opacity: .7; }
-}
 
 /* ── Preview de dados en tienda ────────────────────────── */
 .dice-preview-container {

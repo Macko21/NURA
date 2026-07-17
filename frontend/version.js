@@ -10,9 +10,27 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.6.2";
+const GAME_VERSION = "3.6.3";
 
 const CHANGELOG = [
+  // ═══ 3.6.3 — GAME ═══
+  {
+    version: "3.6.3",
+    date: "2026-07-16",
+    title: "🔔 Notificaciones, perfil y actualización real",
+    scope: "game",
+    files: ["backend/database.js", "backend/server.js", "backend/pushManager.js", "backend/playerManager.js", "backend/authManager.js", "frontend/index.html", "frontend/app.js", "frontend/styles.css", "frontend/sw.js"],
+    changes: [
+      "🔔 Push se configura automáticamente y conserva sus claves en la base de datos",
+      "🧹 Notificaciones vencen en 24 h y las invitaciones se borran al aceptar o rechazar",
+      "📊 Estadísticas, ranking y misiones usan progreso real y actualizaciones seguras",
+      "🛍️ Los artículos comprados pueden aplicarse y los efectos pertenecen al jugador correcto",
+      "🔄 Actualizar instala la versión nueva y después abre sus notas",
+      "👤 Menú de usuario desplegable, inventario compacto y perfil con mejor separación",
+      "🎁 Cuenta regresiva del cofre más clara en escritorio, tablet y móvil",
+      "💬 El Portal Social conserva los últimos dos días en su limpieza semanal"
+    ]
+  },
   // ═══ 3.6.2 — GAME ═══
   {
     version: "3.6.2",

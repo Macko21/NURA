@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, savePrivateMessage, getPrivateMessages, cleanupGlobalChat, cleanupPrivateMessages, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const path      = require("path");
@@ -413,16 +413,26 @@ app.post("/api/games/invite", requireAuth, async (req, res) => {
     const targetSock = clients.get(targetPlayerId);
     const fromPlayer = await getUserProfile(req.user.userId);
     const inviterName = fromPlayer?.alias || req.user.username;
+    const inviteId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const inviteData = {
+      inviteId,
+      fromId: req.user.playerId,
+      fromName: inviterName,
+      fromAvatar: resolveAvatarIcon(fromPlayer?.equipped_avatar) || '👤',
+      roomId: room.id,
+      roomCode: room.code,
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers
+    };
+    await savePlayerNotification(targetPlayerId, {
+      id: inviteId,
+      type: 'game_invite',
+      title: `${inviterName} te invitó a jugar`,
+      message: `Unite a la partida (${room.players.length}/${room.maxPlayers} jugadores)`,
+      data: inviteData
+    });
     if (targetSock && targetSock.readyState === WebSocket.OPEN) {
-      send(targetSock, 'GAME_INVITE', {
-        inviteId: Date.now().toString(),
-        fromName: inviterName,
-        fromAvatar: fromPlayer?.equipped_avatar || '👤',
-        roomId: room.id,
-        roomCode: room.code,
-        playerCount: room.players.length,
-        maxPlayers: room.maxPlayers
-      });
+      send(targetSock, 'GAME_INVITE', inviteData);
       res.json({ success: true, sent: true });
     } else if (isPushReady()) {
       // Jugador no conectado — enviar push notification con datos de invitación
@@ -441,7 +451,7 @@ app.post("/api/games/invite", requireAuth, async (req, res) => {
             `🎮 ${inviterName} te invitó a jugar`,
             `Unite a la partida (${room.players.length}/${room.maxPlayers} jugadores)`,
             '/',
-            { action: 'game_invite', roomId: room.id, roomCode: room.code }
+            { action: 'game_invite', ...inviteData }
           );
           pushSent = true;
         }
@@ -470,10 +480,34 @@ app.get("/api/global-chat", requireAuth, async (req, res) => {
 // ── NOTIFICACIONES RECIENTES (broadcasts del CEO) ────────────
 app.get("/api/notifications", requireAuth, async (req, res) => {
   try {
-    const messages = await getGlobalMessages(20);
-    // Filtrar solo los mensajes del CEO (broadcasts)
-    const broadcasts = messages.filter(m => m.player_id === 'ceo');
-    res.json({ notifications: broadcasts });
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const [personal, broadcastsRes] = await Promise.all([
+      getPlayerNotifications(req.user.playerId, 50),
+      pool.query(`
+        SELECT id, message, created_at FROM global_chat
+        WHERE player_id = 'ceo' AND created_at >= $1
+        ORDER BY created_at DESC LIMIT 20
+      `, [cutoff])
+    ]);
+    const broadcasts = broadcastsRes.rows.map(row => ({
+      id: `ceo-${row.id}`,
+      type: 'broadcast',
+      title: 'Anuncio',
+      message: row.message,
+      data: {},
+      created_at: row.created_at,
+      expires_at: Number(row.created_at) + 24 * 60 * 60 * 1000
+    }));
+    res.json({ notifications: [...personal, ...broadcasts].sort((a, b) => Number(b.created_at) - Number(a.created_at)) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/notifications/:id", requireAuth, async (req, res) => {
+  try {
+    await deletePlayerNotification(req.user.playerId, req.params.id);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -610,6 +644,7 @@ app.get("/api/tournaments/history", requireAuth, async (req, res) => {
 let _versionCache = null;
 app.get("/api/version", (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     if (!_versionCache) {
       const versionData = require(path.join(__dirname, "../frontend/version.js"));
       _versionCache = { version: versionData.GAME_VERSION, changelog: versionData.CHANGELOG };
@@ -1518,11 +1553,12 @@ function resolveAvatarIcon(itemId) {
 /* ── Cargar items equipados a un room player ──────────── */
 async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
   try {
-    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special FROM players WHERE id = $1`, [playerId]);
+    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [playerId]);
     if (plRes.rows[0]) {
       roomPlayer.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
       roomPlayer.equippedDice = plRes.rows[0].equipped_dice || '';
       roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
+      roomPlayer.winStreak = Number(plRes.rows[0].win_streak) || 0;
       console.log(`📦 loadEquipped(${playerId}): dice=${roomPlayer.equippedDice} av=${roomPlayer.equippedAvatar} sp=${roomPlayer.equippedSpecial}`);
     } else {
       console.log(`📦 loadEquipped(${playerId}): NO ROW found in players table`);
@@ -2100,23 +2136,33 @@ wss.on("connection", socket => {
       if (type === "GAME_INVITE") {
         const { targetId, roomId, roomCode } = data;
         if (!targetId || !roomId) return;
+        const inviterId = data.playerId || socket.playerId;
         const fromProfile = await getUserProfile(
-          (await pool.query('SELECT user_id FROM players WHERE id = $1', [data.playerId])).rows[0]?.user_id
+          (await pool.query('SELECT user_id FROM players WHERE id = $1', [inviterId])).rows[0]?.user_id
         );
         const room = rooms.get(roomId);
         const targetSock = clients.get(targetId);
         const inviterName = fromProfile?.alias || data.playerName || 'Jugador';
+        const inviteId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const inviteData = {
+          inviteId,
+          fromId: inviterId,
+          fromName: inviterName,
+          fromAvatar: resolveAvatarIcon(fromProfile?.equipped_avatar) || '👤',
+          roomId,
+          roomCode: roomCode || room?.code || '',
+          playerCount: room?.players?.length || 0,
+          maxPlayers: room?.maxPlayers || 10
+        };
+        await savePlayerNotification(targetId, {
+          id: inviteId,
+          type: 'game_invite',
+          title: `${inviterName} te invitó a jugar`,
+          message: `Unite a la partida (${inviteData.playerCount}/${inviteData.maxPlayers} jugadores)`,
+          data: inviteData
+        });
         if (targetSock && targetSock.readyState === WebSocket.OPEN) {
-          send(targetSock, 'GAME_INVITE', {
-            inviteId: Date.now().toString(),
-            fromId: data.playerId,
-            fromName: inviterName,
-            fromAvatar: fromProfile?.equipped_avatar || '👤',
-            roomId,
-            roomCode: roomCode || room?.code || '',
-            playerCount: room?.players?.length || 0,
-            maxPlayers: room?.maxPlayers || 10
-          });
+          send(targetSock, 'GAME_INVITE', inviteData);
         } else if (isPushReady()) {
           // Target offline: enviar push notification con datos de invitación
           try {
@@ -2135,7 +2181,7 @@ wss.on("connection", socket => {
                 `🎮 ${inviterName} te invitó a jugar`,
                 `Unite a la partida (${playerCount}/${maxPlayers} jugadores)`,
                 '/',
-                { action: 'game_invite', roomId, roomCode: roomCode || room?.code || '' }
+                { action: 'game_invite', ...inviteData }
               );
             }
           } catch(e) {
@@ -2147,7 +2193,8 @@ wss.on("connection", socket => {
       }
 
       if (type === "GAME_INVITE_ACCEPT") {
-        const { roomId, roomCode, playerId: dataPlayerId, playerName: dataPlayerName } = data;
+        const { inviteId, roomId, roomCode, playerId: dataPlayerId, playerName: dataPlayerName } = data;
+        if (inviteId) await deletePlayerNotification(dataPlayerId || socket.playerId, inviteId).catch(() => {});
         const room = rooms.get(roomId);
         if (!room) { send(socket, 'ERROR', { message: 'Sala no encontrada' }); return; }
         if (room.players.length >= room.maxPlayers) {
@@ -2193,6 +2240,7 @@ wss.on("connection", socket => {
 
       if (type === "GAME_INVITE_REJECT") {
         const { inviteId, fromId } = data;
+        if (inviteId) await deletePlayerNotification(data.playerId || socket.playerId, inviteId).catch(() => {});
         const fromSock = clients.get(fromId);
         if (fromSock && fromSock.readyState === WebSocket.OPEN) {
           send(fromSock, 'GAME_INVITE_REJECTED', {
@@ -2205,10 +2253,12 @@ wss.on("connection", socket => {
 
       /* ── CHAT ──────────────────────────────────────────── */
       if (type === "CHAT_MESSAGE") {
+        const chatPlayer = rooms.get(data.roomId)?.players?.find(p => p.id === data.playerId);
         broadcastRoom(data.roomId, "CHAT_MESSAGE", {
           playerId:   data.playerId,
           playerName: data.playerName,
           message:    String(data.message || "").slice(0, 500),
+          equippedSpecial: chatPlayer?.equippedSpecial || '',
           timestamp:  Date.now()
         });
         // Incrementar contador de mensajes de chat para las misiones
@@ -2457,7 +2507,15 @@ app.post("/api/reset-password", async (req, res) => {
 async function cleanupGuestPlayers() {
   try {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24h
-    const res = await pool.query(`DELETE FROM players WHERE user_id IS NULL AND created_at < $1`, [cutoff]);
+    const res = await pool.query(`
+      DELETE FROM players p
+      WHERE p.user_id IS NULL AND p.created_at < $1
+        AND COALESCE(p.games_played, 0) = 0
+        AND COALESCE(p.games_won, 0) = 0
+        AND COALESCE(p.total_score, 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.player_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM redemptions r WHERE r.player_id = p.id)
+    `, [cutoff]);
     if (res.rowCount > 0) console.log(`🧹 Limpiados ${res.rowCount} invitados antiguos`);
   } catch(e) {}
 }
@@ -2472,18 +2530,19 @@ async function startServer() {
   } catch(e) {
     console.error('⚠️ DB no disponible, arrancando en modo limitado:', e.message);
   }
-  try { initPush(); } catch(e) { console.error('⚠️ Push no disponible:', e.message); }
+  try { await initPush(); } catch(e) { console.error('⚠️ Push no disponible:', e.message); }
   try { initEmail(); } catch(e) { console.error('⚠️ Email no disponible:', e.message); }
   try { initTournamentManager(); } catch(e) { console.error('⚠️ Tournament Manager no disponible:', e.message); }
 
   // Limpieza periódica de chats viejos
   async function runChatCleanup() {
-    await cleanupGlobalChat().catch(e => console.warn('Global chat cleanup:', e.message));
-    await cleanupPrivateMessages().catch(e => console.warn('Private chat cleanup:', e.message));
-    console.log('🧹 Limpieza de chats ejecutada');
+    const result = await cleanupPortalChats();
+    if (result.cleaned) console.log(`🧹 Chat social compactado: ${result.global} globales, ${result.private} privados`);
   }
   runChatCleanup().catch(() => {});
   setInterval(() => runChatCleanup().catch(() => {}), 24 * 60 * 60 * 1000);
+  cleanupExpiredNotifications().catch(() => {});
+  setInterval(() => cleanupExpiredNotifications().catch(() => {}), 60 * 60 * 1000);
 
   // Crear cuenta de super admin
   try {

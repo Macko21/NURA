@@ -11,7 +11,7 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '3.6.2';
+const GAME_VERSION = '3.6.3';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [
@@ -49,7 +49,10 @@ self.addEventListener('install', event => {
       });
     })
   );
-  self.skipWaiting();
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 /* Activar — limpiar caches viejos y tomar control */
@@ -87,7 +90,9 @@ self.addEventListener('push', event => {
         url: data.url || '/',
         action: data.action || null,
         roomId: data.roomId || null,
-        roomCode: data.roomCode || null
+        roomCode: data.roomCode || null,
+        inviteId: data.inviteId || null,
+        fromId: data.fromId || null
       },
       vibrate: [200, 100, 200],
       timestamp: data.timestamp || Date.now()
@@ -105,7 +110,9 @@ self.addEventListener('push', event => {
               timestamp: data.timestamp || Date.now(),
               action: data.action || null,
               roomId: data.roomId || null,
-              roomCode: data.roomCode || null
+              roomCode: data.roomCode || null,
+              inviteId: data.inviteId || null,
+              fromId: data.fromId || null
             });
           });
         });
@@ -136,7 +143,9 @@ self.addEventListener('notificationclick', event => {
             client.postMessage({
               type: 'INVITE_RECEIVED',
               roomId: nd.roomId,
-              roomCode: nd.roomCode || ''
+              roomCode: nd.roomCode || '',
+              inviteId: nd.inviteId || '',
+              fromId: nd.fromId || ''
             });
           }
           if (url !== '/') client.navigate(url);
@@ -152,7 +161,9 @@ self.addEventListener('notificationclick', event => {
                 newWin.postMessage({
                   type: 'INVITE_RECEIVED',
                   roomId: nd.roomId,
-                  roomCode: nd.roomCode || ''
+                  roomCode: nd.roomCode || '',
+                  inviteId: nd.inviteId || '',
+                  fromId: nd.fromId || ''
                 }, '*');
               } catch(e) {}
             }, 2000);

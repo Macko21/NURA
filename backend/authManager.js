@@ -24,12 +24,16 @@ async function register(req, res) {
   if (!email || !username || !password) {
     return res.status(400).json({ error: "Faltan datos requeridos" });
   }
+  const normalizedUsername = String(username).trim();
+  if (!/^\p{L}/u.test(normalizedUsername)) {
+    return res.status(400).json({ error: "El usuario debe comenzar con una letra" });
+  }
 
   try {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    await createUserTransaction(email, username, passwordHash);
+    await createUserTransaction(String(email).trim(), normalizedUsername, passwordHash);
     
     res.status(201).json({ message: "Usuario registrado con éxito" });
   } catch (error) {

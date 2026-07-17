@@ -9,28 +9,46 @@
  */
 
 const webPush = require("web-push");
+const { pool } = require("./database");
 
 // VAPID keys se generan automáticamente si no existen en env
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_EMAIL = process.env.VAPID_EMAIL || "ceo@los10000demacko.com";
 
 let vapidReady = false;
+let activePublicKey = "";
 
-function initPush() {
-  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-    webPush.setVapidDetails(
-      `mailto:${VAPID_EMAIL}`,
-      VAPID_PUBLIC_KEY,
-      VAPID_PRIVATE_KEY
-    );
-    vapidReady = true;
-    console.log("🔔 Web Push configurado con VAPID keys de env");
-  } else {
-    console.warn("⚠️  Web Push: Sin VAPID keys — notificaciones push deshabilitadas");
-    console.warn("   Generalas con: npx web-push generate-vapid-keys");
-    console.warn("   Y setealas como VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY en el env");
+async function initPush() {
+  let publicKey = process.env.VAPID_PUBLIC_KEY || "";
+  let privateKey = process.env.VAPID_PRIVATE_KEY || "";
+
+  if (!publicKey || !privateKey) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at BIGINT NOT NULL
+      )
+    `);
+    const existing = await pool.query(`SELECT value FROM app_settings WHERE key = 'vapid_keys'`);
+    const stored = existing.rows[0]?.value || {};
+    publicKey = stored.publicKey || "";
+    privateKey = stored.privateKey || "";
+    if (!publicKey || !privateKey) {
+      const generated = webPush.generateVAPIDKeys();
+      await pool.query(`
+        INSERT INTO app_settings (key, value, updated_at) VALUES ('vapid_keys', $1, $2)
+        ON CONFLICT (key) DO NOTHING
+      `, [JSON.stringify(generated), Date.now()]);
+      const persisted = await pool.query(`SELECT value FROM app_settings WHERE key = 'vapid_keys'`);
+      publicKey = persisted.rows[0]?.value?.publicKey || generated.publicKey;
+      privateKey = persisted.rows[0]?.value?.privateKey || generated.privateKey;
+    }
   }
+
+  webPush.setVapidDetails(`mailto:${VAPID_EMAIL}`, publicKey, privateKey);
+  activePublicKey = publicKey;
+  vapidReady = true;
+  console.log("🔔 Web Push configurado con claves VAPID persistentes");
 }
 
 function isPushReady() {
@@ -38,7 +56,7 @@ function isPushReady() {
 }
 
 function getVapidPublicKey() {
-  return VAPID_PUBLIC_KEY || "";
+  return activePublicKey;
 }
 
 async function sendPushNotification(subscription, title, body, url, extraData) {

@@ -95,6 +95,16 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_expires BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen BIGINT DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_games_played INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_games_won INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_total_score INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_shop_purchases INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS weekly_games_played INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS weekly_games_won INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS weekly_total_score INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS weekly_shop_purchases INTEGER DEFAULT 0`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_baseline_set BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS weekly_baseline_set BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS is_scheduled BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS schedule_interval TEXT DEFAULT NULL`,
     ];
@@ -221,6 +231,34 @@ async function initializeDatabase() {
           created_at BIGINT NOT NULL
         )
       `);
+    } catch(e) {}
+    // Configuracion persistente de la aplicacion (VAPID, limpiezas programadas, etc.)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value JSONB NOT NULL,
+          updated_at BIGINT NOT NULL
+        )
+      `);
+    } catch(e) {}
+    // Notificaciones personales: se eliminan al responder o al vencer (24 h)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS player_notifications (
+          id TEXT PRIMARY KEY,
+          player_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          data JSONB DEFAULT '{}',
+          read BOOLEAN DEFAULT FALSE,
+          created_at BIGINT NOT NULL,
+          expires_at BIGINT NOT NULL
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_player_notifications_player ON player_notifications(player_id, created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_player_notifications_expiry ON player_notifications(expires_at)`);
     } catch(e) {}
     // Tabla de shop_items (CRUD del CEO panel)
     try {
@@ -688,6 +726,11 @@ async function buyShopItem(userId, itemId) {
 
     const player = playerRes.rows[0];
     if (!player) throw new Error("Jugador no encontrado");
+    const ownedRes = await client.query(
+      `SELECT 1 FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed' LIMIT 1`,
+      [player.id, parseInt(itemId)]
+    );
+    if (ownedRes.rows.length) throw new Error("Ya posees este item");
     if (player.coins < cost) throw new Error("No tienes suficientes monedas 🪙");
 
     // 2. Restar las monedas
@@ -728,7 +771,7 @@ async function getUserProfile(userId) {
   const result = await pool.query(`
     SELECT p.id, p.alias, p.name, p.coins, p.xp, p.level,
            p.games_played, p.games_won, p.total_score, p.highest_score,
-           p.win_streak, u.email
+           p.win_streak, p.equipped_avatar, p.equipped_dice, p.equipped_special, u.email
     FROM players p
     JOIN users u ON u.id = p.user_id
     WHERE p.user_id = $1
@@ -750,7 +793,10 @@ async function getUserProfile(userId) {
     xpForNext, xpInCurrentLevel,
     gamesPlayed: p.games_played || 0, gamesWon: p.games_won || 0,
     totalScore: p.total_score || 0, highestScore: p.highest_score || 0,
-    winStreak: p.win_streak || 0
+    winStreak: p.win_streak || 0,
+    equipped_avatar: p.equipped_avatar || '',
+    equipped_dice: p.equipped_dice || '',
+    equipped_special: p.equipped_special || ''
   };
 }
 
@@ -801,41 +847,61 @@ const DAY_MS  = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
 async function getPlayerMissions(playerId) {
-  // Obtener timestamps de reseteo
-  const resetRes = await pool.query(`SELECT daily_reset, weekly_reset FROM missions_reset WHERE player_id = $1`, [playerId]);
-  const now = Date.now();
-  let dailyReset  = resetRes.rows[0]?.daily_reset || 0;
-  let weeklyReset = resetRes.rows[0]?.weekly_reset || 0;
-  // Reset a medianoche (00:00) en vez de 24h desde última vez
+  const playerRes = await pool.query(`SELECT * FROM players WHERE id = $1`, [playerId]);
+  const p = playerRes.rows[0];
+  if (!p) return [];
+  const stats = {
+    games_played: Number(p.games_played) || 0,
+    games_won: Number(p.games_won) || 0,
+    total_score: Number(p.total_score) || 0,
+    win_streak: Number(p.win_streak) || 0,
+    shop_purchases: Number(p.shop_purchases) || 0,
+    chat_messages: Number(p.chat_messages) || 0,
+    perfect_game: Number(p.perfect_game) || 0,
+    level: Number(p.level) || 1
+  };
+
+  const resetRes = await pool.query(`SELECT * FROM missions_reset WHERE player_id = $1`, [playerId]);
+  let reset = resetRes.rows[0] || null;
   const startOfToday = getStartOfDay();
   const startOfWeek = getStartOfWeek();
-  const isNewDaily  = dailyReset < startOfToday;
-  const isNewWeekly = weeklyReset < startOfWeek;
+  const dailyExpired = !reset || !reset.daily_baseline_set || Number(reset.daily_reset || 0) < startOfToday;
+  const weeklyExpired = !reset || !reset.weekly_baseline_set || Number(reset.weekly_reset || 0) < startOfWeek;
 
-  // Si pasó el daily reset, marcar claimed de diarias como 0 para que se puedan re-completar
-  if (isNewDaily) {
-    await pool.query(
-      `UPDATE missions SET claimed = 0, completed = 0 WHERE player_id = $1 AND mission_id LIKE 'd%'`,
-      [playerId]
-    );
-    await pool.query(
-      `INSERT INTO missions_reset (player_id, daily_reset, weekly_reset) VALUES ($1, $2, $3)
-       ON CONFLICT (player_id) DO UPDATE SET daily_reset = $2`,
-      [playerId, startOfToday, weeklyReset]
-    );
-    dailyReset = startOfToday;
+  if (dailyExpired) {
+    await pool.query(`UPDATE missions SET claimed = 0, completed = 0, progress = 0 WHERE player_id = $1 AND mission_id LIKE 'd%'`, [playerId]);
   }
-  if (isNewWeekly) {
-    await pool.query(
-      `UPDATE missions SET claimed = 0, completed = 0 WHERE player_id = $1 AND mission_id LIKE 'w%'`,
-      [playerId]
-    );
-    await pool.query(
-      `INSERT INTO missions_reset (player_id, daily_reset, weekly_reset) VALUES ($1, $2, $3)
-       ON CONFLICT (player_id) DO UPDATE SET weekly_reset = $2`,
-      [playerId, dailyReset, startOfWeek]
-    );
-    weeklyReset = startOfWeek;
+  if (weeklyExpired) {
+    await pool.query(`UPDATE missions SET claimed = 0, completed = 0, progress = 0 WHERE player_id = $1 AND mission_id LIKE 'w%'`, [playerId]);
+  }
+  if (dailyExpired || weeklyExpired) {
+    await pool.query(`
+      INSERT INTO missions_reset (
+        player_id, daily_reset, weekly_reset,
+        daily_games_played, daily_games_won, daily_total_score, daily_shop_purchases,
+        weekly_games_played, weekly_games_won, weekly_total_score, weekly_shop_purchases,
+        daily_baseline_set, weekly_baseline_set
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,TRUE)
+      ON CONFLICT (player_id) DO UPDATE SET
+        daily_reset = CASE WHEN $12 THEN EXCLUDED.daily_reset ELSE missions_reset.daily_reset END,
+        daily_games_played = CASE WHEN $12 THEN EXCLUDED.daily_games_played ELSE missions_reset.daily_games_played END,
+        daily_games_won = CASE WHEN $12 THEN EXCLUDED.daily_games_won ELSE missions_reset.daily_games_won END,
+        daily_total_score = CASE WHEN $12 THEN EXCLUDED.daily_total_score ELSE missions_reset.daily_total_score END,
+        daily_shop_purchases = CASE WHEN $12 THEN EXCLUDED.daily_shop_purchases ELSE missions_reset.daily_shop_purchases END,
+        daily_baseline_set = CASE WHEN $12 THEN TRUE ELSE missions_reset.daily_baseline_set END,
+        weekly_reset = CASE WHEN $13 THEN EXCLUDED.weekly_reset ELSE missions_reset.weekly_reset END,
+        weekly_games_played = CASE WHEN $13 THEN EXCLUDED.weekly_games_played ELSE missions_reset.weekly_games_played END,
+        weekly_games_won = CASE WHEN $13 THEN EXCLUDED.weekly_games_won ELSE missions_reset.weekly_games_won END,
+        weekly_total_score = CASE WHEN $13 THEN EXCLUDED.weekly_total_score ELSE missions_reset.weekly_total_score END,
+        weekly_shop_purchases = CASE WHEN $13 THEN EXCLUDED.weekly_shop_purchases ELSE missions_reset.weekly_shop_purchases END,
+        weekly_baseline_set = CASE WHEN $13 THEN TRUE ELSE missions_reset.weekly_baseline_set END
+    `, [
+      playerId, startOfToday, startOfWeek,
+      stats.games_played, stats.games_won, stats.total_score, stats.shop_purchases,
+      stats.games_played, stats.games_won, stats.total_score, stats.shop_purchases,
+      dailyExpired, weeklyExpired
+    ]);
+    reset = (await pool.query(`SELECT * FROM missions_reset WHERE player_id = $1`, [playerId])).rows[0];
   }
 
   const res = await pool.query(
@@ -846,20 +912,11 @@ async function getPlayerMissions(playerId) {
   res.rows.forEach(r => {
     progressMap[r.mission_id] = { progress: r.progress, completed: r.completed, claimed: r.claimed };
   });
-  const playerRes = await pool.query(`SELECT * FROM players WHERE id = $1`, [playerId]);
-  const p = playerRes.rows[0] || {};
-  const stats = {
-    games_played: p.games_played || 0, games_won: p.games_won || 0,
-    total_score: p.total_score || 0, win_streak: p.win_streak || 0,
-    shop_purchases: p.shop_purchases || 0, chat_messages: p.chat_messages || 0,
-    perfect_game: p.perfect_game || 0, level: p.level || 1
-  };
   return MISSIONS.map(m => {
     const saved = progressMap[m.id];
     let currentProgress = stats[m.track] || 0;
-    // Para diarias y semanales, si se reseteó, el progreso es 0
-    if (m.type === 'daily' && isNewDaily) currentProgress = 0;
-    if (m.type === 'weekly' && isNewWeekly) currentProgress = 0;
+    if (m.type === 'daily') currentProgress = Math.max(0, currentProgress - Number(reset?.[`daily_${m.track}`] || 0));
+    if (m.type === 'weekly') currentProgress = Math.max(0, currentProgress - Number(reset?.[`weekly_${m.track}`] || 0));
     const completed = currentProgress >= m.req ? 1 : 0;
     return { ...m, progress: Math.min(currentProgress, m.req), completed, claimed: saved?.claimed || 0 };
   });
@@ -1020,6 +1077,14 @@ async function equipItem(playerId, itemId, category) {
     if (isNaN(parsedId)) throw new Error('ID de item invalido');
     const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parsedId]);
     if (!redRes.rows.length) throw new Error('No posees este item');
+    const item = await getShopItemById(parsedId);
+    if (!item) throw new Error('Item no disponible');
+    const expectedCategory = item.category === 'avatares' || [34, 35].includes(parsedId)
+      ? 'avatar'
+      : item.category === 'dados' || [32, 33].includes(parsedId)
+        ? 'dice'
+        : 'special';
+    if (expectedCategory !== category) throw new Error('Categoria de item invalida');
   }
   
   await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [itemId === 'default' ? '' : String(itemId), playerId]);
@@ -1580,6 +1645,56 @@ async function getPushSubscriptionsCount() {
   } catch(e) { return 0; }
 }
 
+// ── NOTIFICACIONES PERSONALES ───────────────────────────
+const NOTIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function savePlayerNotification(playerId, notification) {
+  const now = Date.now();
+  const id = String(notification.id || crypto.randomUUID());
+  await pool.query(`
+    INSERT INTO player_notifications (id, player_id, type, title, message, data, read, created_at, expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7,$8)
+    ON CONFLICT (id) DO UPDATE SET
+      title = EXCLUDED.title, message = EXCLUDED.message, data = EXCLUDED.data,
+      expires_at = EXCLUDED.expires_at
+  `, [
+    id,
+    playerId,
+    notification.type || 'message',
+    String(notification.title || 'Notificación').slice(0, 120),
+    String(notification.message || '').slice(0, 500),
+    JSON.stringify(notification.data || {}),
+    notification.createdAt || now,
+    notification.expiresAt || now + NOTIFICATION_TTL_MS
+  ]);
+  return id;
+}
+
+async function getPlayerNotifications(playerId, limit = 50) {
+  await cleanupExpiredNotifications();
+  const res = await pool.query(`
+    SELECT id, type, title, message, data, read, created_at, expires_at
+    FROM player_notifications
+    WHERE player_id = $1 AND expires_at > $2
+    ORDER BY created_at DESC
+    LIMIT $3
+  `, [playerId, Date.now(), limit]);
+  return res.rows;
+}
+
+async function deletePlayerNotification(playerId, notificationId) {
+  const res = await pool.query(
+    `DELETE FROM player_notifications WHERE player_id = $1 AND id = $2`,
+    [playerId, String(notificationId)]
+  );
+  return res.rowCount > 0;
+}
+
+async function cleanupExpiredNotifications() {
+  const res = await pool.query(`DELETE FROM player_notifications WHERE expires_at <= $1`, [Date.now()]);
+  return res.rowCount;
+}
+
 // ── SHOP ITEMS CRUD (CEO Panel) ─────────────────────────
 async function getShopItemsFromDB() {
   try {
@@ -1768,6 +1883,35 @@ async function cleanupPrivateMessages() {
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     await pool.query(`DELETE FROM private_messages WHERE created_at < $1`, [sevenDaysAgo]);
   } catch(e) {}
+}
+
+// Cada siete días compacta el Portal Social y conserva el historial de los últimos dos.
+async function cleanupPortalChats() {
+  const now = Date.now();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const setting = await client.query(`SELECT value FROM app_settings WHERE key = 'portal_chat_last_cleanup' FOR UPDATE`);
+    const lastCleanup = Number(setting.rows[0]?.value?.timestamp || 0);
+    if (lastCleanup && now - lastCleanup < WEEK_MS) {
+      await client.query('COMMIT');
+      return { cleaned: false, global: 0, private: 0 };
+    }
+    const keepFrom = now - 2 * DAY_MS;
+    const globalRes = await client.query(`DELETE FROM global_chat WHERE created_at < $1`, [keepFrom]);
+    const privateRes = await client.query(`DELETE FROM private_messages WHERE created_at < $1`, [keepFrom]);
+    await client.query(`
+      INSERT INTO app_settings (key, value, updated_at) VALUES ('portal_chat_last_cleanup', $1, $2)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+    `, [JSON.stringify({ timestamp: now }), now]);
+    await client.query('COMMIT');
+    return { cleaned: true, global: globalRes.rowCount, private: privateRes.rowCount };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2165,7 +2309,7 @@ module.exports = {
   getFriends, addFriend, removeFriend, searchPlayers,
   acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests,
   saveGlobalMessage, getGlobalMessages, cleanupGlobalChat,
-  savePrivateMessage, getPrivateMessages, cleanupPrivateMessages,
+  savePrivateMessage, getPrivateMessages, cleanupPrivateMessages, cleanupPortalChats,
   updateLastSeen,
   createAdmin, getAdminByUsername,
   banPlayer, suspendPlayer, unbanPlayer, checkIfBanned,
@@ -2177,6 +2321,7 @@ module.exports = {
   getRevenuePerDay, getLevelDistribution, getActivityHeatmap,
   getServerInfo,
   savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount,
+  savePlayerNotification, getPlayerNotifications, deletePlayerNotification, cleanupExpiredNotifications,
   getShopItemDetail,
   generateWeeklyReport,
   seedShopItemsFromCatalog,
