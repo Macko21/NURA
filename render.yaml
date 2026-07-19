@@ -2,9 +2,15 @@ services:
   - type: web
     name: los10000-macko
     runtime: node
-    buildCommand: npm install
-    startCommand: node backend/server.js
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
     healthCheckPath: /api/version
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CEO_SECRET
+        sync: false

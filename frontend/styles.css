@@ -480,10 +480,23 @@ html,body{
 .top-bar h2{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);font-weight:600}
 .back-btn{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;font-family:inherit;padding:4px 10px;border-radius:8px;transition:all .18s}
 .back-btn:hover{color:var(--gold);background:var(--bg-hover)}
-.code-row{display:flex;align-items:center;gap:8px}
+.code-row,.room-header-actions{display:flex;align-items:center;gap:8px}
+.room-header-actions{margin-left:auto;justify-content:flex-end;white-space:nowrap}
 .code-badge{font-family:'Cinzel',serif;font-size:18px;letter-spacing:5px;color:var(--gold);font-weight:700}
 .btn-icon-sm{background:none;border:none;cursor:pointer;font-size:16px;padding:4px;opacity:.6;border-radius:6px;transition:all .18s}
 .btn-icon-sm:hover{opacity:1;background:var(--bg-hover)}
+.btn-room-sound{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  width:32px;height:32px;padding:0;background:rgba(255,255,255,.05);
+  border:1px solid var(--border2);border-radius:8px;color:var(--text2);
+  font-size:15px;cursor:pointer;transition:all .18s;
+}
+.btn-room-sound:hover{background:var(--bg-hover);border-color:var(--gold);color:var(--gold)}
+.btn-room-sound.muted{color:var(--red-lt);border-color:rgba(200,60,48,.35)}
+.btn-room-sound.muted::after,.btn-music-toggle.muted::after{
+  content:'';position:absolute;left:3px;right:3px;top:50%;height:2px;
+  border-radius:2px;background:var(--red);transform:rotate(-18deg);
+}
 
 .page-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 .hint{font-size:11px;color:var(--text3);text-align:center}
@@ -2189,14 +2202,41 @@ input[type=number]{-moz-appearance:textfield}
 .btn-music-toggle:active {
   transform: scale(0.95);
 }
+.btn-music-toggle.muted{color:var(--red-lt);background:rgba(200,60,48,.08)}
 
 .user-menu-divider {
   height: 1px; background: var(--border2); margin: 4px 0;
 }
 
-.user-menu-volume-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 11px 10px;
+.music-panel{
+  position:absolute;top:calc(100% + 8px);right:0;width:240px;padding:12px;
+  background:rgba(16,15,29,.98);border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--sh-lg);backdrop-filter:blur(18px);z-index:1200;
+}
+.music-panel-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;color:var(--gold);font:700 12px 'Sora',sans-serif}
+.music-panel-volume-row{display:flex;align-items:center;gap:8px}
+.music-panel-volume-row output{width:34px;text-align:right;color:var(--text2);font-size:10px;font-variant-numeric:tabular-nums}
+.music-mute-toggle{
+  border:1px solid var(--border);border-radius:7px;background:var(--bg-input);
+  color:var(--text2);padding:5px 8px;font:600 10px 'Sora',sans-serif;cursor:pointer;
+}
+.music-mute-toggle:hover{border-color:var(--gold);color:var(--gold)}
+.music-mute-toggle.is-muted{border-color:rgba(200,60,48,.45);background:rgba(200,60,48,.1);color:var(--red-lt)}
+
+/* En móvil la barra ocupa espacio real: el dado animado ya no puede superponerla. */
+@media(max-width:600px){
+  #screen-lobby{justify-content:flex-start;overflow-y:auto;overflow-x:hidden}
+  #screen-lobby .user-top-bar{
+    position:sticky;top:0;width:100%;flex-shrink:0;
+    margin-bottom:16px;
+    padding-top:calc(7px + env(safe-area-inset-top));
+    background:linear-gradient(180deg,rgba(10,10,18,.98) 72%,rgba(10,10,18,.7));
+  }
+  #screen-lobby .lobby-content{flex-shrink:0;margin:0 auto;padding-top:0}
+  #screen-lobby .notif-wrapper .music-panel{
+    position:fixed;top:calc(50px + env(safe-area-inset-top));left:8px;right:8px;
+    width:auto;
+  }
 }
 
 .music-vol-icon {

@@ -17,6 +17,7 @@
 const http = require('http');
 const { spawn } = require('child_process');
 const path = require('path');
+const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 3099;
 const BASE = `http://localhost:${PORT}`;
@@ -109,6 +110,9 @@ async function runTests() {
     let res = await fetchUrl('/');
     assert('GET / (index.html)', res.status === 200, `Status ${res.status}`);
     assert('Content-Type is HTML', (res.headers['content-type'] || '').includes('text/html'));
+    assert('Header X-Content-Type-Options', res.headers['x-content-type-options'] === 'nosniff');
+    assert('Header X-Frame-Options', res.headers['x-frame-options'] === 'DENY');
+    assert('Header Referrer-Policy', res.headers['referrer-policy'] === 'strict-origin-when-cross-origin');
   } catch (e) {
     assert('GET /', false, e.message);
   }
@@ -189,22 +193,59 @@ async function runTests() {
     }
   }
 
+  console.log('\n── Sesión invitada y WebSocket ──');
+  try {
+    const res = await postUrl('/api/guest-session', {});
+    const data = JSON.parse(res.body);
+    assert('POST /api/guest-session', res.status === 201, `Status ${res.status}`);
+    assert('Guest session returns signed token', typeof data.token === 'string' && data.token.split('.').length === 3);
+    assert('Guest identity is server-generated', String(data.player?.id || '').startsWith('guest_'));
+  } catch (e) {
+    assert('POST /api/guest-session', false, e.message);
+  }
+
+  try {
+    const closeCode = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://localhost:${PORT}`);
+      const timeout = setTimeout(() => {
+        ws.terminate();
+        reject(new Error('Timeout esperando rechazo WebSocket'));
+      }, 3000);
+      ws.on('open', () => ws.send(JSON.stringify({ type: 'CREATE_ROOM', data: {} })));
+      ws.on('close', code => {
+        clearTimeout(timeout);
+        resolve(code);
+      });
+      ws.on('error', reject);
+    });
+    assert('WebSocket rejects unauthenticated actions', closeCode === 4003, `Close code ${closeCode}`);
+  } catch (e) {
+    assert('WebSocket rejects unauthenticated actions', false, e.message);
+  }
+
   // ── 4. CEO endpoints ────────────────────────────
   console.log('\n── CEO Panel ──');
 
   try {
-    let res = await postUrl('/ceo-panel/api/login', { username: 'admin', password: 'admin123' });
-    // May return 401 (wrong credentials in test env) or 200 (if CEO_USER/PASS match)
-    assert('POST /ceo-panel/api/login', res.status === 200 || res.status === 401, `Status ${res.status}`);
+    let res = await postUrl('/ceo-panel/api/login', { username: 'admin', password: 'invalid-smoke-test-password' });
+    // 503 es correcto cuando el panel no fue configurado en este entorno.
+    assert('POST /ceo-panel/api/login', [200, 401, 503].includes(res.status), `Status ${res.status}`);
   } catch (e) {
     assert('POST /ceo-panel/api/login', false, e.message);
   }
 
   try {
     let res = await fetchUrl('/ceo-panel/api/stats');
-    assert('GET /ceo-panel/api/stats (sin auth)', res.status === 401, `Status ${res.status}`);
+    assert('GET /ceo-panel/api/stats (sin auth)', res.status === 401 || res.status === 503, `Status ${res.status}`);
   } catch (e) {
     assert('GET /ceo-panel/api/stats', false, e.message);
+  }
+
+  try {
+    let res = await fetchUrl('/ceo-panel/api/version');
+    assert('GET /ceo-panel/api/version (sin auth)', res.status === 401 || res.status === 503, `Status ${res.status}`);
+  } catch (e) {
+    assert('GET /ceo-panel/api/version', false, e.message);
   }
 
   // ── 5. Rate limiting test ────────────────────────
@@ -241,13 +282,15 @@ async function main() {
   const env = {
     ...process.env,
     PORT: String(PORT),
-    NODE_ENV: 'test'
+    NODE_ENV: 'test',
+    JWT_SECRET: 'smoke-test-only-jwt-secret-32-bytes-minimum',
+    CEO_SECRET: '',
+    CEO_ADMIN_USERNAME: '',
+    CEO_ADMIN_PASSWORD: ''
   };
 
-  // Si no hay DATABASE_URL, setear una dummy para que el server arranque en modo limitado
-  if (!env.DATABASE_URL) {
-    env.DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/los10000_test';
-  }
+  // Nunca heredar por accidente la base real durante un smoke test.
+  env.DATABASE_URL = process.env.SMOKE_DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/los10000_test';
 
   serverProcess = spawn('node', ['backend/server.js'], {
     env,

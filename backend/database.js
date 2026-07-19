@@ -62,6 +62,18 @@ async function initializeDatabase() {
     `);
 
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS payment_events (
+        provider TEXT NOT NULL,
+        payment_id TEXT NOT NULL,
+        user_id UUID NOT NULL,
+        pack_id TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        created_at BIGINT NOT NULL,
+        PRIMARY KEY (provider, payment_id)
+      );
+    `);
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS redemptions (
         id SERIAL PRIMARY KEY,
         player_id TEXT NOT NULL,
@@ -95,6 +107,7 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_expires BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen BIGINT DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS hide_last_seen BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_games_played INTEGER DEFAULT 0`,
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_games_won INTEGER DEFAULT 0`,
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_total_score INTEGER DEFAULT 0`,
@@ -129,6 +142,21 @@ async function initializeDatabase() {
           created_at BIGINT NOT NULL,
           UNIQUE(player_id, friend_id)
         )
+      `);
+      await pool.query(`
+        DELETE FROM friends WHERE id IN (
+          SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (
+              PARTITION BY LEAST(player_id, friend_id), GREATEST(player_id, friend_id)
+              ORDER BY CASE WHEN status = 'accepted' THEN 0 ELSE 1 END, id
+            ) AS duplicate_number
+            FROM friends
+          ) duplicates WHERE duplicate_number > 1
+        )
+      `);
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_unique_pair
+        ON friends (LEAST(player_id, friend_id), GREATEST(player_id, friend_id))
       `);
     } catch(e) {}
     // Tabla de mensajes globales (chat entre usuarios)
@@ -771,7 +799,8 @@ async function getUserProfile(userId) {
   const result = await pool.query(`
     SELECT p.id, p.alias, p.name, p.coins, p.xp, p.level,
            p.games_played, p.games_won, p.total_score, p.highest_score,
-           p.win_streak, p.equipped_avatar, p.equipped_dice, p.equipped_special, u.email
+           p.win_streak, p.equipped_avatar, p.equipped_dice, p.equipped_special,
+           p.hide_last_seen, u.email
     FROM players p
     JOIN users u ON u.id = p.user_id
     WHERE p.user_id = $1
@@ -796,7 +825,8 @@ async function getUserProfile(userId) {
     winStreak: p.win_streak || 0,
     equipped_avatar: p.equipped_avatar || '',
     equipped_dice: p.equipped_dice || '',
-    equipped_special: p.equipped_special || ''
+    equipped_special: p.equipped_special || '',
+    hide_last_seen: p.hide_last_seen || false
   };
 }
 
@@ -861,47 +891,59 @@ async function getPlayerMissions(playerId) {
     level: Number(p.level) || 1
   };
 
-  const resetRes = await pool.query(`SELECT * FROM missions_reset WHERE player_id = $1`, [playerId]);
-  let reset = resetRes.rows[0] || null;
   const startOfToday = getStartOfDay();
   const startOfWeek = getStartOfWeek();
-  const dailyExpired = !reset || !reset.daily_baseline_set || Number(reset.daily_reset || 0) < startOfToday;
-  const weeklyExpired = !reset || !reset.weekly_baseline_set || Number(reset.weekly_reset || 0) < startOfWeek;
+  let reset;
+  const resetClient = await pool.connect();
+  try {
+    await resetClient.query('BEGIN');
+    await resetClient.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`missions:${playerId}`]);
+    const resetRes = await resetClient.query(`SELECT * FROM missions_reset WHERE player_id = $1`, [playerId]);
+    reset = resetRes.rows[0] || null;
+    const dailyExpired = !reset || !reset.daily_baseline_set || Number(reset.daily_reset || 0) < startOfToday;
+    const weeklyExpired = !reset || !reset.weekly_baseline_set || Number(reset.weekly_reset || 0) < startOfWeek;
 
-  if (dailyExpired) {
-    await pool.query(`UPDATE missions SET claimed = 0, completed = 0, progress = 0 WHERE player_id = $1 AND mission_id LIKE 'd%'`, [playerId]);
-  }
-  if (weeklyExpired) {
-    await pool.query(`UPDATE missions SET claimed = 0, completed = 0, progress = 0 WHERE player_id = $1 AND mission_id LIKE 'w%'`, [playerId]);
-  }
-  if (dailyExpired || weeklyExpired) {
-    await pool.query(`
-      INSERT INTO missions_reset (
-        player_id, daily_reset, weekly_reset,
-        daily_games_played, daily_games_won, daily_total_score, daily_shop_purchases,
-        weekly_games_played, weekly_games_won, weekly_total_score, weekly_shop_purchases,
-        daily_baseline_set, weekly_baseline_set
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,TRUE)
-      ON CONFLICT (player_id) DO UPDATE SET
-        daily_reset = CASE WHEN $12 THEN EXCLUDED.daily_reset ELSE missions_reset.daily_reset END,
-        daily_games_played = CASE WHEN $12 THEN EXCLUDED.daily_games_played ELSE missions_reset.daily_games_played END,
-        daily_games_won = CASE WHEN $12 THEN EXCLUDED.daily_games_won ELSE missions_reset.daily_games_won END,
-        daily_total_score = CASE WHEN $12 THEN EXCLUDED.daily_total_score ELSE missions_reset.daily_total_score END,
-        daily_shop_purchases = CASE WHEN $12 THEN EXCLUDED.daily_shop_purchases ELSE missions_reset.daily_shop_purchases END,
-        daily_baseline_set = CASE WHEN $12 THEN TRUE ELSE missions_reset.daily_baseline_set END,
-        weekly_reset = CASE WHEN $13 THEN EXCLUDED.weekly_reset ELSE missions_reset.weekly_reset END,
-        weekly_games_played = CASE WHEN $13 THEN EXCLUDED.weekly_games_played ELSE missions_reset.weekly_games_played END,
-        weekly_games_won = CASE WHEN $13 THEN EXCLUDED.weekly_games_won ELSE missions_reset.weekly_games_won END,
-        weekly_total_score = CASE WHEN $13 THEN EXCLUDED.weekly_total_score ELSE missions_reset.weekly_total_score END,
-        weekly_shop_purchases = CASE WHEN $13 THEN EXCLUDED.weekly_shop_purchases ELSE missions_reset.weekly_shop_purchases END,
-        weekly_baseline_set = CASE WHEN $13 THEN TRUE ELSE missions_reset.weekly_baseline_set END
-    `, [
-      playerId, startOfToday, startOfWeek,
-      stats.games_played, stats.games_won, stats.total_score, stats.shop_purchases,
-      stats.games_played, stats.games_won, stats.total_score, stats.shop_purchases,
-      dailyExpired, weeklyExpired
-    ]);
-    reset = (await pool.query(`SELECT * FROM missions_reset WHERE player_id = $1`, [playerId])).rows[0];
+    if (dailyExpired) {
+      await resetClient.query(`UPDATE missions SET claimed = 0, completed = 0, progress = 0 WHERE player_id = $1 AND mission_id LIKE 'd%'`, [playerId]);
+    }
+    if (weeklyExpired) {
+      await resetClient.query(`UPDATE missions SET claimed = 0, completed = 0, progress = 0 WHERE player_id = $1 AND mission_id LIKE 'w%'`, [playerId]);
+    }
+    if (dailyExpired || weeklyExpired) {
+      await resetClient.query(`
+        INSERT INTO missions_reset (
+          player_id, daily_reset, weekly_reset,
+          daily_games_played, daily_games_won, daily_total_score, daily_shop_purchases,
+          weekly_games_played, weekly_games_won, weekly_total_score, weekly_shop_purchases,
+          daily_baseline_set, weekly_baseline_set
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,TRUE)
+        ON CONFLICT (player_id) DO UPDATE SET
+          daily_reset = CASE WHEN $12 THEN EXCLUDED.daily_reset ELSE missions_reset.daily_reset END,
+          daily_games_played = CASE WHEN $12 THEN EXCLUDED.daily_games_played ELSE missions_reset.daily_games_played END,
+          daily_games_won = CASE WHEN $12 THEN EXCLUDED.daily_games_won ELSE missions_reset.daily_games_won END,
+          daily_total_score = CASE WHEN $12 THEN EXCLUDED.daily_total_score ELSE missions_reset.daily_total_score END,
+          daily_shop_purchases = CASE WHEN $12 THEN EXCLUDED.daily_shop_purchases ELSE missions_reset.daily_shop_purchases END,
+          daily_baseline_set = CASE WHEN $12 THEN TRUE ELSE missions_reset.daily_baseline_set END,
+          weekly_reset = CASE WHEN $13 THEN EXCLUDED.weekly_reset ELSE missions_reset.weekly_reset END,
+          weekly_games_played = CASE WHEN $13 THEN EXCLUDED.weekly_games_played ELSE missions_reset.weekly_games_played END,
+          weekly_games_won = CASE WHEN $13 THEN EXCLUDED.weekly_games_won ELSE missions_reset.weekly_games_won END,
+          weekly_total_score = CASE WHEN $13 THEN EXCLUDED.weekly_total_score ELSE missions_reset.weekly_total_score END,
+          weekly_shop_purchases = CASE WHEN $13 THEN EXCLUDED.weekly_shop_purchases ELSE missions_reset.weekly_shop_purchases END,
+          weekly_baseline_set = CASE WHEN $13 THEN TRUE ELSE missions_reset.weekly_baseline_set END
+      `, [
+        playerId, startOfToday, startOfWeek,
+        stats.games_played, stats.games_won, stats.total_score, stats.shop_purchases,
+        stats.games_played, stats.games_won, stats.total_score, stats.shop_purchases,
+        dailyExpired, weeklyExpired
+      ]);
+      reset = (await resetClient.query(`SELECT * FROM missions_reset WHERE player_id = $1`, [playerId])).rows[0];
+    }
+    await resetClient.query('COMMIT');
+  } catch (e) {
+    await resetClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    resetClient.release();
   }
 
   const res = await pool.query(
@@ -932,19 +974,24 @@ async function claimMissionReward(playerId, missionId) {
   if (!m || !m.completed) throw new Error("Mision no completada");
   if (m.claimed) throw new Error("Mision ya reclamada");
 
-  // Guardar claim
-  await pool.query(
-    `INSERT INTO missions (player_id, mission_id, progress, completed, claimed)
-     VALUES ($1, $2, $3, 1, 1)
-     ON CONFLICT (player_id, mission_id)
-     DO UPDATE SET claimed = 1`,
-    [playerId, missionId, mission.req]
-  );
-
-  // Dar recompensas
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const lockedPlayer = await client.query(`SELECT id FROM players WHERE id = $1 FOR UPDATE`, [playerId]);
+    if (!lockedPlayer.rows.length) throw new Error("Jugador no encontrado");
+    await client.query(
+      `INSERT INTO missions (player_id, mission_id, progress, completed, claimed)
+       VALUES ($1, $2, $3, 1, 0)
+       ON CONFLICT (player_id, mission_id) DO NOTHING`,
+      [playerId, missionId, mission.req]
+    );
+    const claimed = await client.query(
+      `UPDATE missions SET claimed = 1, completed = 1, progress = GREATEST(progress, $3)
+       WHERE player_id = $1 AND mission_id = $2 AND claimed = 0
+       RETURNING mission_id`,
+      [playerId, missionId, mission.req]
+    );
+    if (!claimed.rows.length) throw new Error("Mision ya reclamada");
     await client.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [mission.coins, playerId]);
     if (mission.xp > 0) {
       await client.query(`UPDATE players SET xp = xp + $1 WHERE id = $2`, [mission.xp, playerId]);
@@ -1092,8 +1139,15 @@ async function equipItem(playerId, itemId, category) {
   // Si se equipa el item 31 (+50% Monedas x 1d), activar el boost por 24h
   if (itemId === '31') {
     const expires = Date.now() + 24 * 60 * 60 * 1000; // 24h desde ahora
-    await pool.query(`UPDATE players SET boost_expires = $1 WHERE id = $2`, [expires, playerId]);
-    console.log(`⏫ Boost +50% activado para ${playerId} - expira ${new Date(expires).toISOString()}`);
+    const activated = await pool.query(
+      `UPDATE players SET boost_expires = $1
+       WHERE id = $2 AND COALESCE(boost_expires, 0) = 0
+       RETURNING boost_expires`,
+      [expires, playerId]
+    );
+    if (activated.rows.length) {
+      console.log(`⏫ Boost +50% activado para ${playerId} - expira ${new Date(expires).toISOString()}`);
+    }
   }
   
   return { success: true };
@@ -1129,10 +1183,10 @@ async function getFriends(playerId) {
   try {
     const res = await pool.query(`
       SELECT p.id, p.alias, p.name, p.equipped_avatar, p.games_played, p.games_won,
-             p.last_seen
+             p.last_seen, p.hide_last_seen
       FROM friends f
-      JOIN players p ON p.id = f.friend_id
-      WHERE f.player_id = $1 AND f.status = 'accepted'
+      JOIN players p ON p.id = CASE WHEN f.player_id = $1 THEN f.friend_id ELSE f.player_id END
+      WHERE (f.player_id = $1 OR f.friend_id = $1) AND f.status = 'accepted'
       ORDER BY p.alias
     `, [playerId]);
     return res.rows;
@@ -1141,28 +1195,41 @@ async function getFriends(playerId) {
 
 async function addFriend(playerId, friendId) {
   if (playerId === friendId) throw new Error('No podés agregarte a vos mismo');
-  // Verificar si ya existe una relación (en cualquier dirección)
-  const exists = await pool.query(
-    `SELECT id, status FROM friends WHERE (player_id = $1 AND friend_id = $2) OR (player_id = $2 AND friend_id = $1)`,
-    [playerId, friendId]
-  );
-  if (exists.rows.length > 0) {
-    const row = exists.rows[0];
-    if (row.status === 'accepted') throw new Error('Ya son amigos');
-    if (row.status === 'pending') {
-      // Si la solicitud viene del otro lado, aceptarla automáticamente
-      if (exists.rows[0]) {
-        await pool.query(`UPDATE friends SET status = 'accepted' WHERE id = $1`, [row.id]);
-        return { success: true, accepted: true };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pairKey = [String(playerId), String(friendId)].sort().join(':');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [pairKey]);
+    const exists = await client.query(
+      `SELECT id, player_id, friend_id, status FROM friends
+       WHERE (player_id = $1 AND friend_id = $2) OR (player_id = $2 AND friend_id = $1)
+       FOR UPDATE`,
+      [playerId, friendId]
+    );
+    if (exists.rows.length > 0) {
+      const row = exists.rows[0];
+      if (row.status === 'accepted') throw new Error('Ya son amigos');
+      if (row.status === 'pending') {
+        if (row.player_id === friendId && row.friend_id === playerId) {
+          await client.query(`UPDATE friends SET status = 'accepted' WHERE id = $1`, [row.id]);
+          await client.query('COMMIT');
+          return { success: true, accepted: true };
+        }
+        throw new Error('Solicitud ya enviada');
       }
-      throw new Error('Solicitud ya enviada');
     }
+    await client.query(
+      `INSERT INTO friends (player_id, friend_id, status, created_at) VALUES ($1, $2, 'pending', $3)`,
+      [playerId, friendId, Date.now()]
+    );
+    await client.query('COMMIT');
+    return { success: true, pending: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
   }
-  await pool.query(
-    `INSERT INTO friends (player_id, friend_id, status, created_at) VALUES ($1, $2, 'pending', $3)`,
-    [playerId, friendId, Date.now()]
-  );
-  return { success: true, pending: true };
 }
 
 async function acceptFriendRequest(requestId, playerId) {
@@ -1171,7 +1238,7 @@ async function acceptFriendRequest(requestId, playerId) {
     [requestId, playerId]
   );
   if (res.rows.length === 0) throw new Error('Solicitud no encontrada');
-  return { success: true };
+  return { success: true, fromId: res.rows[0].player_id };
 }
 
 async function rejectFriendRequest(requestId, playerId) {
@@ -1196,7 +1263,7 @@ async function getPendingFriendRequests(playerId) {
 
 async function removeFriend(playerId, friendId) {
   await pool.query(
-    `DELETE FROM friends WHERE player_id = $1 AND friend_id = $2`,
+    `DELETE FROM friends WHERE (player_id = $1 AND friend_id = $2) OR (player_id = $2 AND friend_id = $1)`,
     [playerId, friendId]
   );
   return { success: true };
@@ -1219,6 +1286,19 @@ async function updateLastSeen(playerId) {
   try {
     await pool.query(`UPDATE players SET last_seen = $1 WHERE id = $2`, [Date.now(), playerId]);
   } catch(e) {}
+}
+
+// ── Ocultar/Mostrar última conexión ──────────────────────────
+async function updateHideLastSeen(playerId, hide) {
+  const client = await pool.connect();
+  try {
+    await client.query(`UPDATE players SET hide_last_seen = $1 WHERE id = $2`, [hide, playerId]);
+    return { success: true, hide_last_seen: hide };
+  } catch(e) {
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // ── AJUSTAR MONEDAS (CEO) ────────────────────────────────
@@ -1690,6 +1770,16 @@ async function deletePlayerNotification(playerId, notificationId) {
   return res.rowCount > 0;
 }
 
+async function consumePlayerNotification(playerId, notificationId, type) {
+  const res = await pool.query(
+    `DELETE FROM player_notifications
+     WHERE player_id = $1 AND id = $2 AND type = $3 AND expires_at > $4
+     RETURNING data`,
+    [playerId, String(notificationId), type, Date.now()]
+  );
+  return res.rows[0]?.data || null;
+}
+
 async function cleanupExpiredNotifications() {
   const res = await pool.query(`DELETE FROM player_notifications WHERE expires_at <= $1`, [Date.now()]);
   return res.rowCount;
@@ -1971,47 +2061,87 @@ async function getTournamentById(tournamentId) {
 }
 
 async function registerForTournament(tournamentId, playerId, playerName) {
+  const client = await pool.connect();
   try {
-    // Verificar que el torneo esté en registro
-    const tourney = await getTournamentById(tournamentId);
+    await client.query('BEGIN');
+    const tourneyRes = await client.query(`SELECT * FROM tournaments WHERE id = $1 FOR UPDATE`, [tournamentId]);
+    const tourney = tourneyRes.rows[0];
     if (!tourney) throw new Error('Torneo no encontrado');
     if (tourney.status !== 'registration') throw new Error('El torneo no está en período de registro');
-    
-    // Verificar cupo
-    if (parseInt(tourney.registered_count) >= parseInt(tourney.max_players)) {
-      throw new Error('El torneo está lleno');
-    }
-    
-    // Verificar si ya está registrado
-    const existing = await pool.query(
+
+    const existing = await client.query(
       `SELECT id FROM tournament_participants WHERE tournament_id = $1 AND player_id = $2`,
       [tournamentId, playerId]
     );
-    if (existing.rows.length > 0) throw new Error('Ya estás registrado en este torneo');
-    
-    // Asignar seed aleatorio
+    if (existing.rows.length) throw new Error('Ya estás registrado en este torneo');
+
+    const count = await client.query(
+      `SELECT COUNT(*)::int AS count FROM tournament_participants WHERE tournament_id = $1`,
+      [tournamentId]
+    );
+    if (count.rows[0].count >= Number(tourney.max_players)) {
+      throw new Error('El torneo está lleno');
+    }
+
+    const playerRes = await client.query(`SELECT alias, coins FROM players WHERE id = $1 FOR UPDATE`, [playerId]);
+    const player = playerRes.rows[0];
+    if (!player) throw new Error('Jugador no encontrado');
+    const fee = Math.max(0, Number(tourney.fee) || 0);
+    if (player.coins < fee) throw new Error(`Necesitás ${fee.toLocaleString('es-AR')} monedas para participar`);
+    if (fee > 0) {
+      await client.query(`UPDATE players SET coins = coins - $1 WHERE id = $2`, [fee, playerId]);
+      await client.query(
+        `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1,$2,$3,$4)`,
+        [playerId, -fee, `Inscripción torneo: ${tourney.name}`, Date.now()]
+      );
+    }
+
     const seed = Math.floor(Math.random() * 10000) + 1;
-    await pool.query(`
+    await client.query(`
       INSERT INTO tournament_participants (tournament_id, player_id, player_name, seed, registered_at)
       VALUES ($1, $2, $3, $4, $5)
-    `, [tournamentId, playerId, playerName, seed, Date.now()]);
-    
-    return { success: true };
-  } catch(e) { throw e; }
+    `, [tournamentId, playerId, player.alias || playerName, seed, Date.now()]);
+
+    await client.query('COMMIT');
+    return { success: true, charged: fee };
+  } catch(e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 async function unregisterFromTournament(tournamentId, playerId) {
+  const client = await pool.connect();
   try {
-    const tourney = await getTournamentById(tournamentId);
+    await client.query('BEGIN');
+    const tourneyRes = await client.query(`SELECT * FROM tournaments WHERE id = $1 FOR UPDATE`, [tournamentId]);
+    const tourney = tourneyRes.rows[0];
     if (!tourney) throw new Error('Torneo no encontrado');
     if (tourney.status !== 'registration') throw new Error('El torneo ya comenzó, no podés cancelar');
-    
-    await pool.query(
-      `DELETE FROM tournament_participants WHERE tournament_id = $1 AND player_id = $2`,
+
+    const removed = await client.query(
+      `DELETE FROM tournament_participants WHERE tournament_id = $1 AND player_id = $2 RETURNING id`,
       [tournamentId, playerId]
     );
-    return { success: true };
-  } catch(e) { throw e; }
+    if (!removed.rows.length) throw new Error('No estabas registrado en este torneo');
+    const refund = Math.max(0, Number(tourney.fee) || 0);
+    if (refund > 0) {
+      await client.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [refund, playerId]);
+      await client.query(
+        `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1,$2,$3,$4)`,
+        [playerId, refund, `Reembolso torneo: ${tourney.name}`, Date.now()]
+      );
+    }
+    await client.query('COMMIT');
+    return { success: true, refunded: refund };
+  } catch(e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 async function getTournamentParticipants(tournamentId) {
@@ -2110,6 +2240,27 @@ async function generateBracket(tournamentId) {
         `, [tournamentId, r, i]);
       }
     }
+
+    // Propagar los BYE de primera ronda a la siguiente llave.
+    if (rounds > 1) {
+      const byes = await client.query(
+        `SELECT match_index, winner_id, player1_id, player2_id, player1_name, player2_name
+         FROM tournament_matches
+         WHERE tournament_id = $1 AND round = 1 AND status = 'completed' AND winner_id IS NOT NULL`,
+        [tournamentId]
+      );
+      for (const bye of byes.rows) {
+        const nextIndex = Math.floor(Number(bye.match_index) / 2);
+        const winnerName = bye.player1_id === bye.winner_id ? bye.player1_name : bye.player2_name;
+        const idColumn = Number(bye.match_index) % 2 === 0 ? 'player1_id' : 'player2_id';
+        const nameColumn = Number(bye.match_index) % 2 === 0 ? 'player1_name' : 'player2_name';
+        await client.query(
+          `UPDATE tournament_matches SET ${idColumn} = $1, ${nameColumn} = $2
+           WHERE tournament_id = $3 AND round = 2 AND match_index = $4`,
+          [bye.winner_id, winnerName, tournamentId, nextIndex]
+        );
+      }
+    }
     
     // Actualizar estado del torneo
     const prizePool = parseInt(tourney.fee) * players.length;
@@ -2138,7 +2289,18 @@ async function advanceTournamentMatch(tournamentId, matchId, winnerId, p1Score, 
     `, [matchId, tournamentId]);
     const match = matchRes.rows[0];
     if (!match) throw new Error('Match no encontrado');
-    if (match.status === 'completed') throw new Error('Este match ya fue completado');
+    if (match.status === 'completed') {
+      if (String(match.winner_id) !== String(winnerId)) {
+        throw new Error('Este match ya fue completado con otro ganador');
+      }
+      await client.query("COMMIT");
+      return { success: true, duplicate: true };
+    }
+    if (winnerId !== match.player1_id && winnerId !== match.player2_id) {
+      throw new Error('El ganador no pertenece a este match');
+    }
+    p1Score = Math.max(0, Math.min(10000, Number(p1Score) || 0));
+    p2Score = Math.max(0, Math.min(10000, Number(p2Score) || 0));
     
     // Actualizar match
     await client.query(`
@@ -2174,6 +2336,11 @@ async function advanceTournamentMatch(tournamentId, matchId, winnerId, p1Score, 
           `, [winnerId, winnerName, nextMatch.id]);
         }
       }
+
+      await client.query(
+        `UPDATE tournaments SET current_round = GREATEST(current_round, $1) WHERE id = $2`,
+        [nextMatch ? nextRound : Number(match.round), tournamentId]
+      );
       
       // Actualizar participante: registrar eliminación si no es ganador final
       const loserId = match.player1_id === winnerId ? match.player2_id : match.player1_id;
@@ -2211,6 +2378,16 @@ async function advanceTournamentMatch(tournamentId, matchId, winnerId, p1Score, 
       await client.query(`
         UPDATE tournaments SET status = 'completed' WHERE id = $1
       `, [tournamentId]);
+
+      const prize = await client.query(`SELECT name, prize_pool FROM tournaments WHERE id = $1 FOR UPDATE`, [tournamentId]);
+      const prizePool = Math.max(0, Number(prize.rows[0]?.prize_pool) || 0);
+      if (championId && prizePool > 0) {
+        await client.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [prizePool, championId]);
+        await client.query(
+          `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1,$2,$3,$4)`,
+          [championId, prizePool, `Premio torneo: ${prize.rows[0].name}`, Date.now()]
+        );
+      }
     }
     
     await client.query("COMMIT");
@@ -2250,10 +2427,40 @@ async function getTournamentBracketData(tournamentId) {
 }
 
 async function cancelTournament(tournamentId) {
+  const client = await pool.connect();
   try {
-    await pool.query(`UPDATE tournaments SET status = 'cancelled' WHERE id = $1`, [tournamentId]);
-    return { success: true };
-  } catch(e) { throw e; }
+    await client.query('BEGIN');
+    const tourneyRes = await client.query(`SELECT * FROM tournaments WHERE id = $1 FOR UPDATE`, [tournamentId]);
+    const tourney = tourneyRes.rows[0];
+    if (!tourney) throw new Error('Torneo no encontrado');
+    if (tourney.status === 'cancelled') {
+      await client.query('COMMIT');
+      return { success: true, duplicate: true };
+    }
+    if (tourney.status === 'completed') throw new Error('El torneo ya finalizó');
+    const participants = await client.query(
+      `SELECT player_id FROM tournament_participants WHERE tournament_id = $1`,
+      [tournamentId]
+    );
+    const refund = Math.max(0, Number(tourney.fee) || 0);
+    if (refund > 0) {
+      for (const participant of participants.rows) {
+        await client.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [refund, participant.player_id]);
+        await client.query(
+          `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1,$2,$3,$4)`,
+          [participant.player_id, refund, `Reembolso torneo cancelado: ${tourney.name}`, Date.now()]
+        );
+      }
+    }
+    await client.query(`UPDATE tournaments SET status = 'cancelled' WHERE id = $1`, [tournamentId]);
+    await client.query('COMMIT');
+    return { success: true, refundedPlayers: participants.rows.length, refundEach: refund };
+  } catch(e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 async function getTournamentHistoryByPlayer(playerId, limit = 10) {
@@ -2311,6 +2518,7 @@ module.exports = {
   saveGlobalMessage, getGlobalMessages, cleanupGlobalChat,
   savePrivateMessage, getPrivateMessages, cleanupPrivateMessages, cleanupPortalChats,
   updateLastSeen,
+  updateHideLastSeen,
   createAdmin, getAdminByUsername,
   banPlayer, suspendPlayer, unbanPlayer, checkIfBanned,
   saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers,
@@ -2321,7 +2529,7 @@ module.exports = {
   getRevenuePerDay, getLevelDistribution, getActivityHeatmap,
   getServerInfo,
   savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount,
-  savePlayerNotification, getPlayerNotifications, deletePlayerNotification, cleanupExpiredNotifications,
+  savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications,
   getShopItemDetail,
   generateWeeklyReport,
   seedShopItemsFromCatalog,

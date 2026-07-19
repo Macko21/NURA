@@ -20,7 +20,7 @@ const ac = () => AC || (AC = new (window.AudioContext||window.webkitAudioContext
 // ── Volumen y toggles ────────────────────────────────
 let _musicVolume = 0.3;     // volumen música (0-1)
 let _sfxVolume = 0.8;       // volumen efectos (0-1)
-let _musicMuted = false;    // siempre empieza activo
+let _musicMuted = false;
 let _sfxMuted = false;      // siempre empieza activo
 let _audioInitialized = false; // primera interacción del usuario
 
@@ -34,20 +34,24 @@ const TRACKS = {
   partida: '/sounds/partida.mp3'
 };
 
-// ── Persistencia (solo volúmenes, NO mute) ───────────
+// ── Persistencia ──────────────────────────────────────
 function loadAudioPrefs() {
   try {
     const mv = localStorage.getItem('macko_music_vol');
     const sv = localStorage.getItem('macko_sfx_vol');
-    if (mv !== null) _musicVolume = parseFloat(mv);
-    if (sv !== null) _sfxVolume = parseFloat(sv);
-    // Ignoramos mute guardado — siempre arranca activo
+    const mm = localStorage.getItem('macko_music_muted');
+    const parsedMusic = Number.parseFloat(mv);
+    const parsedSfx = Number.parseFloat(sv);
+    if (Number.isFinite(parsedMusic)) _musicVolume = Math.max(0, Math.min(1, parsedMusic));
+    if (Number.isFinite(parsedSfx)) _sfxVolume = Math.max(0, Math.min(1, parsedSfx));
+    if (mm !== null) _musicMuted = mm === '1';
   } catch(e) {}
 }
 function saveAudioPrefs() {
   try {
     localStorage.setItem('macko_music_vol', String(_musicVolume));
     localStorage.setItem('macko_sfx_vol', String(_sfxVolume));
+    localStorage.setItem('macko_music_muted', _musicMuted ? '1' : '0');
   } catch(e) {}
 }
 loadAudioPrefs();
@@ -71,10 +75,16 @@ function isMusicMuted() { return _musicMuted; }
 function isSfxMuted() { return _sfxMuted; }
 
 function setMusicVolume(vol) {
+  if (!Number.isFinite(vol)) return _musicVolume;
   _musicVolume = Math.max(0, Math.min(1, vol));
+  if (_musicVolume === 0) {
+    _musicMuted = true;
+    _stopMusic();
+  }
   if (_musicGain) _musicGain.gain.value = _musicMuted ? 0 : _musicVolume;
   saveAudioPrefs();
   _updateSoundUI();
+  return _musicVolume;
 }
 
 function setSfxVolume(vol) {
@@ -83,8 +93,9 @@ function setSfxVolume(vol) {
   _updateSoundUI();
 }
 
-function toggleMusicMute() {
-  _musicMuted = !_musicMuted;
+function setMusicMuted(muted) {
+  _musicMuted = !!muted;
+  if (!_musicMuted && _musicVolume === 0) _musicVolume = 0.3;
   if (_musicGain) _musicGain.gain.value = _musicMuted ? 0 : _musicVolume;
   if (_musicMuted) _stopMusic();
   else {
@@ -94,6 +105,10 @@ function toggleMusicMute() {
   saveAudioPrefs();
   _updateSoundUI();
   return _musicMuted;
+}
+
+function toggleMusicMute() {
+  return setMusicMuted(!_musicMuted);
 }
 
 function toggleSfxMute() {
@@ -288,35 +303,45 @@ const SFX = {
 
 // ── UI del panel de sonido ───────────────────────────
 function _updateSoundUI() {
-  const anyMuted = _musicMuted || _sfxMuted;
   // Botón principal de sonido (pantalla de juego)
   const btn = document.getElementById('btn-sound');
   if (btn) {
-    btn.textContent = anyMuted ? '🔇' : '🔊';
-    btn.classList.toggle('muted', anyMuted);
-    btn.title = anyMuted ? 'Sonido desactivado' : 'Ajustar sonido';
+    btn.textContent = _sfxMuted ? '🔇' : '🔊';
+    btn.classList.toggle('muted', _sfxMuted);
+    btn.title = _sfxMuted ? 'Efectos desactivados' : 'Efectos activados';
   }
   // Botón de música en el topbar (lobby / salas)
   const topbarBtn = document.getElementById('btn-music-toggle');
   if (topbarBtn) {
-    topbarBtn.textContent = anyMuted ? '🔇' : '🎵';
-    topbarBtn.classList.toggle('muted', anyMuted);
-    topbarBtn.title = anyMuted ? '🔇 Sonido desactivado' : '🎵 Ajustar sonido';
+    const musicOff = _musicMuted || _musicVolume === 0;
+    topbarBtn.textContent = musicOff ? '🔇' : '🎵';
+    topbarBtn.classList.toggle('muted', musicOff);
+    topbarBtn.title = musicOff ? 'Música desactivada' : 'Ajustar música';
   }
   // Botón de sonido en la sala de espera
   const roomBtn = document.getElementById('btn-room-sound');
   if (roomBtn) {
-    roomBtn.textContent = anyMuted ? '🔇' : '🔊';
-    roomBtn.classList.toggle('muted', anyMuted);
-    roomBtn.title = anyMuted ? 'Sonido desactivado' : 'Ajustar sonido';
+    const musicOff = _musicMuted || _musicVolume === 0;
+    roomBtn.textContent = musicOff ? '🔇' : '🔊';
+    roomBtn.classList.toggle('muted', musicOff);
+    roomBtn.title = musicOff ? 'Música desactivada' : 'Música activada';
   }
   // Slider del menú de usuario (topbar) — control unificado de volumen
   const menuSlider = document.getElementById('music-volume-slider');
   if (menuSlider) menuSlider.value = Math.round(_musicVolume * 100);
+  const volumeValue = document.getElementById('music-volume-value');
+  if (volumeValue) volumeValue.textContent = `${Math.round(_musicVolume * 100)}%`;
   // También actualizar el icono de volumen en el menú de usuario
   const volIcon = document.getElementById('music-vol-icon');
   if (volIcon) {
     volIcon.textContent = _musicMuted || _musicVolume === 0 ? '🔇' : '🔊';
+  }
+  const muteBtn = document.getElementById('btn-music-mute');
+  if (muteBtn) {
+    const musicOff = _musicMuted || _musicVolume === 0;
+    muteBtn.textContent = musicOff ? 'Activar' : 'Desactivar';
+    muteBtn.classList.toggle('is-muted', musicOff);
+    muteBtn.setAttribute('aria-pressed', String(musicOff));
   }
 }
 

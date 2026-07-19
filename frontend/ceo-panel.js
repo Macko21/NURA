@@ -159,7 +159,8 @@ function checkUpdateIndicator() {
 /* ── Changelog (CEO Panel: muestra TODAS las entries, game + ceo) ─────────────────────────── */
 $('ceo-changelog-btn').onclick = async () => {
   try {
-    const res = await fetch('/api/version');
+    const res = await apiFetch(API + '/version');
+    if (!res.ok) throw new Error('No se pudo cargar el historial');
     const data = await res.json();
     const version = data.version || '—';
     const changelog = data.changelog || [];
@@ -511,7 +512,8 @@ async function loadFeedback() {
     tbody.innerHTML = feedback.map(f => {
       const d = new Date(Number(f.created_at));
       const dateStr = d.toLocaleDateString('es-AR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-      const catClass = 'ceo-feedback-cat cat-' + f.category;
+      const safeCategory = ['sugerencia', 'bug', 'otro'].includes(f.category) ? f.category : 'otro';
+      const catClass = 'ceo-feedback-cat cat-' + safeCategory;
       const catLabel = { sugerencia: '💡 Sugerencia', bug: '🐛 Bug', otro: '📝 Otro' }[f.category] || f.category;
       const hasResponse = f.admin_response ? true : false;
       const respHtml = hasResponse
@@ -683,9 +685,10 @@ async function loadAdmins() {
       let      actionsHtml = isMe ? '<span style="color:var(--text3);font-size:10px">—</span>' : '';
       if (!isMe && isAdmin) {
         const safeRole = (a.role || 'editor');
-        actionsHtml = `<button class="ceo-action-btn ceo-action-view" onclick="openChangeRole('${a.id}','${esc(a.username)}','${safeRole}')" title="Cambiar rol">🔄</button>
-                       <button class="ceo-action-btn ceo-action-view" onclick="openResetAdminPassword('${a.id}','${esc(a.username)}')" title="Resetear contraseña">🔑</button>
-                       <button class="ceo-action-btn ceo-action-ban" onclick="confirmDeleteAdmin('${a.id}','${esc(a.username)}')">🗑️</button>`;
+        const safeName = encodeURIComponent(a.username || '');
+        actionsHtml = `<button class="ceo-action-btn ceo-action-view" onclick="openChangeRole('${a.id}','${safeName}','${safeRole}')" title="Cambiar rol">🔄</button>
+                       <button class="ceo-action-btn ceo-action-view" onclick="openResetAdminPassword('${a.id}','${safeName}')" title="Resetear contraseña">🔑</button>
+                       <button class="ceo-action-btn ceo-action-ban" onclick="confirmDeleteAdmin('${a.id}','${safeName}')">🗑️</button>`;
       }
       return `<tr>
         <td>${esc(a.username)} ${isMe ? '<span style="color:var(--gold);font-size:10px">(vos)</span>' : ''}</td>
@@ -711,18 +714,19 @@ function roleBadgeClass(role) {
 
 // ── Resetear contraseña de otro admin (admin only) ───────
 function openResetAdminPassword(adminId, username) {
+  username = decodeURIComponent(username);
   confirmModal('🔑 Resetear contraseña de ' + username,
-    `Ingresá la nueva contraseña para "${username}":<br><br>
-     <input id="ceo-new-admin-pass-reset" type="text" class="ceo-input" placeholder="Nueva contraseña (mín. 6 caracteres)" style="width:100%;margin-bottom:6px">
-     <input id="ceo-new-admin-pass-confirm" type="text" class="ceo-input" placeholder="Repetir contraseña" style="width:100%">`,
+    `Ingresá la nueva contraseña para "${esc(username)}":<br><br>
+     <input id="ceo-new-admin-pass-reset" type="password" class="ceo-input" placeholder="Nueva contraseña (mín. 14 caracteres)" style="width:100%;margin-bottom:6px">
+     <input id="ceo-new-admin-pass-confirm" type="password" class="ceo-input" placeholder="Repetir contraseña" style="width:100%">`,
     async (ok) => {
       $('ceo-confirm-yes').textContent = 'Confirmar';
       $('ceo-confirm-yes').className = 'ceo-btn ceo-btn-red';
       if (!ok) return;
       const pass = document.getElementById('ceo-new-admin-pass-reset')?.value?.trim();
       const confirm = document.getElementById('ceo-new-admin-pass-confirm')?.value?.trim();
-      if (!pass || pass.length < 6) {
-        toast('La contraseña debe tener al menos 6 caracteres', 'error');
+      if (!pass || pass.length < 14) {
+        toast('La contraseña debe tener al menos 14 caracteres', 'error');
         return;
       }
       if (pass !== confirm) {
@@ -747,17 +751,17 @@ function openResetAdminPassword(adminId, username) {
 // ── Resetear contraseña de usuario regular (editor+) ─────
 function openResetUserPassword(userId, username) {
   confirmModal('🔑 Resetear contraseña de ' + username,
-    `Nueva contraseña para "${username}":<br><br>
-     <input id="ceo-new-user-pass-reset" type="text" class="ceo-input" placeholder="Nueva contraseña (mín. 6 caracteres)" style="width:100%;margin-bottom:6px">
-     <input id="ceo-new-user-pass-confirm" type="text" class="ceo-input" placeholder="Repetir contraseña" style="width:100%">`,
+    `Nueva contraseña para "${esc(username)}":<br><br>
+     <input id="ceo-new-user-pass-reset" type="password" class="ceo-input" placeholder="Nueva contraseña (mín. 10 caracteres)" style="width:100%;margin-bottom:6px">
+     <input id="ceo-new-user-pass-confirm" type="password" class="ceo-input" placeholder="Repetir contraseña" style="width:100%">`,
     async (ok) => {
       $('ceo-confirm-yes').textContent = 'Confirmar';
       $('ceo-confirm-yes').className = 'ceo-btn ceo-btn-red';
       if (!ok) return;
       const pass = document.getElementById('ceo-new-user-pass-reset')?.value?.trim();
       const confirm = document.getElementById('ceo-new-user-pass-confirm')?.value?.trim();
-      if (!pass || pass.length < 6) {
-        toast('La contraseña debe tener al menos 6 caracteres', 'error');
+      if (!pass || pass.length < 10) {
+        toast('La contraseña debe tener al menos 10 caracteres', 'error');
         return;
       }
       if (pass !== confirm) {
@@ -780,6 +784,7 @@ function openResetUserPassword(userId, username) {
 }
 let _changeRoleAdminId = null;
 function openChangeRole(adminId, username, currentRole) {
+  username = decodeURIComponent(username);
   _changeRoleAdminId = adminId;
   $('ceo-confirm-title').textContent = '🔄 Cambiar rol de ' + username;
   $('ceo-confirm-desc').innerHTML = `
@@ -814,7 +819,8 @@ function openChangeRole(adminId, username, currentRole) {
 }
 
 function confirmDeleteAdmin(adminId, username) {
-  confirmModal('🗑️ Eliminar admin', `¿Eliminar a "${username}"? No podrá acceder al panel.`, async (ok) => {
+  username = decodeURIComponent(username);
+  confirmModal('🗑️ Eliminar admin', `¿Eliminar a "${esc(username)}"? No podrá acceder al panel.`, async (ok) => {
     if (!ok) return;
     try {
       const res = await apiFetch(API + '/admins/delete', {
@@ -835,7 +841,7 @@ $('ceo-create-admin-btn').onclick = () => {
   $('ceo-confirm-desc').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
       <input id="ceo-new-admin-user" type="text" class="ceo-input" placeholder="Nombre de usuario" autocomplete="off">
-      <input id="ceo-new-admin-pass" type="password" class="ceo-input" placeholder="Contraseña (mín. 6 caracteres)">
+      <input id="ceo-new-admin-pass" type="password" class="ceo-input" placeholder="Contraseña (mín. 14 caracteres)">
       <label style="font-size:11px;color:var(--text3);margin-top:4px">Rol del admin:</label>
       <select id="ceo-new-admin-role" class="ceo-input" style="padding:8px 10px">
         <option value="viewer">👁️ Viewer — Solo ver</option>
@@ -854,7 +860,7 @@ $('ceo-create-admin-btn').onclick = () => {
     const password = $('ceo-new-admin-pass')?.value?.trim();
     const role = $('ceo-new-admin-role')?.value || 'editor';
     if (!username) { toast('Ingresá un nombre de usuario', 'error'); return; }
-    if (!password || password.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', 'error'); return; }
+    if (!password || password.length < 14) { toast('La contraseña debe tener al menos 14 caracteres', 'error'); return; }
     try {
       const res = await apiFetch(API + '/admins/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -885,7 +891,7 @@ $('ceo-pass-change-btn').onclick = async () => {
   const newPass = $('ceo-pass-new').value;
   const statusEl = $('ceo-pass-status');
   if (!current || !newPass) { statusEl.textContent = 'Completá ambos campos'; statusEl.classList.remove('hidden'); return; }
-  if (newPass.length < 6) { statusEl.textContent = 'Mínimo 6 caracteres'; statusEl.classList.remove('hidden'); return; }
+  if (newPass.length < 14) { statusEl.textContent = 'Mínimo 14 caracteres'; statusEl.classList.remove('hidden'); return; }
   try {
     const res = await apiFetch(API + '/admins/change-password', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1218,7 +1224,7 @@ function drawShopStats(data) {
     const barColors = ['#D4AF37','#2A9A6C','#8888FF','#FF6B6B','#F0D060','#5AB0D0'];
     const color = barColors[i % barColors.length];
     return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px">
-      <span style="width:32px;font-size:20px;text-align:center;flex-shrink:0">${item.icon || '🎲'}</span>
+      <span style="width:32px;font-size:20px;text-align:center;flex-shrink:0">${esc(item.icon || '🎲')}</span>
       <div style="flex:1;min-width:0">
         <div style="display:flex;justify-content:space-between;margin-bottom:3px">
           <span style="color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</span>
@@ -1372,15 +1378,16 @@ function renderShopCatalog(items) {
     html += `<div class="ceo-shop-cat-header">${catLabels[cat] || cat}</div>`;
     html += catItems.map(item => {
       const enabled = item.enabled !== false;
-      return `<div class="ceo-shop-card ${enabled ? '' : 'ceo-shop-disabled'}" data-id="${item.id}">
-        <div class="ceo-shop-icon">${item.icon || '🎲'}</div>
+      const safeName = encodeURIComponent(item.name || '');
+      return `<div class="ceo-shop-card ${enabled ? '' : 'ceo-shop-disabled'}" data-id="${esc(item.id)}">
+        <div class="ceo-shop-icon">${esc(item.icon || '🎲')}</div>
         <div class="ceo-shop-name">${esc(item.name)} ${enabled ? '' : '<span style="font-size:9px;color:var(--red)">DESACTIVADO</span>'}</div>
-        <div class="ceo-shop-category">${item.category}</div>
+        <div class="ceo-shop-category">${esc(item.category)}</div>
         <div class="ceo-shop-desc">${esc(item.description || '')}</div>
         <div class="ceo-shop-price">${formatNum(item.price)} <span style="font-size:11px;color:var(--text3)">🪙</span></div>
         <div class="ceo-shop-actions">
           <button class="ceo-action-btn ceo-action-view" onclick="openShopEdit('${item.id}')">✏️</button>
-          <button class="ceo-action-btn ceo-action-ban" onclick="confirmDeleteShopItem('${item.id}','${esc(item.name)}')">🗑️</button>
+          <button class="ceo-action-btn ceo-action-ban" onclick="confirmDeleteShopItem('${item.id}','${safeName}')">🗑️</button>
         </div>
       </div>`;
     }).join('');
@@ -1479,6 +1486,7 @@ $('ceo-shop-save').onclick = async () => {
 };
 
 function confirmDeleteShopItem(id, name) {
+  name = decodeURIComponent(name);
   confirmModal('🗑️ Eliminar item', `¿Eliminar "${esc(name)}" permanentemente?`, async (ok) => {
     if (!ok) return;
     try {
@@ -1537,20 +1545,23 @@ async function loadTournamentsList() {
     }
     
     tbody.innerHTML = tournaments.map(t => {
-      const status = t.status || 'registration';
+      const status = ['registration', 'active', 'completed', 'cancelled'].includes(t.status)
+        ? t.status
+        : 'registration';
       const statusLabels = { registration: '📝 Inscripción', active: '⚔️ Activo', completed: '✅ Finalizado', cancelled: '❌ Cancelado' };
       const statusClass = status === 'active' ? 'ceo-badge-playing' : status === 'completed' ? 'ceo-badge-ok' : status === 'cancelled' ? 'ceo-badge-banned' : 'ceo-badge-waiting';
       
       let actions = '';
-      const pushBtn = `<button class="ceo-action-btn ceo-action-view" onclick="ceoSendTournamentPush('${t.id}','${esc(t.name)}','${status}')" title="Enviar notificación push a participantes">🔔</button>`;
+      const safeName = encodeURIComponent(t.name || '');
+      const pushBtn = `<button class="ceo-action-btn ceo-action-view" onclick="ceoSendTournamentPush('${t.id}','${safeName}','${status}')" title="Enviar notificación push a participantes">🔔</button>`;
       if (status === 'registration') {
         actions = `${pushBtn}
           <button class="ceo-action-btn ceo-action-unban" onclick="ceoStartTournament('${t.id}')">🚀 Iniciar</button>
-          <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${esc(t.name)}')">❌ Cancelar</button>`;
+          <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${safeName}')">❌ Cancelar</button>`;
       } else if (status === 'active') {
         actions = `${pushBtn}
           <button class="ceo-action-btn ceo-action-view" onclick="ceoViewBracket('${t.id}')">🔍 Ver bracket</button>
-          <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${esc(t.name)}')">❌ Cancelar</button>`;
+          <button class="ceo-action-btn ceo-action-ban" onclick="ceoCancelTournament('${t.id}','${safeName}')">❌ Cancelar</button>`;
       } else if (status === 'completed') {
         actions = `${pushBtn}
           <button class="ceo-action-btn ceo-action-view" onclick="ceoViewBracket('${t.id}')">🔍 Ver bracket</button>`;
@@ -1648,6 +1659,7 @@ async function ceoStartTournament(id) {
 }
 
 async function ceoCancelTournament(id, name) {
+  name = decodeURIComponent(name);
   confirmModal('❌ Cancelar torneo', `¿Cancelar "${esc(name)}"? Se perderán todas las inscripciones.`, async (ok) => {
     if (!ok) return;
     try {
@@ -1664,6 +1676,7 @@ async function ceoCancelTournament(id, name) {
 
 // ── Send Push Notification to Tournament Participants ──
 function ceoSendTournamentPush(id, name, status) {
+  name = decodeURIComponent(name);
   const statusIcon = status === 'registration' ? '📝' : status === 'active' ? '⚔️' : '✅';
   $('ceo-confirm-title').textContent = '🔔 Notificar participantes';
   $('ceo-confirm-desc').innerHTML = `
@@ -1672,7 +1685,7 @@ function ceoSendTournamentPush(id, name, status) {
       <div>
         <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">Título *</label>
         <input id="ceo-push-title" type="text" class="ceo-input" placeholder="Ej: ⏰ Torneo por comenzar" 
-          value="${statusIcon} ${name}" style="width:100%">
+          value="${statusIcon} ${esc(name)}" style="width:100%">
       </div>
       <div>
         <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">Mensaje *</label>
@@ -1734,12 +1747,14 @@ async function ceoViewBracket(id) {
         (round.matches || []).forEach(m => {
           const isCompleted = m.status === 'completed';
           const isBye = !m.player1_id || !m.player2_id;
+          const matchArgs = [m.player1_name, m.player2_name, m.player1_id, m.player2_id]
+            .map(value => encodeURIComponent(value || ''));
           html += `<div style="display:flex;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:4px;font-size:12px;border-left:3px solid ${isCompleted ? 'var(--green)' : (isBye ? 'var(--text3)' : 'var(--gold)')}">
             <div style="flex:1">
               <div style="color:${m.winner_id === m.player1_id ? 'var(--green-lt)' : 'var(--text2)'};font-weight:${m.winner_id === m.player1_id ? '600' : '400'}">${esc(m.player1_name || 'BYE')} ${m.player1_score > 0 ? '<span style="color:var(--gold)">(' + m.player1_score + ')</span>' : ''}</div>
               <div style="color:${m.winner_id === m.player2_id ? 'var(--green-lt)' : 'var(--text2)'};font-weight:${m.winner_id === m.player2_id ? '600' : '400'}">${esc(m.player2_name || 'BYE')} ${m.player2_score > 0 ? '<span style="color:var(--gold)">(' + m.player2_score + ')</span>' : ''}</div>
             </div>
-            ${!isBye && !isCompleted ? `<button class="ceo-action-btn ceo-action-unban" onclick="ceoAdvanceMatchPrompt('${id}','${m.id}','${esc(m.player1_name)}','${esc(m.player2_name)}','${esc(m.player1_id)}','${esc(m.player2_id)}')">Avanzar</button>` : ''}
+            ${!isBye && !isCompleted ? `<button class="ceo-action-btn ceo-action-unban" onclick="ceoAdvanceMatchPrompt('${id}','${m.id}','${matchArgs[0]}','${matchArgs[1]}','${matchArgs[2]}','${matchArgs[3]}')">Avanzar</button>` : ''}
           </div>`;
         });
         
@@ -1755,7 +1770,7 @@ async function ceoViewBracket(id) {
     $('ceo-confirm-no').textContent = 'Cerrar';
     $('ceo-confirm-no').className = 'ceo-btn ceo-btn-ghost';
     _confirmCallback = () => { $('ceo-modal-confirm').classList.add('hidden'); };
-    $('ceo-confirm-title').textContent = '🔍 Bracket: ' + esc(t.name);
+    $('ceo-confirm-title').textContent = '🔍 Bracket: ' + t.name;
     $('ceo-confirm-desc').innerHTML = html;
     $('ceo-modal-confirm').classList.remove('hidden');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
@@ -1763,6 +1778,7 @@ async function ceoViewBracket(id) {
 
 // ── Advance Match ───────────────────────────────────────
 async function ceoAdvanceMatchPrompt(tournamentId, matchId, p1Name, p2Name, p1Id, p2Id) {
+  [p1Name, p2Name, p1Id, p2Id] = [p1Name, p2Name, p1Id, p2Id].map(value => decodeURIComponent(value));
   $('ceo-confirm-title').textContent = '🏆 Avanzar match';
   $('ceo-confirm-desc').innerHTML = `
     <p style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(p1Name)} vs ${esc(p2Name)}</p>
@@ -1844,9 +1860,14 @@ $('ceo-export-feedback').onclick = async () => {
 };
 
 function downloadCSV(filename, headers, rows) {
+  const csvCell = value => {
+    let text = String(value ?? '');
+    if (/^[=+\-@]/.test(text)) text = "'" + text;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
   const csvContent = [
-    headers.join(','),
-    ...rows.map(r => r.map(v => `"${v}"`).join(','))
+    headers.map(csvCell).join(','),
+    ...rows.map(r => r.map(csvCell).join(','))
   ].join('\n');
   const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
@@ -1859,7 +1880,14 @@ function downloadCSV(filename, headers, rows) {
 /* ══════════════════════════════════════════════════════════
    HELPERS
    ══════════════════════════════════════════════════════════ */
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
 function formatNum(n) { return Number(n).toLocaleString('es-AR'); }
 function formatBytes(bytes) {
   if (!bytes) return '0 B';

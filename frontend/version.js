@@ -10,9 +10,39 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.7";
+const GAME_VERSION = "3.8.1";
 
 const CHANGELOG = [
+  // ═══ 3.8.1 — PRODUCCIÓN ═══
+  {
+    version: "3.8.1",
+    date: "2026-07-19",
+    title: "✨ Mejoras generales",
+    scope: "game",
+    changes: [
+      "Mejoras de seguridad",
+      "Mejoras de estabilidad y rendimiento",
+      "Mejoras en la experiencia móvil",
+      "Correcciones generales"
+    ]
+  },
+  // ═══ 3.8.0 — PRODUCCIÓN ═══
+  {
+    version: "3.8.0",
+    date: "2026-07-19",
+    title: "🛡️ Interfaz móvil, audio independiente y seguridad de producción",
+    scope: "game",
+    files: ["frontend", "backend", "README.md", "render.yaml"],
+    changes: [
+      "📱 La barra móvil ya no se superpone con el dado animado",
+      "🎵 Panel de música independiente, volumen persistente y silencio real al llegar a cero",
+      "🏠 Código de sala, copiar y sonido agrupados a la derecha",
+      "🔐 Identidad WebSocket firmada y acciones limitadas al jugador y a su sala",
+      "💳 Pagos y recompensas protegidos contra acreditaciones duplicadas",
+      "🏆 Inscripciones y partidas de torneo conectadas al bracket real",
+      "🧹 Retiro de SQLite, copias de recursos y scripts históricos sin uso"
+    ]
+  },
   // ═══ 3.7.7 — GAME ═══
   {
     version: "3.7.7",

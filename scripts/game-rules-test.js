@@ -19,6 +19,7 @@ const {
 const { AUTO_BANK_DELAY_MS } = require("../backend/constants");
 const { DICE_SKINS, SHOP_DICE_PREVIEW } = require("../frontend/dice-renderer");
 const { SKIN_SOUND } = require("../frontend/audio");
+const { createPlayerState } = require("../backend/matchState");
 
 let passed = 0;
 
@@ -108,6 +109,12 @@ async function run() {
     assert.deepEqual(numericKeys(DICE_SKINS), expectedIds);
     assert.deepEqual(numericKeys(SHOP_DICE_PREVIEW), expectedIds);
     assert.deepEqual(numericKeys(SKIN_SOUND), expectedIds);
+  });
+
+  check("la dificultad elegida de los bots llega al estado de partida", () => {
+    const bot = createPlayerState({ id: "bot-1", name: "Bot", isBot: true, botDifficulty: "hard" });
+    assert.equal(bot.isBot, true);
+    assert.equal(bot.botDifficulty, "hard");
   });
 
   check("entrar exige 1000 y consume exactamente 1000", () => {

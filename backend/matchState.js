@@ -97,7 +97,8 @@ function createPlayerState(player) {
     /**
      * Es un bot (jugador automático)
      */
-    isBot: player.isBot || false
+    isBot: player.isBot || false,
+    botDifficulty: player.botDifficulty || 'normal'
   };
 }
 

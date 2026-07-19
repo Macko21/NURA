@@ -3,3 +3,6 @@ node_modules/
 *.log
 .vscode/
 LOS10MILDEMACKO.zip
+coverage/
+.DS_Store
+nul

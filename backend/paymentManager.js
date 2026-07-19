@@ -81,28 +81,50 @@ async function handleStripeWebhook(rawBody, signature, pool) {
 
   if (event.type === "payment_intent.succeeded") {
     const paymentIntent = event.data.object;
-    const { coins, packId, userId } = paymentIntent.metadata;
+    const { packId, userId } = paymentIntent.metadata;
 
     if (!userId) {
       console.warn("Webhook: sin userId en metadata");
       return { received: true };
     }
 
-    const coinsAmount = parseInt(coins, 10); if (isNaN(coinsAmount)) return { received: true };
-
-    const userResult = await pool.query("SELECT id FROM users WHERE id = $1", [userId]);
-    if (userResult.rows.length === 0) {
-      console.warn(`Webhook: usuario ${userId} no encontrado`);
-      return { received: true };
+    const pack = COIN_PACKS[packId];
+    if (!pack || paymentIntent.amount_received !== pack.price || paymentIntent.currency !== "usd") {
+      throw new Error("El pago de Stripe no coincide con el paquete comprado");
     }
 
-    await pool.query("UPDATE players SET coins = coins + $1 WHERE user_id = $2", [coinsAmount, userId]);
-    await pool.query(
-      `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-      [userId, coinsAmount, `Compra Stripe: ${packId}`, Date.now()]
-    );
-
-    console.log(`✅ ${coinsAmount} monedas entregadas a usuario ${userId}`);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const eventInsert = await client.query(
+        `INSERT INTO payment_events (provider, payment_id, user_id, pack_id, amount, created_at)
+         VALUES ('stripe', $1, $2, $3, $4, $5)
+         ON CONFLICT (provider, payment_id) DO NOTHING RETURNING payment_id`,
+        [paymentIntent.id, userId, packId, pack.coins, Date.now()]
+      );
+      if (!eventInsert.rows.length) {
+        await client.query("COMMIT");
+        return { received: true, duplicate: true };
+      }
+      const playerResult = await client.query(
+        "SELECT id FROM players WHERE user_id = $1 FOR UPDATE",
+        [userId]
+      );
+      if (!playerResult.rows.length) throw new Error(`Usuario ${userId} sin jugador`);
+      const playerId = playerResult.rows[0].id;
+      await client.query("UPDATE players SET coins = coins + $1 WHERE id = $2", [pack.coins, playerId]);
+      await client.query(
+        `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+        [playerId, pack.coins, `Compra Stripe: ${packId}`, Date.now()]
+      );
+      await client.query("COMMIT");
+      console.log(`✅ ${pack.coins} monedas entregadas a jugador ${playerId}`);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   return { received: true };

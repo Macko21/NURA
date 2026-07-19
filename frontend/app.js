@@ -125,7 +125,8 @@ function renderNotifPanel() {
     let actionsHtml = '';
     if (n.actions && n.actions.length) {
       actionsHtml = '<div class="notif-actions">' + n.actions.map(a =>
-        '<button class="notif-action-btn ' + (a.style || '') + '" data-nid="' + n.id + '" data-action="' + a.action + '">' + a.label + '</button>'
+        '<button class="notif-action-btn ' + esc(String(a.style || '').replace(/[^a-z0-9_-]/gi, '')) +
+        '" data-nid="' + esc(n.id) + '" data-action="' + esc(a.action) + '">' + esc(a.label) + '</button>'
       ).join('') + '</div>';
     }
     return '<div class="notif-item ' + (n.read ? '' : 'unread') + '">' +
@@ -597,6 +598,7 @@ function loadAuthenticatedIdentity() {
 function clearAuth() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem('gameToken');
+  sessionStorage.removeItem('macko_guest_token');
 }
 
 // Ejecutar cache check al cargar la página
@@ -724,7 +726,12 @@ function launchConfetti() {
 
 /* ── Helpers ─────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc = s => String(s)
+  .replace(/&/g,'&amp;')
+  .replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;')
+  .replace(/'/g,'&#39;');
 const uid = () => 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
 const formatNum = n => Number(n).toLocaleString('es-AR');
 
@@ -970,17 +977,39 @@ function showConfirm(msg, onYes) {
 /* ── WebSocket ───────────────────────────────────────── */
 let _reconnectTimer = null;
 let _pingTimer      = null;
+let _allowReconnect = true;
+let _wsIdentified = false;
+let _connectCallbacks = [];
+
+function disconnectSocketForIdentityChange() {
+  _allowReconnect = false;
+  _wsIdentified = false;
+  _connectCallbacks = [];
+  const oldSocket = S.ws;
+  S.ws = null;
+  if (oldSocket && oldSocket.readyState < WebSocket.CLOSING) {
+    oldSocket.close(1000, 'identity-change');
+  }
+}
 
 function connect(cb) {
+  _allowReconnect = true;
   // Cancelar cualquier reconexión pendiente
   if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   if (_pingTimer)      { clearInterval(_pingTimer);     _pingTimer      = null; }
 
   // Si ya hay una conexión abierta o conectando, no abrir otra
-  if (S.ws && (S.ws.readyState === WebSocket.OPEN || S.ws.readyState === WebSocket.CONNECTING)) {
-    cb?.();
+  if (S.ws?.readyState === WebSocket.OPEN) {
+    if (_wsIdentified) cb?.();
+    else if (cb) _connectCallbacks.push(cb);
     return;
   }
+  if (S.ws?.readyState === WebSocket.CONNECTING) {
+    if (cb) _connectCallbacks.push(cb);
+    return;
+  }
+  if (cb) _connectCallbacks.push(cb);
+  _wsIdentified = false;
 
 // Protocolo dinámico (si es http pasa a ws, si es https pasa a wss)
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -988,13 +1017,16 @@ function connect(cb) {
   // location.host toma automáticamente el dominio y puerto (ej: '10mildemacko.onrender.com' o 'localhost:3000')
   const host = window.location.host; 
 
-  S.ws = new WebSocket(`${protocol}//${host}`);
+  const ws = new WebSocket(`${protocol}//${host}`);
+  S.ws = ws;
 
   S.ws.onopen = () => {
     console.log('WS conectado');
     // Siempre mandar roomId para reconexión automática
-    wsSend('IDENTIFY', { playerId:S.id, playerName:getPlayerName(), roomId:S.roomId });
-    cb?.();
+    const wsToken = isLogged()
+      ? localStorage.getItem('gameToken')
+      : sessionStorage.getItem('macko_guest_token');
+    wsSend('IDENTIFY', { token:wsToken, playerName:getPlayerName(), roomId:S.roomId });
 
     // Ping cada 25s para mantener viva la conexión
     _pingTimer = setInterval(() => {
@@ -1005,15 +1037,35 @@ function connect(cb) {
   };
 
   S.ws.onmessage = e => {
-    try { const {type,data}=JSON.parse(e.data); if(type!=='PONG') handle(type,data); }
+    try {
+      const {type,data}=JSON.parse(e.data);
+      if (['IDENTIFIED', 'RECONNECTED_GAME', 'RECONNECTED_LOBBY'].includes(type)) {
+        _wsIdentified = true;
+        const callbacks = _connectCallbacks.splice(0);
+        callbacks.forEach(fn => { try { fn(); } catch (_) {} });
+      }
+      if(type!=='PONG') handle(type,data);
+    }
     catch(x){ console.error(x); }
   };
 
   S.ws.onclose = (ev) => {
+    if (S.ws !== ws) return;
     console.log('WS cerrado, reconectando...');
+    _wsIdentified = false;
     if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
+    if (ev.code === 4003) {
+      _allowReconnect = false;
+      clearAuth();
+      clearSession();
+      showScreen('screen-auth');
+      toast('Tu sesión venció. Volvé a ingresar.');
+      return;
+    }
     // Reconectar en 2s, siempre con el roomId guardado para restaurar sesión
-    _reconnectTimer = setTimeout(() => connect(), 2000);
+    if (_allowReconnect && (isLogged() || sessionStorage.getItem('macko_guest_token'))) {
+      _reconnectTimer = setTimeout(() => connect(), 2000);
+    }
   };
 
   S.ws.onerror = () => {};
@@ -1493,6 +1545,12 @@ function handle(type, data) {
       // Envolver en try/catch para evitar que errores de red arruinen la pantalla de victoria
       try { updateGameCoins(); } catch(e) { console.warn('Error actualizando monedas:', e); }
       try { checkPendingMissions(); } catch(e) { console.warn('Error revisando misiones:', e); }
+      if (data.tournamentMatch) {
+        S.roomId = null;
+        S.roomCode = null;
+        clearSession();
+        $('btn-play-again')?.classList.add('hidden');
+      }
       if (victoryAlreadyShown) break;
       const winnerId = data.winner?.id;
       const winSkin = winnerId && S.match 
@@ -1646,10 +1704,15 @@ function handle(type, data) {
 
     /* ── Torneo: match listo ────────────────────────── */
     case 'TOURNAMENT_MATCH_READY':
-      toast('🔥 Tu match de torneo esta listo! Sala: ' + data.roomId, 5000);
-      if (S.name && data.roomId) {
-        S.roomId = data.roomId;
-        saveSession();
+      toast('🔥 Tu match de torneo está listo contra ' + (data.opponent || 'tu rival'), 5000);
+      if (!S.roomId && data.roomId) {
+        wsSend('TOURNAMENT_JOIN_MATCH', {
+          tournamentId: data.tournamentId,
+          matchId: data.matchId,
+          roomId: data.roomId
+        });
+      } else if (S.roomId !== data.roomId) {
+        addNotification('🏆 Match de torneo listo', 'Salí de tu sala actual para disputar el match.', 'tournament');
       }
       break;
 
@@ -2024,11 +2087,12 @@ function addAudioMsg(name, audioBase64, duration, isMine) {
   const canPlay = document.createElement('audio').canPlayType('audio/webm;codecs=opus');
   const audioSrc = `data:audio/webm;base64,${audioBase64}`;
   
+  const safeDuration = Number.isFinite(Number(duration)) ? Math.max(0, Math.min(30, Math.round(Number(duration)))) : 0;
   d.innerHTML = `
     <span class="cn">${esc(name)}</span>
     <span class="audio-player">
       <button class="audio-play-btn">▶</button>
-      <span class="audio-duration">${duration || 0}s</span>
+      <span class="audio-duration">${safeDuration}s</span>
       <span class="audio-wave">🎤</span>
       ${!canPlay ? '<span class="audio-note">📱</span>' : ''}
     </span>
@@ -2090,7 +2154,7 @@ async function loadPortalFriends() {
       return `
       <div class="portal-friend-item">
         <span class="portal-friend-status ${isOnline ? 'online' : 'offline'}"></span>
-        <span class="portal-friend-av">${f.equipped_avatar ? f.equipped_avatar : '👤'}</span>
+        <span class="portal-friend-av">${f.equipped_avatar ? esc(f.equipped_avatar) : '👤'}</span>
         <span class="portal-friend-name">${esc(f.alias || f.name)}</span>
         <span class="portal-friend-stats">${statusHtml}</span>
         <button class="portal-friend-msg" data-id="${esc(f.id)}" data-name="${esc(f.alias || f.name)}" title="Enviar mensaje">💬</button>
@@ -2221,7 +2285,7 @@ async function searchPortalPlayers(query) {
     }
     results.innerHTML = players.map(p => `
       <div class="portal-search-item">
-        <span class="portal-friend-av">${p.equipped_avatar ? p.equipped_avatar : '👤'}</span>
+        <span class="portal-friend-av">${p.equipped_avatar ? esc(p.equipped_avatar) : '👤'}</span>
         <span>${esc(p.alias || p.name)}</span>
         <button class="portal-add-btn" data-id="${esc(p.id)}">+ Agregar</button>
       </div>
@@ -2328,7 +2392,7 @@ function renderTournaments(tournaments) {
       background:var(--bg-card2);border:1px solid var(--border2);border-radius:10px;
       padding:14px;margin-bottom:8px;cursor:pointer;
       transition:border-color .2s
-    " onclick="showTournamentBracket('${t.id}')">
+    " data-tournament-id="${esc(t.id)}" onclick="showTournamentBracket(this.dataset.tournamentId)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div>
           <div style="font-size:14px;font-weight:600;color:var(--text)">${statusIcon} ${esc(t.name)}</div>
@@ -2344,10 +2408,10 @@ function renderTournaments(tournaments) {
       <div style="margin-top:6px;display:flex;gap:6px;font-size:11px">
         <span style="color:var(--text3);margin-right:auto">Ronda ${t.current_round || 0}/${t.rounds || '?'}</span>
         <button class="btn-ghost-sm" style="padding:2px 8px;font-size:10px;width:auto;color:var(--text2);border-color:rgba(255,255,255,.08)" 
-          onclick="event.stopPropagation();showTournamentParticipantsModal('${t.id}','${esc(t.name).replace(/'/g,"\\'")}')">👥 Ver participantes</button>
-        ${t.status === 'registration' && !isReg ? `<button class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();registerTournament('${t.id}')">Inscribirme</button>` : ''}
+          data-tournament-id="${esc(t.id)}" onclick="event.stopPropagation();showTournamentParticipantsModal(this.dataset.tournamentId)">👥 Ver participantes</button>
+        ${t.status === 'registration' && !isReg ? `<button class="btn btn-gold" data-tournament-id="${esc(t.id)}" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();registerTournament(this.dataset.tournamentId)">Inscribirme</button>` : ''}
         ${t.status === 'registration' && isReg ? `<span class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto;opacity:.7;cursor:default">✅ Inscripto</span>` : ''}
-        ${t.status === 'active' ? `<button class="btn btn-ghost" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();showTournamentBracket('${t.id}')">Ver bracket</button>` : ''}
+        ${t.status === 'active' ? `<button class="btn btn-ghost" data-tournament-id="${esc(t.id)}" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();showTournamentBracket(this.dataset.tournamentId)">Ver bracket</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -2396,9 +2460,10 @@ async function unregisterTournament(tournamentId) {
 
 
 
-async function showTournamentParticipantsModal(tournamentId, tournamentName) {
+async function showTournamentParticipantsModal(tournamentId) {
   const token = localStorage.getItem('gameToken');
   if (!token) { toast('Debés iniciar sesión'); return; }
+  const tournamentName = _tournamentCache.find(t => String(t.id) === String(tournamentId))?.name || 'Participantes';
   try {
     const res = await fetch('/api/tournaments/' + tournamentId + '/participants', {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -2417,7 +2482,7 @@ async function showTournamentParticipantsModal(tournamentId, tournamentName) {
     
     modal.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-size:16px;font-weight:700;color:var(--text)">👥 ${tournamentName || 'Participantes'}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text)">👥 ${esc(tournamentName)}</div>
         <button class="btn-ghost-sm" style="font-size:18px;width:32px;height:32px;padding:0;line-height:1" onclick="this.closest('.modal-overlay').remove()">✕</button>
       </div>
       ${participants.length === 0 ? '<p style="color:var(--text3);text-align:center;padding:20px;font-size:13px">Sin participantes aún</p>' : `
@@ -2892,6 +2957,7 @@ function showWin(playerName, desc, dice, skinId, specialId) {
   if (!$('modal-win').classList.contains('hidden')) return;
   const playAgainBtn = $('btn-play-again');
   if (playAgainBtn) {
+    playAgainBtn.classList.remove('hidden');
     playAgainBtn.disabled = false;
     playAgainBtn.textContent = '🎲 Revancha';
   }
@@ -3032,14 +3098,17 @@ function initUI() {
         $('invite-search-results').innerHTML = players.map(p => {
           const av = p.equipped_avatar || getInitial(p.alias);
           return `<div class="invite-player-item">
-            <div class="invite-player-av">${av}</div>
+            <div class="invite-player-av">${esc(av)}</div>
             <div class="invite-player-info">
               <div class="invite-player-name">${esc(p.alias || p.name || 'Jugador')}</div>
               <div class="invite-player-meta">${p.games_played || 0} partidas · ${p.games_won || 0} victorias</div>
             </div>
-            <button class="invite-send-btn" onclick="sendGameInvite('${p.id}','${esc(p.alias || p.name || 'Jugador')}')">Invitar</button>
+            <button class="invite-send-btn" data-player-id="${esc(p.id)}" data-player-name="${esc(p.alias || p.name || 'Jugador')}">Invitar</button>
           </div>`;
         }).join('');
+        $('invite-search-results').querySelectorAll('.invite-send-btn').forEach(btn => {
+          btn.onclick = () => sendGameInvite(btn.dataset.playerId, btn.dataset.playerName);
+        });
       } catch(e) {
         $('invite-search-results').innerHTML = '<div style="text-align:center;color:var(--red);padding:20px;font-size:13px">Error al buscar</div>';
       }
@@ -3071,6 +3140,9 @@ function initUI() {
     const menu = $('user-menu');
     const open = menu.classList.toggle('hidden') === false;
     $('btn-user-menu').setAttribute('aria-expanded', String(open));
+    $('music-panel')?.classList.add('hidden');
+    $('btn-music-toggle')?.setAttribute('aria-expanded', 'false');
+    $('notif-panel')?.classList.add('hidden');
   });
   $('btn-user-profile')?.addEventListener('click', () => {
     $('user-menu')?.classList.add('hidden');
@@ -3345,6 +3417,10 @@ function initUI() {
     e.stopPropagation();
     const panel = $('notif-panel');
     panel.classList.toggle('hidden');
+    $('music-panel')?.classList.add('hidden');
+    $('btn-music-toggle')?.setAttribute('aria-expanded', 'false');
+    $('user-menu')?.classList.add('hidden');
+    $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
     if (!panel.classList.contains('hidden')) {
       renderNotifPanel();
       markAllRead();
@@ -3356,15 +3432,23 @@ function initUI() {
     renderNotifPanel();
   });
   /* ── Music toggle ──────────────────────────────── */
-  /* ── Music toggle: abre el menú de usuario (volumen unificado) ── */
+  /* ── Panel de música independiente del menú de usuario ── */
   $('btn-music-toggle')?.addEventListener('click', (e) => {
     e.stopPropagation();
     ensureAudioContext();
-    const menu = $('user-menu');
-    if (menu) {
-      const open = menu.classList.toggle('hidden') === false;
-      $('btn-user-menu')?.setAttribute('aria-expanded', String(open));
-    }
+    const panel = $('music-panel');
+    const open = panel?.classList.toggle('hidden') === false;
+    $('btn-music-toggle')?.setAttribute('aria-expanded', String(open));
+    $('notif-panel')?.classList.add('hidden');
+    $('user-menu')?.classList.add('hidden');
+    $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
+  });
+
+  $('btn-music-mute')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ensureAudioContext();
+    toggleMusic();
+    updateMusicBtn();
   });
   
   /* ── Botón sonido en partida: mute toggle rápido ──── */
@@ -3399,13 +3483,9 @@ function initUI() {
     volSlider.addEventListener('input', (e) => {
       e.stopPropagation();
       const vol = parseInt(e.target.value, 10) / 100;
+      if (vol > 0 && isMusicMuted()) setMusicMuted(false);
       setMusicVolume(vol);
-      // Si estaba muteado y sube el volumen, desmutear automáticamente
-      if (isMuted() && vol > 0) {
-        toggleMusic(); // desmutea
-      }
       updateMusicBtn();
-      SFX.tick();
     });
   }
   // Cerrar panel al hacer click afuera
@@ -3413,6 +3493,10 @@ function initUI() {
     const panel = $('notif-panel');
     const wrapper = e.target.closest('.notif-wrapper');
     if (panel && !wrapper) panel.classList.add('hidden');
+    if (!wrapper) {
+      $('music-panel')?.classList.add('hidden');
+      $('btn-music-toggle')?.setAttribute('aria-expanded', 'false');
+    }
     if (!e.target.closest('.user-menu-wrap')) {
       $('user-menu')?.classList.add('hidden');
       $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
@@ -3456,6 +3540,7 @@ function initUI() {
   // Check push status after login — also triggered reliably inside btn-login's handler
 
   function doLogout() {
+    disconnectSocketForIdentityChange();
     clearAuth();
     clearSession();
     S.logged = false;
@@ -3473,22 +3558,31 @@ function initUI() {
   $('btn-logout-topbar').onclick = doLogout;
 
   /* Entrar como Invitado */
-  $('btn-guest').onclick = () => {
+  $('btn-guest').onclick = async () => {
     // Limpiamos todo antes de empezar como invitado
+    disconnectSocketForIdentityChange();
     clearAuth(); 
     clearSession();
     
     S.logged = false;
     S.userId = null;
-    S.id = uid(); // Generamos un ID nuevo para este invitado
+    S.id = null;
     S.name = null; // El nombre debe estar vacío para que el usuario lo escriba
     
     $('input-name').value = ''; // Limpiamos el input del lobby
     
-    showScreen('screen-lobby');
-    updateUserPanel(null, 0); // Panel vacío
-    // Conectar WebSocket para que invitados puedan recibir mensajes/invitaciones
-    connect();
+    try {
+      const res = await fetch('/api/guest-session', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.token || !data.player?.id) throw new Error(data.error || 'No se pudo crear la sesión');
+      S.id = data.player.id;
+      sessionStorage.setItem('macko_guest_token', data.token);
+      showScreen('screen-lobby');
+      updateUserPanel(null, 0);
+      connect();
+    } catch (err) {
+      toast('⚠ ' + err.message);
+    }
   };
 
 /* Alternar entre Login y Registro */
@@ -3569,6 +3663,7 @@ function initUI() {
       if (!res.ok) throw new Error(data.error);
 
       // Guardar sesión y token JWT
+      disconnectSocketForIdentityChange();
       saveAuth(data.player, data.token);
       
       S.logged = true;
@@ -4048,8 +4143,8 @@ async function loadBadges() {
       div.innerHTML = `
         <div class="badge-icon">${icons[m.id] || '🏅'}</div>
         <div class="badge-info">
-          <span class="badge-name">${m.name}</span>
-          <span class="badge-desc">${m.desc}</span>
+          <span class="badge-name">${esc(m.name)}</span>
+          <span class="badge-desc">${esc(m.desc)}</span>
         </div>
         <span class="badge-status">${m.completed ? '✅' : '🔒'}</span>
       `;
@@ -4103,15 +4198,15 @@ async function loadMissions() {
         div.className = 'mission-item' + (isComplete ? ' completed' : '') + (isClaimed ? ' claimed' : '');
         div.innerHTML = `
           <div class="mission-info">
-            <span class="mission-name">${m.name}</span>
-            <span class="mission-desc">${m.desc}</span>
+            <span class="mission-name">${esc(m.name)}</span>
+            <span class="mission-desc">${esc(m.desc)}</span>
           </div>
           <div class="mission-progress-wrap">
             <div class="mission-bar-bg"><div class="mission-bar-fill" style="width:${Math.min(pct, 100)}%"></div></div>
             <span class="mission-pct">${m.progress}/${m.req}</span>
           </div>
           <div class="mission-reward">
-            ${isClaimed ? '✅' : isComplete ? `<button class="btn btn-gold btn-claim" data-mid="${m.id}" style="padding:5px 12px;font-size:11px">🪙 Cobrar</button>` : `🪙 ${m.coins}`}
+            ${isClaimed ? '✅' : isComplete ? `<button class="btn btn-gold btn-claim" data-mid="${esc(m.id)}" style="padding:5px 12px;font-size:11px">🪙 Cobrar</button>` : `🪙 ${Number(m.coins) || 0}`}
           </div>
         `;
         section.appendChild(div);
@@ -4176,8 +4271,8 @@ function showMissionComplete(mission) {
       <div class="entry-banner-icon" style="font-size:40px">🎯</div>
       <div class="entry-banner-title" style="color:var(--gold);font-size:16px">¡Misión completada!</div>
       <div class="entry-banner-sub">
-        <strong>${mission.name}</strong><br>
-        🪙 +${mission.coins} monedas ${mission.xp > 0 ? '· ⚡ +'+mission.xp+'XP' : ''}
+        <strong>${esc(mission.name)}</strong><br>
+        🪙 +${Number(mission.coins) || 0} monedas ${Number(mission.xp) > 0 ? '· ⚡ +'+Number(mission.xp)+'XP' : ''}
       </div>
       <button class="btn btn-gold" style="margin-top:12px;padding:8px 16px;font-size:12px" onclick="this.closest('.entry-banner-overlay').remove()">🎉 Reclamar</button>
     </div>
@@ -4460,12 +4555,12 @@ async function loadUltraItems() {
       const div = document.createElement('div');
       div.className = 'shop-item ultra-teaser' + (owned ? ' owned' : '');
       div.innerHTML = `
-        <div class="shop-item-preview" style="font-size:44px">${item.icon}</div>
-        <h3>${item.name}</h3>
-        <p class="shop-item-desc">${item.desc}</p>
-        <span class="shop-item-price" style="font-size:12px;color:var(--gold2);font-weight:600">💰 ${item.priceDisplay}</span>
+        <div class="shop-item-preview" style="font-size:44px">${esc(item.icon)}</div>
+        <h3>${esc(item.name)}</h3>
+        <p class="shop-item-desc">${esc(item.desc)}</p>
+        <span class="shop-item-price" style="font-size:12px;color:var(--gold2);font-weight:600">💰 ${esc(item.priceDisplay)}</span>
         ${owned
-          ? `<button class="btn btn-ghost btn-equip-shop" data-id="${item.id}" data-cat="${category}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>`
+          ? `<button class="btn btn-ghost btn-equip-shop" data-id="${esc(item.id)}" data-cat="${esc(category)}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>`
           : '<span class="ultra-badge">🎁 Solo Cofre</span>'}
       `;
       grid.appendChild(div);
@@ -4527,17 +4622,17 @@ async function loadShopCatalog() {
       div.dataset.id = String(item.id);
         if (isOwned) {
           div.innerHTML = `
-            <div class="shop-item-preview">${item.icon}</div>
-            <h3>${item.name}</h3>
-            <p class="shop-item-desc">${item.desc}</p>
-            <button class="btn btn-ghost btn-equip-shop" data-id="${item.id}" data-cat="${cat}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>
+            <div class="shop-item-preview">${esc(item.icon)}</div>
+            <h3>${esc(item.name)}</h3>
+            <p class="shop-item-desc">${esc(item.desc)}</p>
+            <button class="btn btn-ghost btn-equip-shop" data-id="${esc(item.id)}" data-cat="${esc(cat)}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>
           `;
         } else {
           div.innerHTML = `
-            <div class="shop-item-preview">${item.icon}</div>
-            <h3>${item.name}</h3>
-            <p class="shop-item-desc">${item.desc}</p>
-            <button class="btn btn-gold btn-buy" data-id="${item.id}">🪙 ${item.priceDisplay}</button>
+            <div class="shop-item-preview">${esc(item.icon)}</div>
+            <h3>${esc(item.name)}</h3>
+            <p class="shop-item-desc">${esc(item.desc)}</p>
+            <button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>
           `;
         }
         grid.appendChild(div);
@@ -4636,9 +4731,9 @@ async function loadCoinPacks() {
       div.innerHTML = `
         <div class="coin-pack-icon">${icon}</div>
         <div class="coin-pack-amount">${pack.coins.toLocaleString()}</div>
-        <div class="coin-pack-label">${pack.name}</div>
-        <div class="coin-pack-price">${pack.priceDisplay}</div>
-        <button class="btn btn-gold btn-buy-coins" data-pack="${id}" style="margin-top:4px">Comprar</button>
+        <div class="coin-pack-label">${esc(pack.name)}</div>
+        <div class="coin-pack-price">${esc(pack.priceDisplay)}</div>
+        <button class="btn btn-gold btn-buy-coins" data-pack="${esc(id)}" style="margin-top:4px">Comprar</button>
       `;
       grid.appendChild(div);
     }
@@ -4966,6 +5061,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showScreen('screen-lobby');
       loadLobbyMissions();
       updateUserPanel(S.name, 0);
+      connect();
     }
   } else if (isLogged()) {
     // Usuario logueado sin sesion de sala: mostrar lobby directamente
@@ -4973,6 +5069,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showScreen('screen-lobby');
     loadLobbyMissions();
     updateUserPanel(S.name, 0);
+    connect();
   }
 });
 

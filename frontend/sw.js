@@ -1,6 +1,6 @@
 /**
  * ══════════════════════════════════════════════════
- * LOS 10.000 DE MACKO — Service Worker v2
+ * LOS 10.000 DE MACKO — Service Worker v3
  * Cachea solo assets estáticos para funcionar offline
  * y permite instalar como PWA.
  * 
@@ -11,15 +11,22 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '3.6.3';
+const GAME_VERSION = '3.8.1';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [
   '/',
   '/index.html',
   '/app.js',
+  `/app.js?v=${GAME_VERSION}`,
   '/styles.css',
+  `/styles.css?v=${GAME_VERSION}`,
   '/version.js',
+  `/version.js?v=${GAME_VERSION}`,
+  '/audio.js',
+  `/audio.js?v=${GAME_VERSION}`,
+  '/dice-renderer.js',
+  `/dice-renderer.js?v=${GAME_VERSION}`,
   '/manifest.json',
   '/ceo-panel.html',
   '/ceo-panel.js',
@@ -132,7 +139,8 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const nd = event.notification.data || {};
-  const url = nd.url || '/';
+  const requestedUrl = String(nd.url || '/');
+  const url = requestedUrl.startsWith('/') && !requestedUrl.startsWith('//') ? requestedUrl : '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) {
@@ -164,7 +172,7 @@ self.addEventListener('notificationclick', event => {
                   roomCode: nd.roomCode || '',
                   inviteId: nd.inviteId || '',
                   fromId: nd.fromId || ''
-                }, '*');
+                });
               } catch(e) {}
             }, 2000);
           }
@@ -232,6 +240,7 @@ self.addEventListener('fetch', event => {
           response.ok &&
           (url.pathname.endsWith('.css') ||
            url.pathname.endsWith('.png') ||
+           url.pathname.endsWith('.mp3') ||
            url.pathname.endsWith('.json') ||
            url.pathname.endsWith('.html'))
         ) {

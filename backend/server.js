@@ -6,11 +6,12 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const path      = require("path");
 const fs        = require("fs");
+const crypto    = require("crypto");
 const http      = require("http");
 const express   = require("express");
 const WebSocket = require("ws");
@@ -45,7 +46,7 @@ const {
 } = require("./diceManager");
 
 const { createPlayerState, setWinner } = require("./matchState");
-const { register, login, requireAuth, requestPasswordReset } = require("./authManager");
+const { register, login, requireAuth, requestPasswordReset, createGuestSession, verifyGameToken } = require("./authManager");
 const botManager = require("./botManager");
 const botGameHandler = require("./botGameHandler");
 
@@ -65,6 +66,25 @@ const {
 /* ── Express ─────────────────────────────────────────────── */
 const app  = express();
 const PORT = process.env.PORT || 3000;
+const RAW_CEO_SECRET = process.env.CEO_SECRET;
+const CEO_SECRET = RAW_CEO_SECRET && Buffer.byteLength(RAW_CEO_SECRET, 'utf8') >= 32
+  ? RAW_CEO_SECRET
+  : null;
+if (RAW_CEO_SECRET && !CEO_SECRET) {
+  console.error('❌ CEO_SECRET debe tener al menos 32 bytes; el panel CEO queda deshabilitado');
+}
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(self)');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
 
 // Rate limiting para endpoints de auth
 const rateLimit = require("express-rate-limit");
@@ -80,6 +100,7 @@ const authLimiter = rateLimit({
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
+  skip: req => req.path === '/version',
   message: { error: "Demasiadas solicitudes. Esperá un momento." },
   standardHeaders: true,
   legacyHeaders: false
@@ -150,6 +171,7 @@ app.use(express.static(path.join(__dirname, "../frontend")));
 // Aplicar rate limiters a rutas sensibles
 app.use("/api/login", authLimiter);
 app.use("/api/register", authLimiter);
+app.use("/api/guest-session", authLimiter);
 app.use("/api/forgot-password", authLimiter);
 app.use("/api/reset-password", authLimiter);
 app.use("/ceo-panel/api/login", authLimiter);
@@ -175,6 +197,7 @@ app.get("/favicon.ico", (req, res) => res.status(204).end());
 // Nuevas rutas de Autenticación
 app.post("/api/register", register);
 app.post("/api/login", login);
+app.post("/api/guest-session", createGuestSession);
 
 // Ruta de ranking AHORA PROTEGIDA con requireAuth
 app.get("/ranking", requireAuth, async (req, res) => {
@@ -245,8 +268,9 @@ app.get("/api/user/profile", requireAuth, async (req, res) => {
 app.post("/api/user/hide-last-seen", requireAuth, async (req, res) => {
   try {
     const { hide } = req.body;
+    if (typeof hide !== 'boolean') return res.status(400).json({ error: 'Valor inválido' });
     const playerId = req.user.playerId;
-    const result = await updateHideLastSeen(playerId, !!hide);
+    const result = await updateHideLastSeen(playerId, hide);
     res.json(result);
   } catch (err) {
     console.error("Error hide-last-seen:", err);
@@ -795,7 +819,9 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
     if (!category || !message) return res.status(400).json({ error: 'Categoría y mensaje requeridos' });
     const validCategories = ['sugerencia', 'bug', 'otro'];
     if (!validCategories.includes(category)) return res.status(400).json({ error: 'Categoría inválida' });
-    await saveFeedback(req.user.playerId, req.user.username, category, message);
+    const safeMessage = String(message).trim();
+    if (!safeMessage || safeMessage.length > 2000) return res.status(400).json({ error: 'El mensaje debe tener entre 1 y 2000 caracteres' });
+    await saveFeedback(req.user.playerId, req.user.username, category, safeMessage);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -808,13 +834,14 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
 
 // Middleware de autenticación para CEO panel
 async function requireCeoAuth(req, res, next) {
+  if (!CEO_SECRET) return res.status(503).json({ error: 'Panel administrativo no configurado' });
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado' });
   }
   try {
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.CEO_SECRET || 'ceo-default');
+    const decoded = jwt.verify(token, CEO_SECRET, { algorithms: ['HS256'] });
     const admin = await getAdminByUsername(decoded.username);
     if (!admin) {
       return res.status(401).json({ error: 'Token inválido' });
@@ -831,9 +858,27 @@ app.get("/ceo-panel", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/ceo-panel.html"));
 });
 
+// Historial detallado exclusivo del panel CEO. El endpoint público conserva
+// notas breves, mientras que este reemplaza la versión actual con el detalle operativo.
+app.get("/ceo-panel/api/version", requireCeoAuth, (req, res) => {
+  try {
+    const versionData = require(path.join(__dirname, "../frontend/version.js"));
+    const ceoDetails = require("./ceoChangelog");
+    const changelog = versionData.CHANGELOG.map(entry => (
+      ceoDetails[entry.version] ? { ...entry, ...ceoDetails[entry.version] } : entry
+    ));
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.json({ version: versionData.GAME_VERSION, changelog });
+  } catch (err) {
+    console.error('CEO changelog:', err.message);
+    res.status(500).json({ error: 'No se pudo cargar el historial' });
+  }
+});
+
 // Login del CEO panel
 app.post("/ceo-panel/api/login", async (req, res) => {
   try {
+    if (!CEO_SECRET) return res.status(503).json({ error: 'Panel administrativo no configurado' });
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Credenciales requeridas' });
     const admin = await getAdminByUsername(username);
@@ -843,8 +888,8 @@ app.post("/ceo-panel/api/login", async (req, res) => {
     // Token JWT con expiración de 24h
     const token = jwt.sign(
       { username: admin.username, role: admin.role, id: admin.id },
-      process.env.CEO_SECRET || 'ceo-default',
-      { expiresIn: '24h' }
+      CEO_SECRET,
+      { algorithm: 'HS256', expiresIn: '8h' }
     );
     res.json({ token, username: admin.username, role: admin.role });
   } catch (err) {
@@ -982,12 +1027,16 @@ app.post("/ceo-panel/api/users/adjust-coins", requireCeoAuth, requireCeoRole('ed
   try {
     let { playerId, amount, reason } = req.body;
     if (!playerId || !amount) return res.status(400).json({ error: 'playerId y amount requeridos' });
+    amount = Number(amount);
+    if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000) {
+      return res.status(400).json({ error: 'Monto inválido' });
+    }
     // Si se envió un userId (UUID) en lugar de playerId, resolver el player
     if (playerId.includes('-')) {
       const plRes = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [playerId]);
       if (plRes.rows[0]) playerId = plRes.rows[0].id;
     }
-    const result = await adjustPlayerCoins(playerId, parseInt(amount), reason || 'Ajuste manual CEO');
+    const result = await adjustPlayerCoins(String(playerId), amount, String(reason || 'Ajuste manual CEO').slice(0, 200));
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -999,8 +1048,8 @@ app.post("/ceo-panel/api/users/reset-password", requireCeoAuth, requireCeoRole('
   try {
     const { userId, newPassword } = req.body;
     if (!userId || !newPassword) return res.status(400).json({ error: 'userId y newPassword requeridos' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-    const hash = await bcrypt.hash(newPassword, 10);
+    if (newPassword.length < 10 || newPassword.length > 128) return res.status(400).json({ error: 'La contraseña debe tener entre 10 y 128 caracteres' });
+    const hash = await bcrypt.hash(newPassword, 12);
     await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, userId]);
     logAudit(req.admin.username, 'reset_user_password', userId, 'Contraseña reseteada por admin').catch(e => {});
     res.json({ success: true });
@@ -1051,8 +1100,8 @@ app.post("/ceo-panel/api/admins/change-password/:adminId", requireCeoAuth, requi
   try {
     const { adminId } = req.params;
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    if (!newPassword || newPassword.length < 14 || newPassword.length > 128) {
+      return res.status(400).json({ error: 'La contraseña debe tener entre 14 y 128 caracteres' });
     }
     // Buscar el admin por ID
     const adminRes = await pool.query(`SELECT username FROM admins WHERE id = $1`, [adminId]);
@@ -1060,7 +1109,7 @@ app.post("/ceo-panel/api/admins/change-password/:adminId", requireCeoAuth, requi
     if (String(adminRes.rows[0].username) === String(req.admin.username)) {
       return res.status(400).json({ error: 'Usá "Cambiar mi contraseña" para cambiarte a vos mismo' });
     }
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, 12);
     await changeAdminPassword(adminRes.rows[0].username, newHash);
     logAudit(req.admin.username, 'admin_change_password', adminRes.rows[0].username, 'Contraseña reseteada por otro admin').catch(e => {});
     res.json({ success: true });
@@ -1083,10 +1132,12 @@ app.post("/ceo-panel/api/admins/create", requireCeoAuth, requireCeoRole('admin')
   try {
     const { username, password, role } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
-    if (password.length < 6) return res.status(400).json({ error: 'Contraseña debe tener al menos 6 caracteres' });
-    const hash = await bcrypt.hash(password, 10);
-    await createAdmin(username, hash, role || 'editor');
-    logAudit(req.admin.username, 'admin_create', username, `rol: ${role || 'editor'}`).catch(e => {});
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{2,31}$/.test(username)) return res.status(400).json({ error: 'Usuario administrativo inválido' });
+    if (password.length < 14 || password.length > 128) return res.status(400).json({ error: 'Contraseña debe tener entre 14 y 128 caracteres' });
+    const safeRole = ['viewer', 'editor', 'admin'].includes(role) ? role : 'editor';
+    const hash = await bcrypt.hash(password, 12);
+    await createAdmin(username, hash, safeRole);
+    logAudit(req.admin.username, 'admin_create', username, `rol: ${safeRole}`).catch(e => {});
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1097,6 +1148,7 @@ app.post("/ceo-panel/api/admins/role", requireCeoAuth, requireCeoRole('admin'), 
   try {
     const { adminId, role } = req.body;
     if (!adminId || !role) return res.status(400).json({ error: 'adminId y role requeridos' });
+    if (!['viewer', 'editor', 'admin'].includes(role)) return res.status(400).json({ error: 'Rol inválido' });
     if (String(req.admin.id) === String(adminId)) {
       return res.status(400).json({ error: 'No podés cambiar tu propio rol' });
     }
@@ -1127,11 +1179,11 @@ app.post("/ceo-panel/api/admins/change-password", requireCeoAuth, async (req, re
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Contraseñas requeridas' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'Nueva contraseña debe tener al menos 6 caracteres' });
+    if (newPassword.length < 14 || newPassword.length > 128) return res.status(400).json({ error: 'Nueva contraseña debe tener entre 14 y 128 caracteres' });
     const admin = await getAdminByUsername(req.admin.username);
     const match = await bcrypt.compare(currentPassword, admin.password_hash);
     if (!match) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, 12);
     await changeAdminPassword(req.admin.username, newHash);
     logAudit(req.admin.username, 'admin_change_password', req.admin.username, '').catch(e => {});
     res.json({ success: true });
@@ -1465,9 +1517,11 @@ app.post("/api/shop/create-payment", requireAuth, async (req, res) => {
 app.post("/api/mercadopago/create-preference", requireAuth, async (req, res) => {
   const { packId } = req.body;
   const userId = req.user.userId;
-  const userEmail = req.user.username + "@player.com";
 
   try {
+    const userResult = await pool.query("SELECT email FROM users WHERE id = $1", [userId]);
+    if (!userResult.rows.length) return res.status(404).json({ error: "Usuario no encontrado" });
+    const userEmail = userResult.rows[0].email;
     const result = await createCheckoutPreference(packId, userId, userEmail);
     res.json(result);
   } catch (err) {
@@ -1497,7 +1551,16 @@ app.post("/api/mercadopago/webhook", async (req, res) => {
 
 /* ── HTTP + WS ───────────────────────────────────────────── */
 const server = http.createServer(app);
-const wss    = new WebSocket.Server({ server });
+const wss    = new WebSocket.Server({
+  server,
+  maxPayload: 350 * 1024,
+  verifyClient: ({ req }) => {
+    const origin = req.headers.origin;
+    if (!origin) return true;
+    try { return new URL(origin).host === req.headers.host; }
+    catch (_) { return false; }
+  }
+});
 
 console.log("🎲 Iniciando Los 10.000 de Macko...");
 
@@ -1589,10 +1652,44 @@ async function onMatchWon(match, roomId) {
   if (!winner || match.finalizing) return;
   match.finalizing = true;
 
+  const room = getRoom(roomId);
+  const isTournamentMatch = !!room?.isTournamentMatch;
+
+  // En torneos el resultado se confirma antes de destruir la partida. Si la
+  // base se cae unos segundos, se conserva el estado ganador y se reintenta:
+  // nunca se pierde un resultado ni se habilita una revancha accidental.
+  if (isTournamentMatch) {
+    try {
+      await completeTournamentMatch(
+        room.tournamentId,
+        room.tournamentMatchId,
+        winner.id,
+        match.players[0]?.score || 0,
+        match.players[1]?.score || 0,
+        clients,
+        send
+      );
+    } catch (e) {
+      console.error('Error avanzando match de torneo; se reintentara:', e.message);
+      match.finalizing = false;
+      broadcastRoom(roomId, "ERROR", {
+        message: "Estamos confirmando el resultado del torneo. No cierres la partida."
+      });
+      setTimeout(() => {
+        const pendingMatch = getMatch(roomId);
+        if (pendingMatch === match && match.winner && !match.finalizing) {
+          onMatchWon(match, roomId).catch(err => {
+            console.error("Reintento de resultado de torneo:", err.message);
+          });
+        }
+      }, 3000);
+      return;
+    }
+  }
+
   // Cerrar la partida y resetear la sala antes de tocar la base de datos.
   // Asi el boton Revancha nunca compite con las recompensas o estadisticas.
   const finalSnapshot = snapshotMatch(match);
-  const room = getRoom(roomId);
   if (room) {
     cancelReadyCountdown(roomId);
     room.status = "waiting";
@@ -1605,7 +1702,8 @@ async function onMatchWon(match, roomId) {
   broadcastRoom(roomId, "GAME_OVER", {
     winner,
     match: finalSnapshot,
-    room
+    room,
+    tournamentMatch: isTournamentMatch
   });
   destroyMatch(roomId);
 
@@ -1615,23 +1713,20 @@ async function onMatchWon(match, roomId) {
     try {
       await registerWin(winner.id);
       
-      // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
-      // Ordenar jugadores por score descendente (el ganador ya está en match.winner)
-      const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
-      
-      // Premier al 1° con 500, 2° con 200, 3° con 100 monedas
-      const rewards = [500, 200, 100];
-      for (let i = 0; i < Math.min(sortedByScore.length, 3); i++) {
-        const player = sortedByScore[i];
-        const amount = rewards[i];
-        if (amount > 0 && player.id) {
-          // rewardWinner maneja la transacción con BEGIN/COMMIT, pero no podemos
-          // usar transacción anidada. Llamamos una por una.
-          try {
-            await rewardWinner(player.id, amount);
-            console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
-          } catch (e) {
-            console.error(`Error al premiar a ${player.id}:`, e.message);
+      if (!isTournamentMatch) {
+        // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
+        const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+        const rewards = [500, 200, 100];
+        for (let i = 0; i < Math.min(sortedByScore.length, 3); i++) {
+          const player = sortedByScore[i];
+          const amount = rewards[i];
+          if (amount > 0 && player.id) {
+            try {
+              await rewardWinner(player.id, amount);
+              console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
+            } catch (e) {
+              console.error(`Error al premiar a ${player.id}:`, e.message);
+            }
           }
         }
       }
@@ -1649,6 +1744,15 @@ async function onMatchWon(match, roomId) {
     } catch (e) { console.error("DB post-win:", e.message); }
   } else {
     console.log(`🤖 Partida contra bots finalizada. Ganador: ${winner.name || winner.id}`);
+  }
+
+  if (isTournamentMatch && room) {
+    for (const p of room.players) {
+      const sock = clients.get(p.id);
+      if (sock?.roomId === roomId) sock.roomId = null;
+    }
+    rooms.delete(roomId);
+    return;
   }
 
   if (room && room.status === "waiting") {
@@ -1778,36 +1882,119 @@ function doReconnect(socket, playerId, room, match) {
 /* ══════════════════════════════════════════════════════════
    CONEXIÓN WS
    ══════════════════════════════════════════════════════════ */
+const WS_ROOM_ACTIONS = new Set([
+  "GET_ROOM_STATE", "PLAYER_READY", "ROLL", "BANK", "CHAT_MESSAGE", "CHAT_AUDIO",
+  "LEAVE_GAME", "LEAVE_ROOM", "CANCEL_ROOM", "GAME_INVITE"
+]);
+const WS_REGISTERED_ACTIONS = new Set([
+  "TOURNAMENT_REGISTER", "TOURNAMENT_GET_BRACKET", "TOURNAMENT_JOIN_MATCH", "FRIEND_REQUEST", "FRIEND_ACCEPT",
+  "FRIEND_REJECT", "GAME_INVITE", "GAME_INVITE_ACCEPT", "GAME_INVITE_REJECT",
+  "PRIVATE_CHAT", "GET_PRIVATE_CHAT", "GLOBAL_CHAT"
+]);
+
+function sanitizeWsPlayerName(value) {
+  return String(value || "Jugador")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[^\p{L}\p{N} ._-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 24) || "Jugador";
+}
+
 wss.on("connection", socket => {
 
   /* Ping/pong para detectar conexiones caídas */
   socket.isAlive = true;
+  socket.authenticated = false;
+  socket.authDeadline = setTimeout(() => {
+    if (!socket.authenticated) socket.close(4003, "Autenticación requerida");
+  }, 5000);
+  socket.messageWindowStartedAt = Date.now();
+  socket.messageCount = 0;
   socket.on("pong", () => { socket.isAlive = true; });
 
   socket.on("message", async rawMsg => {
     try {
-      const { type, data } = JSON.parse(rawMsg.toString());
+      const now = Date.now();
+      if (now - socket.messageWindowStartedAt >= 10_000) {
+        socket.messageWindowStartedAt = now;
+        socket.messageCount = 0;
+      }
+      if (++socket.messageCount > 80) {
+        socket.close(4008, "Demasiados mensajes");
+        return;
+      }
+
+      const parsed = JSON.parse(rawMsg.toString());
+      const type = typeof parsed?.type === "string" ? parsed.type : "";
+      const data = parsed?.data && typeof parsed.data === "object" && !Array.isArray(parsed.data)
+        ? parsed.data
+        : {};
+
+      if (type === "PING") {
+        send(socket, "PONG", {});
+        return;
+      }
 
       /* ── IDENTIFY ──────────────────────────────────────── */
       if (type === "IDENTIFY") {
-        const { playerId, playerName, roomId } = data;
+        if (socket.authenticated) {
+          send(socket, "ERROR", { message: "La conexión ya fue identificada" });
+          return;
+        }
 
+        let identity;
+        try { identity = verifyGameToken(data.token); }
+        catch (_) {
+          send(socket, "ERROR", { message: "Sesión inválida o expirada" });
+          socket.close(4003, "Autenticación requerida");
+          return;
+        }
+
+        const playerId = String(identity.playerId || "");
+        if (!playerId) {
+          socket.close(4003, "Identidad inválida");
+          return;
+        }
+
+        socket.isGuest = identity.guest === true;
+        socket.userId = socket.isGuest ? null : identity.userId;
         socket.playerId = playerId;
-        socket.playerName = playerName || "Jugador";
-        socket.roomId   = roomId || null;
+        socket.playerName = socket.isGuest
+          ? sanitizeWsPlayerName(data.playerName)
+          : sanitizeWsPlayerName(identity.username);
+        socket.roomId = null;
+        socket.authenticated = true;
+        clearTimeout(socket.authDeadline);
+
+        if (!socket.isGuest) {
+          const banStatus = await checkIfBanned(socket.userId);
+          if (banStatus.banned) {
+            send(socket, "ERROR", { message: "Tu cuenta no tiene acceso al juego" });
+            socket.close(4003, "Cuenta bloqueada");
+            return;
+          }
+        } else {
+          try {
+            await createOrLoadPlayer({ id: playerId, alias: socket.playerName, name: socket.playerName });
+          } catch (e) { console.error("DB guest identify:", e.message); }
+        }
+
+        const previousSocket = clients.get(playerId);
+        if (previousSocket && previousSocket !== socket) {
+          previousSocket.superseded = true;
+          previousSocket.close(4001, "Nueva conexión");
+        }
         clients.set(playerId, socket);
 
-        try {
-          await createOrLoadPlayer({ id: playerId, alias: playerName, name: playerName });
-        } catch (e) { console.error("DB identify:", e.message); }
-        
         // Actualizar last_seen para tracking online/offline
         updateLastSeen(playerId).catch(e => {});
 
         // Intentar reconectar si viene con roomId
-        if (roomId) {
-          const room  = getRoom(roomId);
-          const match = getMatch(roomId);
+        if (data.roomId) {
+          const room  = getRoom(data.roomId);
+          const match = getMatch(data.roomId);
 
           if (room) {
             const player = room.players.find(p => p.id === playerId);
@@ -1822,6 +2009,51 @@ wss.on("connection", socket => {
 
         send(socket, "IDENTIFIED", { playerId });
         return;
+      }
+
+      if (!socket.authenticated) {
+        send(socket, "ERROR", { message: "Debés identificar la conexión" });
+        socket.close(4003, "Autenticación requerida");
+        return;
+      }
+
+      if (socket.isGuest && ["CREATE_ROOM", "JOIN_ROOM", "START_BOT_GAME"].includes(type)) {
+        socket.playerName = sanitizeWsPlayerName(data.playerName);
+      }
+      data.playerId = socket.playerId;
+      data.playerName = socket.playerName;
+
+      const actionCooldowns = {
+        ROLL: 150, BANK: 250, CHAT_MESSAGE: 600, CHAT_AUDIO: 3000,
+        PRIVATE_CHAT: 500, GLOBAL_CHAT: 1000, FRIEND_REQUEST: 1000,
+        GAME_INVITE: 1000
+      };
+      const cooldown = actionCooldowns[type];
+      if (cooldown) {
+        socket.lastActionAt ||= Object.create(null);
+        if (now - (socket.lastActionAt[type] || 0) < cooldown) return;
+        socket.lastActionAt[type] = now;
+      }
+
+      if (socket.isGuest && WS_REGISTERED_ACTIONS.has(type)) {
+        send(socket, "ERROR", { message: "Esta función requiere una cuenta" });
+        return;
+      }
+
+      if (WS_ROOM_ACTIONS.has(type)) {
+        if (!socket.roomId || String(data.roomId || "") !== String(socket.roomId)) {
+          send(socket, "ERROR", { message: "Acción fuera de tu sala" });
+          return;
+        }
+        const actionRoom = getRoom(socket.roomId);
+        const actionMatch = getMatch(socket.roomId);
+        const isMember = actionRoom?.players?.some(p => p.id === socket.playerId)
+          || actionMatch?.players?.some(p => p.id === socket.playerId);
+        if (!isMember) {
+          send(socket, "ERROR", { message: "No pertenecés a esta sala" });
+          return;
+        }
+        data.roomId = socket.roomId;
       }
 
       /* ── RANKING ───────────────────────────────────────── */
@@ -1857,18 +2089,14 @@ wss.on("connection", socket => {
         const room = createRoom({
           ownerId,
           ownerName:  playerName,
-          isPrivate:  data.isPrivate,
-          maxPlayers: data.maxPlayers || 10
+          isPrivate:  data.isPrivate !== false,
+          maxPlayers: Math.max(2, Math.min(10, Number(data.maxPlayers) || 10))
         });
         // Cargar items equipados del owner para que todos lo vean
         try {
           const owner = room.players.find(p => p.id === ownerId);
           if (owner) {
             await loadEquippedToRoomPlayer(owner, ownerId);
-            // Fallback: usar valores del frontend si la BD no tenía datos
-            if (!owner.equippedAvatar && data.equippedAvatar) owner.equippedAvatar = data.equippedAvatar;
-            if (!owner.equippedDice && data.equippedDice) owner.equippedDice = data.equippedDice;
-            if (!owner.equippedSpecial && data.equippedSpecial) owner.equippedSpecial = data.equippedSpecial;
           }
         } catch(e) { console.error('Error loading owner equipped:', e.message); }
         clients.set(ownerId, socket);
@@ -1902,38 +2130,6 @@ wss.on("connection", socket => {
           return;
         }
 
-        // NUEVO FIX: buscar si hay un jugador con el mismo nombre desconectado
-        // Si existe, reconectarlo en vez de crear uno nuevo
-        const match = getMatch(room.id);
-        const disconnectedSameName = room.players.find(p =>
-          String(p.name || '').toLowerCase() === joiningPlayerName.toLowerCase() &&
-          p.disconnected === true
-        );
-        if (disconnectedSameName) {
-          console.log(`🔄 Reconectando por nombre: ${joiningPlayerName} → ${disconnectedSameName.id}`);
-          // Actualizar el id del jugador al nuevo playerId del cliente
-          const oldId = disconnectedSameName.id;
-          disconnectedSameName.id        = joiningPlayerId;
-          disconnectedSameName.connected  = true;
-          disconnectedSameName.disconnected = false;
-
-          // Actualizar en el match también
-          if (match) {
-            const mp = match.players.find(p => p.id === oldId);
-            if (mp) mp.id = joiningPlayerId;
-          }
-
-          // Cancelar timer de eliminación del ID viejo
-          if (reconnTimers.has(oldId)) {
-            clearTimeout(reconnTimers.get(oldId));
-            reconnTimers.delete(oldId);
-            clients.delete(oldId);
-          }
-
-          doReconnect(socket, joiningPlayerId, room, match || null);
-          return;
-        }
-
         if (room.players.length >= room.maxPlayers) {
           send(socket, "ERROR", { message: "La sala está llena" });
           return;
@@ -1944,10 +2140,6 @@ wss.on("connection", socket => {
           const player = addPlayer(room.id, joiningPlayerId, joiningPlayerName);
           // Cargar items equipados del jugador para que todos lo vean
           await loadEquippedToRoomPlayer(player, joiningPlayerId);
-          // Fallback: usar valores del frontend si la BD no tenía datos
-          if (!player.equippedAvatar && data.equippedAvatar) player.equippedAvatar = data.equippedAvatar;
-          if (!player.equippedDice && data.equippedDice) player.equippedDice = data.equippedDice;
-          if (!player.equippedSpecial && data.equippedSpecial) player.equippedSpecial = data.equippedSpecial;
           clients.set(joiningPlayerId, socket);
           socket.playerId = joiningPlayerId;
           socket.playerName = joiningPlayerName;
@@ -1957,59 +2149,9 @@ wss.on("connection", socket => {
           return;
         }
 
-        // Partida en curso: unirse como jugador nuevo
+        // Una partida iniciada queda cerrada: sólo se admite reconexión por ID firmado.
         if (room.status === "playing") {
-          if (!match) {
-            send(socket, "ERROR", { message: "No se encontró la partida activa" });
-            return;
-          }
-
-          const newPlayer = {
-            id:                joiningPlayerId,
-            name:              joiningPlayerName,
-            alias:             joiningPlayerName + "#" + Math.floor(1000 + Math.random() * 9000),
-            ready:             true,
-            score:             0,
-            entered:           false,
-            connected:         true,
-            reconnectAttempts: 0,
-            inactivityStrikes: 0
-          };
-          room.players.push(newPlayer);
-
-          const playerState = createPlayerState(newPlayer);
-          match.players.push(playerState);
-          // Cargar items equipados y racha del jugador que se une
-          try {
-            const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [joiningPlayerId]);
-            if (plRes.rows[0]) {
-              playerState.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
-              playerState.equippedDice = plRes.rows[0].equipped_dice || null;
-              playerState.equippedSpecial = plRes.rows[0].equipped_special || null;
-              playerState.winStreak = plRes.rows[0].win_streak || 0;
-            }
-          } catch(e) { console.error('Error loading equipped for joining player:', e.message); }
-          // Fallback: usar valores del frontend si la BD no tenía datos
-          if (!playerState.equippedDice && data.equippedDice) playerState.equippedDice = data.equippedDice;
-          if (!playerState.equippedAvatar && data.equippedAvatar) playerState.equippedAvatar = data.equippedAvatar;
-          if (!playerState.equippedSpecial && data.equippedSpecial) playerState.equippedSpecial = data.equippedSpecial;
-
-          clients.set(joiningPlayerId, socket);
-          socket.playerId = joiningPlayerId;
-          socket.playerName = joiningPlayerName;
-          socket.roomId   = room.id;
-
-          send(socket, "JOINED_ACTIVE_GAME", {
-            room,
-            match:    snapshotMatch(match),
-            playerId: joiningPlayerId
-          });
-
-          broadcastRoom(room.id, "PLAYER_JOINED_GAME", {
-            playerId:   joiningPlayerId,
-            playerName: joiningPlayerName,
-            match:      snapshotMatch(match)
-          });
+          send(socket, "ERROR", { message: "La partida ya comenzó" });
           return;
         }
 
@@ -2078,6 +2220,39 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── TOURNAMENT: ENTRAR AL MATCH ASIGNADO ───────── */
+      if (type === "TOURNAMENT_JOIN_MATCH") {
+        const tournamentId = Number(data.tournamentId);
+        const matchId = Number(data.matchId);
+        const roomId = String(data.roomId || '');
+        const matchRes = await pool.query(
+          `SELECT * FROM tournament_matches
+           WHERE id = $1 AND tournament_id = $2 AND status = 'pending'
+             AND (player1_id = $3 OR player2_id = $3)`,
+          [matchId, tournamentId, socket.playerId]
+        );
+        const tournamentMatch = matchRes.rows[0];
+        const tournamentRoom = getRoom(roomId);
+        if (!tournamentMatch || !tournamentRoom
+            || Number(tournamentRoom.tournamentId) !== tournamentId
+            || Number(tournamentRoom.tournamentMatchId) !== matchId) {
+          send(socket, "ERROR", { message: "Match de torneo no disponible" });
+          return;
+        }
+        if (socket.roomId && socket.roomId !== roomId) {
+          send(socket, "ERROR", { message: "Salí de tu sala actual antes de entrar al torneo" });
+          return;
+        }
+        const tournamentPlayer = tournamentRoom.players.find(p => p.id === socket.playerId);
+        if (!tournamentPlayer) {
+          send(socket, "ERROR", { message: "No pertenecés a este match" });
+          return;
+        }
+        await loadEquippedToRoomPlayer(tournamentPlayer, socket.playerId);
+        doReconnect(socket, socket.playerId, tournamentRoom, null);
+        return;
+      }
+
       /* ── TOURNAMENT: REGISTER ───────────────────────── */
       if (type === "TOURNAMENT_REGISTER") {
         const { tournamentId, playerId, playerName } = data;
@@ -2104,14 +2279,31 @@ wss.on("connection", socket => {
       if (type === "FRIEND_REQUEST") {
         const { targetId } = data;
         if (!targetId) return;
-        const fromProfile = await getUserProfile(
-          (await pool.query('SELECT id FROM players WHERE id = $1', [data.playerId])).rows[0] ?
-          (await pool.query('SELECT user_id FROM players WHERE id = $1', [data.playerId])).rows[0]?.user_id : null
-        );
+        const targetPlayer = await pool.query('SELECT id FROM players WHERE id = $1 AND user_id IS NOT NULL', [targetId]);
+        if (!targetPlayer.rows.length) {
+          send(socket, 'ERROR', { message: 'Jugador no encontrado' });
+          return;
+        }
+        let friendResult;
+        try {
+          friendResult = await addFriend(socket.playerId, targetId);
+        } catch (e) {
+          send(socket, 'ERROR', { message: e.message });
+          return;
+        }
+        const sender = await pool.query('SELECT user_id FROM players WHERE id = $1', [socket.playerId]);
+        const fromProfile = await getUserProfile(sender.rows[0]?.user_id);
         const fromName = fromProfile?.alias || data.playerName || 'Jugador';
         const fromAvatar = fromProfile?.equipped_avatar || '👤';
         // Enviar al objetivo
         const targetSock = clients.get(targetId);
+        if (friendResult.accepted) {
+          if (targetSock?.readyState === WebSocket.OPEN) {
+            send(targetSock, 'FRIEND_ACCEPTED', { byId: socket.playerId, byName: fromName });
+          }
+          send(socket, 'FRIEND_ACCEPTED_OK', { fromId: targetId });
+          return;
+        }
         if (targetSock && targetSock.readyState === WebSocket.OPEN) {
           send(targetSock, 'FRIEND_REQUEST', {
             fromId: data.playerId,
@@ -2120,19 +2312,16 @@ wss.on("connection", socket => {
             timestamp: Date.now()
           });
         }
-        // Guardar solicitud pendiente en DB
-        try {
-          await addFriend(data.playerId, targetId);
-        } catch(e) { console.error('Friend request save:', e.message); }
-        send(socket, 'FRIEND_REQUEST_SENT', { targetId });
+        send(socket, 'FRIEND_REQUEST_SENT', { targetId, accepted: !!friendResult.accepted });
         return;
       }
 
       /* ── ACEPTAR/RECHAZAR AMISTAD ─────────────────── */
       if (type === "FRIEND_ACCEPT") {
-        const { requestId, fromId } = data;
+        const { requestId } = data;
         try {
-          await acceptFriendRequest(requestId, data.playerId);
+          const accepted = await acceptFriendRequest(requestId, socket.playerId);
+          const fromId = accepted.fromId;
           // Notificar al remitente
           const fromSock = clients.get(fromId);
           if (fromSock && fromSock.readyState === WebSocket.OPEN) {
@@ -2142,7 +2331,7 @@ wss.on("connection", socket => {
             });
           }
           send(socket, 'FRIEND_ACCEPTED_OK', { fromId });
-        } catch(e) { console.error('Friend accept:', e.message); }
+        } catch(e) { send(socket, 'ERROR', { message: e.message }); }
         return;
       }
 
@@ -2151,7 +2340,7 @@ wss.on("connection", socket => {
         try {
           await rejectFriendRequest(requestId, data.playerId);
           send(socket, 'FRIEND_REJECTED_OK', {});
-        } catch(e) { console.error('Friend reject:', e.message); }
+        } catch(e) { send(socket, 'ERROR', { message: e.message }); }
         return;
       }
 
@@ -2159,6 +2348,11 @@ wss.on("connection", socket => {
       if (type === "GAME_INVITE") {
         const { targetId, roomId, roomCode } = data;
         if (!targetId || !roomId) return;
+        const targetExists = await pool.query('SELECT 1 FROM players WHERE id = $1 AND user_id IS NOT NULL', [targetId]);
+        if (!targetExists.rows.length) {
+          send(socket, 'ERROR', { message: 'Jugador no encontrado' });
+          return;
+        }
         const inviterId = data.playerId || socket.playerId;
         const fromProfile = await getUserProfile(
           (await pool.query('SELECT user_id FROM players WHERE id = $1', [inviterId])).rows[0]?.user_id
@@ -2173,7 +2367,7 @@ wss.on("connection", socket => {
           fromName: inviterName,
           fromAvatar: resolveAvatarIcon(fromProfile?.equipped_avatar) || '👤',
           roomId,
-          roomCode: roomCode || room?.code || '',
+          roomCode: room?.code || '',
           playerCount: room?.players?.length || 0,
           maxPlayers: room?.maxPlayers || 10
         };
@@ -2216,30 +2410,27 @@ wss.on("connection", socket => {
       }
 
       if (type === "GAME_INVITE_ACCEPT") {
-        const { inviteId, roomId, roomCode, playerId: dataPlayerId, playerName: dataPlayerName } = data;
-        if (inviteId) await deletePlayerNotification(dataPlayerId || socket.playerId, inviteId).catch(() => {});
+        const { inviteId } = data;
+        if (!inviteId) { send(socket, 'ERROR', { message: 'Invitación inválida' }); return; }
+        const trustedInvite = await consumePlayerNotification(socket.playerId, inviteId, 'game_invite');
+        if (!trustedInvite?.roomId) { send(socket, 'ERROR', { message: 'La invitación venció o ya fue usada' }); return; }
+        const roomId = String(trustedInvite.roomId);
         const room = rooms.get(roomId);
         if (!room) { send(socket, 'ERROR', { message: 'Sala no encontrada' }); return; }
+        // Verificar si el jugador ya está en la sala (reconexión)
+        const alreadyInRoom = room.players.find(p => p.id === socket.playerId);
+        if (alreadyInRoom) {
+          doReconnect(socket, socket.playerId, room, getMatch(roomId) || null);
+          return;
+        }
+        if (room.status !== 'waiting') {
+          send(socket, 'ERROR', { message: 'La partida ya comenzó' }); return;
+        }
         if (room.players.length >= room.maxPlayers) {
           send(socket, 'ERROR', { message: 'Sala llena' }); return;
         }
-        // Verificar si el jugador ya está en la sala (reconexión)
-        const alreadyInRoom = room.players.find(p => p.id === dataPlayerId || p.id === socket.playerId);
-        if (alreadyInRoom) {
-          // Ya está — reconectar en vez de duplicar
-          clients.set(alreadyInRoom.id, socket);
-          socket.playerId = alreadyInRoom.id;
-          socket.roomId = roomId;
-          send(socket, 'JOIN_SUCCESS', { room });
-          broadcastRoomState(roomId);
-          return;
-        }
-        // Unir al jugador a la sala (usar data enviada desde el frontend primero, luego socket)
-        const invPlayerId = dataPlayerId || socket.playerId;
-        const safePlayerName = dataPlayerName || socket.playerName || 'Jugador';
-        if (!invPlayerId) {
-          send(socket, 'ERROR', { message: 'Datos de jugador incompletos' }); return;
-        }
+        const invPlayerId = socket.playerId;
+        const safePlayerName = socket.playerName;
         let newPlayer;
         try {
           newPlayer = addPlayer(roomId, invPlayerId, safePlayerName);
@@ -2248,10 +2439,6 @@ wss.on("connection", socket => {
         }
         if (newPlayer) {
           await loadEquippedToRoomPlayer(newPlayer, invPlayerId);
-          // Fallback: usar valores del frontend si la BD no tenía datos
-          if (!newPlayer.equippedAvatar && data.equippedAvatar) newPlayer.equippedAvatar = data.equippedAvatar;
-          if (!newPlayer.equippedDice && data.equippedDice) newPlayer.equippedDice = data.equippedDice;
-          if (!newPlayer.equippedSpecial && data.equippedSpecial) newPlayer.equippedSpecial = data.equippedSpecial;
           clients.set(invPlayerId, socket);
           socket.playerId = invPlayerId;
           socket.roomId = roomId;
@@ -2262,8 +2449,11 @@ wss.on("connection", socket => {
       }
 
       if (type === "GAME_INVITE_REJECT") {
-        const { inviteId, fromId } = data;
-        if (inviteId) await deletePlayerNotification(data.playerId || socket.playerId, inviteId).catch(() => {});
+        const { inviteId } = data;
+        if (!inviteId) return;
+        const trustedInvite = await consumePlayerNotification(socket.playerId, inviteId, 'game_invite');
+        if (!trustedInvite) return;
+        const fromId = trustedInvite.fromId;
         const fromSock = clients.get(fromId);
         if (fromSock && fromSock.readyState === WebSocket.OPEN) {
           send(fromSock, 'GAME_INVITE_REJECTED', {
@@ -2277,10 +2467,12 @@ wss.on("connection", socket => {
       /* ── CHAT ──────────────────────────────────────────── */
       if (type === "CHAT_MESSAGE") {
         const chatPlayer = rooms.get(data.roomId)?.players?.find(p => p.id === data.playerId);
+        const message = String(data.message || "").trim().slice(0, 500);
+        if (!message) return;
         broadcastRoom(data.roomId, "CHAT_MESSAGE", {
           playerId:   data.playerId,
           playerName: data.playerName,
-          message:    String(data.message || "").slice(0, 500),
+          message,
           equippedSpecial: chatPlayer?.equippedSpecial || '',
           timestamp:  Date.now()
         });
@@ -2293,6 +2485,15 @@ wss.on("connection", socket => {
       if (type === "PRIVATE_CHAT") {
         const msg = String(data.message || "").slice(0, 500);
         if (!msg || !data.toId) return;
+        const friendship = await pool.query(
+          `SELECT 1 FROM friends WHERE status = 'accepted'
+           AND ((player_id = $1 AND friend_id = $2) OR (player_id = $2 AND friend_id = $1))`,
+          [socket.playerId, data.toId]
+        );
+        if (!friendship.rows.length) {
+          send(socket, "ERROR", { message: "Sólo podés escribirle a tus amigos" });
+          return;
+        }
         // Guardar en DB
         savePrivateMessage(data.playerId, data.toId, data.playerName, msg).catch(e => console.warn('Private chat save failed:', e.message));
         // Enviar al destinatario si está conectado
@@ -2318,7 +2519,16 @@ wss.on("connection", socket => {
       if (type === "GET_PRIVATE_CHAT") {
         const { friendId } = data;
         if (!friendId) return;
-        const messages = await getPrivateMessages(socket.playerId || data.playerId, friendId, 50);
+        const friendship = await pool.query(
+          `SELECT 1 FROM friends WHERE status = 'accepted'
+           AND ((player_id = $1 AND friend_id = $2) OR (player_id = $2 AND friend_id = $1))`,
+          [socket.playerId, friendId]
+        );
+        if (!friendship.rows.length) {
+          send(socket, "ERROR", { message: "Conversación no disponible" });
+          return;
+        }
+        const messages = await getPrivateMessages(socket.playerId, friendId, 50);
         send(socket, "PRIVATE_CHAT_HISTORY", {
           friendId,
           messages
@@ -2348,12 +2558,18 @@ wss.on("connection", socket => {
 
       /* ── AUDIO CHAT ──────────────────────────────────── */
       if (type === "CHAT_AUDIO") {
+        const audioData = String(data.audioData || "");
+        if (!audioData || audioData.length > 300000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(audioData)) {
+          send(socket, "ERROR", { message: "Audio inválido o demasiado grande" });
+          return;
+        }
+        const duration = Number(data.duration);
         // Reenviar el audio a todos en la sala (sin persistir)
         broadcastRoom(data.roomId, "CHAT_AUDIO", {
           playerId:   data.playerId,
           playerName: data.playerName,
-          audioData:  String(data.audioData || "").slice(0, 300000), // ~300KB max
-          duration:   Math.min(data.duration || 0, 30), // max 30s
+          audioData,
+          duration:   Number.isFinite(duration) ? Math.max(0, Math.min(duration, 30)) : 0,
           timestamp:  Date.now()
         });
         return;
@@ -2375,6 +2591,14 @@ wss.on("connection", socket => {
         const { roomId, playerId } = data;
         const room = getRoom(roomId);
         if (!room || room.status !== "waiting") return;
+        if (room.isTournamentMatch) {
+          const tournamentPlayer = room.players.find(p => p.id === playerId);
+          if (tournamentPlayer) tournamentPlayer.disconnected = true;
+          socket.roomId = null;
+          send(socket, "LEFT_ROOM", { roomId });
+          broadcastRoomState(roomId);
+          return;
+        }
         // Notificar a todos que este jugador se fue
         broadcastRoom(roomId, "PLAYER_REMOVED", { playerId });
         removePlayer(roomId, playerId);
@@ -2390,6 +2614,10 @@ wss.on("connection", socket => {
         const { roomId, playerId } = data;
         const room = getRoom(roomId);
         if (!room || room.status !== "waiting") return;
+        if (room.isTournamentMatch) {
+          send(socket, "ERROR", { message: "Un match de torneo no se puede cancelar" });
+          return;
+        }
         const isOwner = room.players[0]?.id === playerId;
         if (!isOwner) return;
         cancelReadyCountdown(roomId);
@@ -2480,6 +2708,8 @@ wss.on("connection", socket => {
 
   /* ── DESCONEXIÓN ─────────────────────────────────────── */
   socket.on("close", async () => {
+    clearTimeout(socket.authDeadline);
+    if (socket.superseded) return;
     const { roomId, playerId } = socket;
     if (!roomId || !playerId) return;
 
@@ -2564,27 +2794,33 @@ app.post("/api/forgot-password", requestPasswordReset);
 // Cambiar la clave (se llama desde reset-password.html)
 app.post("/api/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
-   
+  if (typeof token !== 'string' || token.length < 32 || typeof newPassword !== 'string') {
+    return res.status(400).json({ error: 'Solicitud inválida' });
+  }
+  if (newPassword.length < 10 || newPassword.length > 128) {
+    return res.status(400).json({ error: 'La contraseña debe tener entre 10 y 128 caracteres' });
+  }
   
   // Vamos a buscar el usuario SOLAMENTE por el token, sin mirar la fecha.
   // Además, quitamos el espacio por si acaso.
   const query = "SELECT id, reset_expires, NOW() as hora_servidor FROM users WHERE reset_token = $1";
-  const result = await pool.query(query, [token.trim()]);
+  const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+  const result = await pool.query(query, [tokenHash]);
   
   
   if (result.rows.length === 0) {
-    return res.status(400).json({ error: "Token no existe en DB. Revisa si el token en la URL es el mismo que en la tabla." });
+    return res.status(400).json({ error: "El enlace es inválido o ya fue usado" });
   }
 
   // Ahora comprobamos la fecha manualmente aquí
   const row = result.rows[0];
     
   if (new Date(row.reset_expires) < new Date(row.hora_servidor)) {
-      return res.status(400).json({ error: "El token ya expiró." });
+      return res.status(400).json({ error: "El enlace es inválido o expiró" });
   }
 
   // Si llega aquí, actualizamos
-  const hash = await bcrypt.hash(newPassword, 10);
+  const hash = await bcrypt.hash(newPassword, 12);
   await pool.query("UPDATE users SET password_hash = $1, reset_token = NULL WHERE id = $2", [hash, row.id]);
   
   res.json({ message: "Contraseña actualizada" });
@@ -2631,24 +2867,23 @@ async function startServer() {
   cleanupExpiredNotifications().catch(() => {});
   setInterval(() => cleanupExpiredNotifications().catch(() => {}), 60 * 60 * 1000);
 
-  // Crear cuenta de super admin
-  try {
-    const existing = await getAdminByUsername('mercenario.macko');
-    if (existing) {
-      // Asegurar que el admin existente tenga rol 'admin'
-      if (existing.role !== 'admin') {
-        try { await pool.query(`UPDATE admins SET role = 'admin' WHERE username = 'mercenario.macko'`); } catch(e) {}
-        console.log('👑 CEO admin actualizado a rol: admin');
-      } else {
-        console.log('👑 CEO admin ya existe (rol: admin)');
+  // Bootstrap opcional: nunca hay credenciales administrativas en el código.
+  const bootstrapAdmin = process.env.CEO_ADMIN_USERNAME;
+  const bootstrapPassword = process.env.CEO_ADMIN_PASSWORD;
+  if (bootstrapAdmin && bootstrapPassword) {
+    try {
+      const existing = await getAdminByUsername(bootstrapAdmin);
+      if (!existing) {
+        if (bootstrapPassword.length < 14) throw new Error('CEO_ADMIN_PASSWORD debe tener al menos 14 caracteres');
+        const hash = await bcrypt.hash(bootstrapPassword, 12);
+        await createAdmin(bootstrapAdmin, hash, 'admin');
+        console.log(`👑 Administrador inicial creado: ${bootstrapAdmin}`);
       }
-    } else {
-      const hash = await bcrypt.hash('#2244#*/macko', 10);
-      await createAdmin('mercenario.macko', hash, 'admin');
-      console.log('👑 CEO admin creado: mercenario.macko (rol: admin)');
+    } catch(e) {
+      console.error('Error creando administrador inicial:', e.message);
     }
-  } catch(e) {
-    console.error('Error creando CEO admin:', e.message);
+  } else {
+    console.warn('⚠ CEO_ADMIN_USERNAME/CEO_ADMIN_PASSWORD no configurados; no se crea un administrador inicial');
   }
 
   server.listen(PORT, () => {

@@ -1,6 +1,6 @@
 {
   "name": "los10000-macko",
-  "version": "1.0.0",
+  "version": "3.8.1",
   "description": "Juego de dados familiar - Los 10.000 de Macko",
   "main": "backend/server.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "dev": "nodemon backend/server.js",
     "test": "node scripts/game-rules-test.js && node scripts/smoke-test.js",
     "test:rules": "node scripts/game-rules-test.js",
-    "test:syntax": "node -c backend/server.js && node -c backend/database.js && node -c backend/authManager.js && node -c backend/gameEngine.js && node -c backend/roomManager.js && node -c backend/playerManager.js && node -c backend/diceManager.js && node -c backend/matchState.js && node -c backend/emailManager.js && node -c backend/paymentManager.js && node -c backend/pushManager.js && node -c backend/tournamentManager.js && node -c frontend/version.js && node -c frontend/dice-renderer.js && node -c frontend/audio.js && node -c frontend/app.js && node -c frontend/sw.js"
+    "test:syntax": "node -c backend/server.js && node -c backend/database.js && node -c backend/authManager.js && node -c backend/ceoChangelog.js && node -c backend/gameEngine.js && node -c backend/roomManager.js && node -c backend/playerManager.js && node -c backend/diceManager.js && node -c backend/matchState.js && node -c backend/botManager.js && node -c backend/botGameHandler.js && node -c backend/emailManager.js && node -c backend/paymentManager.js && node -c backend/paymentManagerMP.js && node -c backend/pushManager.js && node -c backend/tournamentManager.js && node -c frontend/version.js && node -c frontend/dice-renderer.js && node -c frontend/audio.js && node -c frontend/app.js && node -c frontend/ceo-panel.js && node -c frontend/sw.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -17,10 +17,9 @@
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "mercadopago": "^3.2.0",
-    "nodemailer": "^8.0.11",
+    "nodemailer": "^9.0.3",
     "pg": "^8.21.0",
     "stripe": "^22.3.0",
-    "uuid": "^9.0.0",
     "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },

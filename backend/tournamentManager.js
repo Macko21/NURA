@@ -8,7 +8,6 @@
  * ═══════════════════════════════════════════════════════
  */
 
-const { v4: uuidv4 } = require("uuid");
 const {
   getTournamentById,
   getTournamentParticipants,
@@ -69,35 +68,7 @@ async function getActiveTournamentsData() {
  * Registrar un jugador en un torneo (con cobro de fee si aplica)
  */
 async function registerPlayer(tournamentId, playerId, playerName) {
-  const tourney = await getTournamentById(tournamentId);
-  if (!tourney) throw new Error("Torneo no encontrado");
-
-  // Verificar fee (cobrar monedas si tiene costo)
-  if (parseInt(tourney.fee) > 0) {
-    const { pool } = require("./database");
-    const playerRes = await pool.query(
-      `SELECT coins FROM players WHERE id = $1`,
-      [playerId]
-    );
-    if (!playerRes.rows[0] || playerRes.rows[0].coins < parseInt(tourney.fee)) {
-      throw new Error(
-        `Necesitás ${parseInt(tourney.fee).toLocaleString("es-AR")} monedas para participar`
-      );
-    }
-    // Cobrar fee
-    await pool.query(`UPDATE players SET coins = coins - $1 WHERE id = $2`, [
-      parseInt(tourney.fee),
-      playerId,
-    ]);
-    await pool.query(
-      `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-      [playerId, -parseInt(tourney.fee), `Inscripción torneo: ${tourney.name}`, Date.now()]
-    );
-  }
-
-  // Registrar
-  await registerForTournament(tournamentId, playerId, playerName);
-  return { success: true };
+  return registerForTournament(tournamentId, playerId, playerName);
 }
 
 /**
@@ -114,6 +85,7 @@ async function startTournament(tournamentId) {
         lastChecked: Date.now(),
       });
     }
+    setTimeout(() => checkPendingMatches(), 250);
   }
   return result;
 }
@@ -121,22 +93,26 @@ async function startTournament(tournamentId) {
 /**
  * Crear una sala para un match de torneo y devolver el roomId
  */
-function createMatchRoom(tournamentId, matchId, roomManager, clients) {
-  const { createRoom } = roomManager;
+function createMatchRoom(tournamentId, match, roomManager) {
+  const { createRoom, addPlayer } = roomManager;
+  const matchId = match.id;
   const matchKey = `${tournamentId}:${matchId}`;
 
   // Si ya hay una sala para este match, devolverla
   if (matchRooms.has(matchKey)) {
-    return matchRooms.get(matchKey);
+    const existingRoom = roomManager.getRoom(matchRooms.get(matchKey));
+    if (existingRoom) return existingRoom;
+    matchRooms.delete(matchKey);
   }
 
   // Crear sala privada para el match
   const room = createRoom({
-    ownerId: "tournament",
-    ownerName: `🏆 Torneo #${tournamentId}`,
+    ownerId: match.player1_id,
+    ownerName: match.player1_name,
     isPrivate: true,
     maxPlayers: 2,
   });
+  addPlayer(room.id, match.player2_id, match.player2_name);
 
   room.isTournamentMatch = true;
   room.tournamentId = tournamentId;
@@ -160,23 +136,33 @@ function notifyMatchReady(tournamentId, match, clients, sendFn) {
   // Notificar a ambos jugadores si están conectados
   if (match.player1_id && clients.has(match.player1_id)) {
     const sock = clients.get(match.player1_id);
-    sendFn(sock, "TOURNAMENT_MATCH_READY", {
-      tournamentId,
-      matchId: match.id,
-      roomId,
-      round: match.round,
-      opponent: match.player2_name,
-    });
+    sock.notifiedTournamentMatches ||= new Set();
+    if (!sock.notifiedTournamentMatches.has(String(match.id))) {
+      sock.notifiedTournamentMatches.add(String(match.id));
+      sendFn(sock, "TOURNAMENT_MATCH_READY", {
+        tournamentId,
+        matchId: match.id,
+        roomId,
+        roomCode: match.room_code,
+        round: match.round,
+        opponent: match.player2_name,
+      });
+    }
   }
   if (match.player2_id && clients.has(match.player2_id)) {
     const sock = clients.get(match.player2_id);
-    sendFn(sock, "TOURNAMENT_MATCH_READY", {
-      tournamentId,
-      matchId: match.id,
-      roomId,
-      round: match.round,
-      opponent: match.player1_name,
-    });
+    sock.notifiedTournamentMatches ||= new Set();
+    if (!sock.notifiedTournamentMatches.has(String(match.id))) {
+      sock.notifiedTournamentMatches.add(String(match.id));
+      sendFn(sock, "TOURNAMENT_MATCH_READY", {
+        tournamentId,
+        matchId: match.id,
+        roomId,
+        roomCode: match.room_code,
+        round: match.round,
+        opponent: match.player1_name,
+      });
+    }
   }
 }
 
@@ -201,6 +187,12 @@ async function completeMatch(
   );
 
   if (result.success) {
+    const matchKey = `${tournamentId}:${matchId}`;
+    const roomId = matchRooms.get(matchKey);
+    if (roomId) {
+      matchRooms.delete(roomId);
+      matchRooms.delete(matchKey);
+    }
     // Notificar al bracket actualizado
     const bracket = await getTournamentBracketData(tournamentId);
     if (bracket) {
@@ -217,6 +209,7 @@ async function completeMatch(
         notifyChampion(tournamentId, winnerId, bracket, clients, sendFn);
       }
     }
+    setTimeout(() => checkPendingMatches(), 250);
   }
   return result;
 }
@@ -279,18 +272,18 @@ async function checkPendingMatches() {
           m.player1_id &&
           m.player2_id &&
           m.player1_id !== "BYE" &&
-          m.player2_id !== "BYE" &&
-          !m.room_code
+          m.player2_id !== "BYE"
       );
 
       for (const m of pending) {
-        // Asignar código de sala usando ID del match como referencia
-        const roomCode = String(m.id).padStart(6, "0").slice(0, 6);
+        const room = createMatchRoom(t.id, m, require("./roomManager"));
+        m.room_code = room.code;
         const { pool } = require("./database");
         await pool.query(
           `UPDATE tournament_matches SET room_code = $1 WHERE id = $2`,
-          [roomCode, m.id]
+          [room.code, m.id]
         );
+        if (_wsClients && _wsSend) notifyMatchReady(t.id, m, _wsClients, _wsSend);
       }
     }
   } catch (e) {

@@ -13,9 +13,24 @@ const {
 // Usar exclusivamente variable de entorno. Si no está definida, fallar explícitamente.
 const JWT_SECRET = process.env.JWT_SECRET;
 
-if (!JWT_SECRET) {
-  console.error("❌ JWT_SECRET no está definido en las variables de entorno");
+if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET, "utf8") < 32) {
+  console.error("❌ JWT_SECRET debe estar definido y tener al menos 32 bytes");
   process.exit(1);
+}
+
+function verifyGameToken(token) {
+  if (!token || typeof token !== "string") throw new Error("Token faltante");
+  return jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+}
+
+function createGuestSession(req, res) {
+  const playerId = `guest_${require("crypto").randomUUID()}`;
+  const token = jwt.sign(
+    { guest: true, playerId, username: "Jugador" },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: "12h" }
+  );
+  res.status(201).json({ token, player: { id: playerId, alias: "Jugador" } });
 }
 
 async function register(req, res) {
@@ -25,15 +40,22 @@ async function register(req, res) {
     return res.status(400).json({ error: "Faltan datos requeridos" });
   }
   const normalizedUsername = String(username).trim();
-  if (!/^\p{L}/u.test(normalizedUsername)) {
-    return res.status(400).json({ error: "El usuario debe comenzar con una letra" });
+  const normalizedEmail = String(email).trim().toLowerCase();
+  if (!/^[\p{L}][\p{L}\p{N}_.-]{2,23}$/u.test(normalizedUsername)) {
+    return res.status(400).json({ error: "El usuario debe tener 3 a 24 caracteres y comenzar con una letra" });
+  }
+  if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ error: "Correo electrónico inválido" });
+  }
+  if (typeof password !== "string" || password.length < 10 || password.length > 128) {
+    return res.status(400).json({ error: "La contraseña debe tener entre 10 y 128 caracteres" });
   }
 
   try {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    await createUserTransaction(String(email).trim(), normalizedUsername, passwordHash);
+    await createUserTransaction(normalizedEmail, normalizedUsername, passwordHash);
     
     res.status(201).json({ message: "Usuario registrado con éxito" });
   } catch (error) {
@@ -48,8 +70,12 @@ async function register(req, res) {
 async function login(req, res) {
   const { identifier, password } = req.body; // identifier puede ser email o username
 
+  if (typeof identifier !== "string" || typeof password !== "string" || !identifier.trim() || !password) {
+    return res.status(400).json({ error: "Faltan credenciales" });
+  }
+
   try {
-    const user = await getUserByEmailOrUsername(identifier);
+    const user = await getUserByEmailOrUsername(identifier.trim());
     if (!user) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
@@ -75,7 +101,7 @@ async function login(req, res) {
     const token = jwt.sign(
       { userId: user.id, playerId: player.id, username: user.username },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { algorithm: "HS256", expiresIn: "7d" }
     );
 
     res.json({
@@ -104,7 +130,7 @@ function requireAuth(req, res, next) {
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     req.user = decoded;
     next();
   } catch (error) {
@@ -124,6 +150,8 @@ if (!hasEmailConfig) {
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
+  disableFileAccess: true,
+  disableUrlAccess: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -144,23 +172,25 @@ if (hasEmailConfig) {
 async function requestPasswordReset(req, res) {
   const { email } = req.body;
 
-  if (!email) {
+  if (typeof email !== 'string' || !email.trim()) {
     return res.status(400).json({ error: "Email requerido" });
   }
+  const normalizedEmail = email.trim().toLowerCase();
 
   // Verificar que el email existe antes de hacer cualquier cosa
-  const userCheck = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+  const userCheck = await pool.query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
   if (userCheck.rows.length === 0) {
     // No revelar si el email existe o no por seguridad
     return res.json({ message: "Si el correo está registrado, recibirás instrucciones" });
   }
 
   const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const expires = new Date(Date.now() + 3600000); // 1 hora de validez
 
   // Guardar en Neon
   await pool.query("UPDATE users SET reset_token = $1, reset_expires = $2 WHERE email = $3", 
-    [token, expires, email]);
+    [tokenHash, expires, normalizedEmail]);
 
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
@@ -172,12 +202,12 @@ async function requestPasswordReset(req, res) {
   }
 
   try {
-    console.log(`📧 Enviando correo de recuperación a ${email}...`);
+    console.log('📧 Enviando correo de recuperación...');
     // Timeout de 10s para que no se cuelgue si Gmail falla
     await Promise.race([
       transporter.sendMail({
-        from: '"Macko Juegos" <matiasoyarzo7@gmail.com>',
-        to: email,
+        from: process.env.EMAIL_FROM || `"Macko Juegos" <${process.env.EMAIL_USER}>`,
+        to: normalizedEmail,
         subject: "Recuperación de cuenta - Los 10.000",
         html: `
           <div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
@@ -194,7 +224,7 @@ async function requestPasswordReset(req, res) {
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout email 10s")), 10000))
     ]);
-    console.log(`✅ Email enviado a ${email}`);
+    console.log('✅ Email de recuperación enviado');
   } catch (err) {
     console.error("❌ Error al enviar email de recuperación:", err.message);
     if (err.code === 'EAUTH') {
@@ -211,5 +241,7 @@ module.exports = {
   register,
   login,
   requireAuth,
-  requestPasswordReset
+  requestPasswordReset,
+  createGuestSession,
+  verifyGameToken
 };

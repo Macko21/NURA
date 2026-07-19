@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Los 10.000 de Macko</title>
 <meta name="theme-color" content="#C8961E">
 <meta name="description" content="Juego de dados familiar — 10.000 puntos para ganar">
@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.7.7"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.8.1"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -59,17 +59,23 @@
           <button id="btn-user-profile" type="button">👤 Mi perfil</button>
           <button id="btn-user-changelog" type="button">📋 Notas de la versión</button>
           <button id="btn-user-update" type="button">🔄 Actualizar</button>
-          <div class="user-menu-divider"></div>
-          <div class="user-menu-volume-row">
-            <span id="music-vol-icon" class="music-vol-icon">🔊</span>
-            <input type="range" id="music-volume-slider" class="music-volume-slider" min="0" max="100" value="35">
-          </div>
           <button id="btn-logout-topbar" class="user-menu-logout hidden" type="button">🚪 Cerrar sesión</button>
         </div>
       </div>
       <div class="notif-wrapper hidden">
-        <button id="btn-notif" class="btn-notif-bell" title="Notificaciones">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
-        <button id="btn-music-toggle" class="btn-music-toggle" title="🎵 Activar sonido">🎵</button>
+        <button id="btn-notif" class="btn-notif-bell" title="Notificaciones" aria-label="Notificaciones">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
+        <button id="btn-music-toggle" class="btn-music-toggle" title="Ajustar música" aria-label="Ajustar música" aria-expanded="false">🎵</button>
+        <div id="music-panel" class="music-panel hidden">
+          <div class="music-panel-header">
+            <span>🎵 Música</span>
+            <button id="btn-music-mute" class="music-mute-toggle" type="button">Desactivar</button>
+          </div>
+          <div class="music-panel-volume-row">
+            <span id="music-vol-icon" class="music-vol-icon" aria-hidden="true">🔊</span>
+            <input type="range" id="music-volume-slider" class="music-volume-slider" min="0" max="100" value="30" aria-label="Volumen de la música">
+            <output id="music-volume-value" for="music-volume-slider">30%</output>
+          </div>
+        </div>
         <div id="notif-panel" class="notif-panel hidden">
           <div class="notif-header">
             <span>🔔 Notificaciones</span>
@@ -102,7 +108,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v3.7.7</p>
+      <p class="app-version">v3.8.1</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -164,11 +170,11 @@
 <div id="screen-room" class="screen">
   <div class="top-bar">
     <h2>Sala de espera</h2>
-    <div class="code-row">
+    <div class="room-header-actions">
       <span class="code-badge" id="room-code-display"></span>
-      <button class="btn-icon-sm" id="btn-copy-code" title="Copiar">📋</button>
+      <button class="btn-icon-sm" id="btn-copy-code" title="Copiar número de sala" aria-label="Copiar número de sala">📋</button>
+      <button id="btn-room-sound" class="btn-room-sound" title="Activar o desactivar música" aria-label="Activar o desactivar música">🔊</button>
     </div>
-    <button id="btn-room-sound" class="btn-room-sound" title="Ajustar sonido">🔊</button>
   </div>
   <div class="page-body">
     <p class="hint">Compartí el código · arranca cuando todos estén listos</p>
@@ -771,10 +777,10 @@
     }).catch(function(){});
   }
 })();
-></script><script src="/version.js?v=3.7.7"></script>
-  <script src="/dice-renderer.js?v=3.7.7"></script>
-  <script src="/audio.js?v=3.7.7"></script>
-  <script src="/app.js?v=3.7.7"></script>
+></script><script src="/version.js?v=3.8.1"></script>
+  <script src="/dice-renderer.js?v=3.8.1"></script>
+  <script src="/audio.js?v=3.8.1"></script>
+  <script src="/app.js?v=3.8.1"></script>
 <!-- FIN ⚠️ -->
 
 

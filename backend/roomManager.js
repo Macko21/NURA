@@ -1,6 +1,6 @@
 "use strict";
 
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID } = require("crypto");
 
 /**
 
@@ -98,7 +98,7 @@ return `${name}#${suffix}`;
   maxPlayers = 10
   }) {
 
-const roomId = uuidv4();
+const roomId = randomUUID();
 
 const room = {
 id: roomId,

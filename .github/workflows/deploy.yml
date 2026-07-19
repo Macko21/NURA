@@ -32,17 +32,12 @@ jobs:
       - name: 🔍 Syntax check (Node parse)
         run: npm run test:syntax
 
-      - name: 🔍 Lint with ESLint (if available)
-        run: npx eslint backend/*.js --no-ignore --quiet 2>/dev/null || echo "[SKIP] ESLint not configured"
-
       - name: 🧪 Run smoke tests (npm test)
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/los10000_test
           PORT: 3099
-          JWT_SECRET: test-secret-ci
-          CEO_SECRET: ceo-test-ci
-          CEO_USER: admin
-          CEO_PASS: admin123
+          JWT_SECRET: ci-test-only-jwt-secret-32-bytes-minimum
+          CEO_SECRET: ''
           EMAIL_HOST: ''
           EMAIL_PORT: ''
           EMAIL_USER: ''
