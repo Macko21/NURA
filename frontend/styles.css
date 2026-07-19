@@ -2208,20 +2208,22 @@ input[type=number]{-moz-appearance:textfield}
   height: 1px; background: var(--border2); margin: 4px 0;
 }
 
-.music-panel{
-  position:absolute;top:calc(100% + 8px);right:0;width:240px;padding:12px;
+.sound-panel{
+  position:fixed;top:64px;left:12px;width:min(310px,calc(100vw - 24px));padding:14px;
   background:rgba(16,15,29,.98);border:1px solid var(--border);border-radius:12px;
-  box-shadow:var(--sh-lg);backdrop-filter:blur(18px);z-index:1200;
+  box-shadow:var(--sh-lg);backdrop-filter:blur(18px);z-index:5000;
 }
-.music-panel-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;color:var(--gold);font:700 12px 'Sora',sans-serif}
-.music-panel-volume-row{display:flex;align-items:center;gap:8px}
-.music-panel-volume-row output{width:34px;text-align:right;color:var(--text2);font-size:10px;font-variant-numeric:tabular-nums}
-.music-mute-toggle{
+.sound-panel-title{margin-bottom:10px;color:var(--text);font:700 13px 'Sora',sans-serif}
+.sound-channel{padding:10px 0;border-top:1px solid var(--border2)}
+.sound-channel-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;color:var(--gold);font:700 12px 'Sora',sans-serif}
+.sound-volume-row{display:flex;align-items:center;gap:8px}
+.sound-volume-row output{width:36px;text-align:right;color:var(--text2);font-size:10px;font-variant-numeric:tabular-nums}
+.sound-mute-toggle{
   border:1px solid var(--border);border-radius:7px;background:var(--bg-input);
   color:var(--text2);padding:5px 8px;font:600 10px 'Sora',sans-serif;cursor:pointer;
 }
-.music-mute-toggle:hover{border-color:var(--gold);color:var(--gold)}
-.music-mute-toggle.is-muted{border-color:rgba(200,60,48,.45);background:rgba(200,60,48,.1);color:var(--red-lt)}
+.sound-mute-toggle:hover{border-color:var(--gold);color:var(--gold)}
+.sound-mute-toggle.is-muted{border-color:rgba(200,60,48,.45);background:rgba(200,60,48,.1);color:var(--red-lt)}
 
 /* En móvil la barra ocupa espacio real: el dado animado ya no puede superponerla. */
 @media(max-width:600px){
@@ -2233,13 +2235,15 @@ input[type=number]{-moz-appearance:textfield}
     background:linear-gradient(180deg,rgba(10,10,18,.98) 72%,rgba(10,10,18,.7));
   }
   #screen-lobby .lobby-content{flex-shrink:0;margin:0 auto;padding-top:0}
-  #screen-lobby .notif-wrapper .music-panel{
-    position:fixed;top:calc(50px + env(safe-area-inset-top));left:8px;right:8px;
-    width:auto;
-  }
+  .sound-panel{width:calc(100vw - 24px);max-width:310px}
+  #screen-room .top-bar{padding:10px;gap:5px}
+  #screen-room .top-bar h2{font-size:10px;white-space:nowrap;flex-shrink:1}
+  #screen-room .room-header-actions{gap:4px;flex-shrink:0}
+  #screen-room .code-badge{font-size:14px;letter-spacing:3px}
+  #screen-room .btn-icon-sm{font-size:14px;padding:3px}
 }
 
-.music-vol-icon {
+.sound-vol-icon {
   font-size: 14px; width: 20px; text-align: center;
   flex-shrink: 0;
 }/* ── Modal Partida contra bots ─────────────────────────── */
@@ -2259,7 +2263,7 @@ input[type=number]{-moz-appearance:textfield}
 .bot-diff-btn[data-diff="easy"].active{background:rgba(42,154,108,.15);border-color:#2a9a6c;color:#2a9a6c}
 .bot-diff-btn[data-diff="hard"].active{background:rgba(220,60,60,.15);border-color:#dc3c3c;color:#dc3c3c}
 
-.music-volume-slider{
+.sound-volume-slider{
   -webkit-appearance: none; appearance: none;
   width: 100%; height: 4px;
   border-radius: 2px;
@@ -2268,7 +2272,7 @@ input[type=number]{-moz-appearance:textfield}
   transition: background .2s;
 }
 
-.music-volume-slider::-webkit-slider-thumb {
+.sound-volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 14px; height: 14px;
   border-radius: 50%;
@@ -2278,12 +2282,12 @@ input[type=number]{-moz-appearance:textfield}
   transition: transform .15s, box-shadow .15s;
 }
 
-.music-volume-slider::-webkit-slider-thumb:hover {
+.sound-volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
   box-shadow: 0 0 12px rgba(212,175,55,.6);
 }
 
-.music-volume-slider::-moz-range-thumb {
+.sound-volume-slider::-moz-range-thumb {
   width: 14px; height: 14px;
   border-radius: 50%;
   background: var(--gold);
@@ -2292,7 +2296,7 @@ input[type=number]{-moz-appearance:textfield}
   box-shadow: 0 0 8px rgba(212,175,55,.4);
 }
 
-.music-volume-slider:active::-webkit-slider-thumb {
+.sound-volume-slider:active::-webkit-slider-thumb {
   transform: scale(0.9);
 }
 

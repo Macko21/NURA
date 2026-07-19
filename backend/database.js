@@ -442,14 +442,14 @@ async function updatePlayer(playerId, fields) {
 }
 
 async function getRanking() {
-  // Solo mostrar jugadores que se registraron (tienen user_id)
-  // Excluir invitados que no crearon cuenta
   const result = await pool.query(`
-    SELECT *
-    FROM players
-    WHERE user_id IS NOT NULL
-    ORDER BY games_won DESC,
-             ranking_points DESC
+    SELECT
+      p.id,
+      COALESCE(NULLIF(TRIM(p.alias), ''), u.username) AS alias,
+      COALESCE(p.games_won, 0)::int AS games_won
+    FROM players p
+    INNER JOIN users u ON u.id = p.user_id
+    ORDER BY COALESCE(p.games_won, 0) DESC, alias ASC
     LIMIT 100
   `);
 
@@ -1693,13 +1693,11 @@ function getServerInfo(startTime) {
 
 // ── PUSH SUBSCRIPTIONS ────────────────────────────────────
 async function savePushSubscription(playerId, subscription) {
-  try {
-    await pool.query(
-      `INSERT INTO push_subscriptions (player_id, subscription, created_at) VALUES ($1, $2, $3)
-       ON CONFLICT (player_id) DO UPDATE SET subscription = $2, created_at = $3`,
-      [playerId, JSON.stringify(subscription), Date.now()]
-    );
-  } catch(e) { console.error('Push sub error:', e.message); }
+  await pool.query(
+    `INSERT INTO push_subscriptions (player_id, subscription, created_at) VALUES ($1, $2, $3)
+     ON CONFLICT (player_id) DO UPDATE SET subscription = $2, created_at = $3`,
+    [playerId, JSON.stringify(subscription), Date.now()]
+  );
 }
 
 async function removePushSubscription(playerId) {

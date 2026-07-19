@@ -21,12 +21,14 @@ const ac = () => AC || (AC = new (window.AudioContext||window.webkitAudioContext
 let _musicVolume = 0.3;     // volumen música (0-1)
 let _sfxVolume = 0.8;       // volumen efectos (0-1)
 let _musicMuted = false;
-let _sfxMuted = false;      // siempre empieza activo
+let _sfxMuted = false;
 let _audioInitialized = false; // primera interacción del usuario
 
 // ── Estado de la música mp3 ──────────────────────────
-let _musicPlayer = null;    // Audio element actual
 let _currentTrack = null;   // 'principal' | 'lobby' | 'partida' | null
+let _desiredTrack = null;
+let _pendingTrack = null;
+let _musicRequestId = 0;
 
 const TRACKS = {
   principal: '/sounds/principal.mp3',
@@ -40,11 +42,13 @@ function loadAudioPrefs() {
     const mv = localStorage.getItem('macko_music_vol');
     const sv = localStorage.getItem('macko_sfx_vol');
     const mm = localStorage.getItem('macko_music_muted');
+    const sm = localStorage.getItem('macko_sfx_muted');
     const parsedMusic = Number.parseFloat(mv);
     const parsedSfx = Number.parseFloat(sv);
     if (Number.isFinite(parsedMusic)) _musicVolume = Math.max(0, Math.min(1, parsedMusic));
     if (Number.isFinite(parsedSfx)) _sfxVolume = Math.max(0, Math.min(1, parsedSfx));
     if (mm !== null) _musicMuted = mm === '1';
+    if (sm !== null) _sfxMuted = sm === '1';
   } catch(e) {}
 }
 function saveAudioPrefs() {
@@ -52,6 +56,7 @@ function saveAudioPrefs() {
     localStorage.setItem('macko_music_vol', String(_musicVolume));
     localStorage.setItem('macko_sfx_vol', String(_sfxVolume));
     localStorage.setItem('macko_music_muted', _musicMuted ? '1' : '0');
+    localStorage.setItem('macko_sfx_muted', _sfxMuted ? '1' : '0');
   } catch(e) {}
 }
 loadAudioPrefs();
@@ -80,6 +85,10 @@ function setMusicVolume(vol) {
   if (_musicVolume === 0) {
     _musicMuted = true;
     _stopMusic();
+  } else if (_musicMuted) {
+    _musicMuted = false;
+    const active = document.querySelector('.screen.active');
+    startMusicForScreen(active ? active.id : 'screen-lobby');
   }
   if (_musicGain) _musicGain.gain.value = _musicMuted ? 0 : _musicVolume;
   saveAudioPrefs();
@@ -88,9 +97,12 @@ function setMusicVolume(vol) {
 }
 
 function setSfxVolume(vol) {
+  if (!Number.isFinite(vol)) return _sfxVolume;
   _sfxVolume = Math.max(0, Math.min(1, vol));
+  _sfxMuted = _sfxVolume === 0;
   saveAudioPrefs();
   _updateSoundUI();
+  return _sfxVolume;
 }
 
 function setMusicMuted(muted) {
@@ -111,11 +123,16 @@ function toggleMusicMute() {
   return setMusicMuted(!_musicMuted);
 }
 
-function toggleSfxMute() {
-  _sfxMuted = !_sfxMuted;
+function setSfxMuted(muted) {
+  _sfxMuted = !!muted;
+  if (!_sfxMuted && _sfxVolume === 0) _sfxVolume = 0.8;
   saveAudioPrefs();
   _updateSoundUI();
   return _sfxMuted;
+}
+
+function toggleSfxMute() {
+  return setSfxMuted(!_sfxMuted);
 }
 
 // ── Música mp3 (Web Audio API para volumen cross-platform) ──
@@ -123,7 +140,7 @@ let _musicSource = null;  // AudioBufferSourceNode activo
 let _musicGain = null;    // GainNode para controlar volumen
 let _musicBuffers = {};   // Cache de AudioBuffer por track
 
-function _stopMusic() {
+function _stopActiveMusic() {
   if (_musicSource) {
     try { _musicSource.stop(); _musicSource.disconnect(); } catch(e) {}
     _musicSource = null;
@@ -133,6 +150,13 @@ function _stopMusic() {
     _musicGain = null;
   }
   _currentTrack = null;
+}
+
+function _stopMusic() {
+  _musicRequestId += 1;
+  _desiredTrack = null;
+  _pendingTrack = null;
+  _stopActiveMusic();
 }
 
 async function _loadTrack(track) {
@@ -152,14 +176,15 @@ async function _loadTrack(track) {
   }
 }
 
-async function _playTrack(track) {
-  _stopMusic();
-  if (_musicMuted) return;
+async function _playTrack(track, requestId) {
   const ctx = ac();
   if (!ctx) return;
   const buffer = await _loadTrack(track);
+  if (requestId !== _musicRequestId || _desiredTrack !== track || _musicMuted) return;
+  _pendingTrack = null;
   if (!buffer) return;
   try {
+    _stopActiveMusic();
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -182,18 +207,17 @@ function _getTargetTrack(screenId) {
   return 'principal';
 }
 
-/** Inicia la música según la pantalla activa.
- *  Si el mismo tema ya está sonando, no lo reinicia. */
+/** Inicia la música según la pantalla activa sin superponer cargas anteriores. */
 function startMusicForScreen(screenId) {
   const target = _getTargetTrack(screenId);
-  if (_currentTrack === target) {
-    // Ya estamos reproduciendo este tema — no reiniciar
-    return;
-  }
-  _playTrack(target);
+  _desiredTrack = target;
+  if (_musicMuted || (_currentTrack === target && _musicSource) || _pendingTrack === target) return;
+  const requestId = ++_musicRequestId;
+  _pendingTrack = target;
+  _stopActiveMusic();
+  void _playTrack(target, requestId);
 }
 
-/** Detiene toda la música */
 function stopMusic() {
   _stopMusic();
 }
@@ -303,46 +327,45 @@ const SFX = {
 
 // ── UI del panel de sonido ───────────────────────────
 function _updateSoundUI() {
-  // Botón principal de sonido (pantalla de juego)
-  const btn = document.getElementById('btn-sound');
-  if (btn) {
-    btn.textContent = _sfxMuted ? '🔇' : '🔊';
-    btn.classList.toggle('muted', _sfxMuted);
-    btn.title = _sfxMuted ? 'Efectos desactivados' : 'Efectos activados';
-  }
-  // Botón de música en el topbar (lobby / salas)
-  const topbarBtn = document.getElementById('btn-music-toggle');
-  if (topbarBtn) {
-    const musicOff = _musicMuted || _musicVolume === 0;
-    topbarBtn.textContent = musicOff ? '🔇' : '🎵';
-    topbarBtn.classList.toggle('muted', musicOff);
-    topbarBtn.title = musicOff ? 'Música desactivada' : 'Ajustar música';
-  }
-  // Botón de sonido en la sala de espera
+  const musicOff = _musicMuted || _musicVolume === 0;
+  const sfxOff = _sfxMuted || _sfxVolume === 0;
+  const allOff = musicOff && sfxOff;
+
+  const gameBtn = document.getElementById('btn-sound');
   const roomBtn = document.getElementById('btn-room-sound');
+  const topbarBtn = document.getElementById('btn-music-toggle');
+  if (gameBtn) {
+    gameBtn.textContent = allOff ? '🔇' : '🔊';
+    gameBtn.classList.toggle('muted', allOff);
+    gameBtn.title = 'Ajustar sonido';
+  }
   if (roomBtn) {
-    const musicOff = _musicMuted || _musicVolume === 0;
-    roomBtn.textContent = musicOff ? '🔇' : '🔊';
-    roomBtn.classList.toggle('muted', musicOff);
-    roomBtn.title = musicOff ? 'Música desactivada' : 'Música activada';
+    roomBtn.textContent = allOff ? '🔇' : '🔊';
+    roomBtn.classList.toggle('muted', allOff);
+    roomBtn.title = 'Ajustar sonido';
   }
-  // Slider del menú de usuario (topbar) — control unificado de volumen
-  const menuSlider = document.getElementById('music-volume-slider');
-  if (menuSlider) menuSlider.value = Math.round(_musicVolume * 100);
-  const volumeValue = document.getElementById('music-volume-value');
-  if (volumeValue) volumeValue.textContent = `${Math.round(_musicVolume * 100)}%`;
-  // También actualizar el icono de volumen en el menú de usuario
-  const volIcon = document.getElementById('music-vol-icon');
-  if (volIcon) {
-    volIcon.textContent = _musicMuted || _musicVolume === 0 ? '🔇' : '🔊';
+  if (topbarBtn) {
+    topbarBtn.textContent = allOff ? '🔇' : '🎵';
+    topbarBtn.classList.toggle('muted', allOff);
+    topbarBtn.title = 'Ajustar sonido';
   }
-  const muteBtn = document.getElementById('btn-music-mute');
-  if (muteBtn) {
-    const musicOff = _musicMuted || _musicVolume === 0;
-    muteBtn.textContent = musicOff ? 'Activar' : 'Desactivar';
-    muteBtn.classList.toggle('is-muted', musicOff);
-    muteBtn.setAttribute('aria-pressed', String(musicOff));
-  }
+
+  const syncChannel = (prefix, volume, off) => {
+    const slider = document.getElementById(`${prefix}-volume-slider`);
+    const value = document.getElementById(`${prefix}-volume-value`);
+    const icon = document.getElementById(`${prefix}-vol-icon`);
+    const mute = document.getElementById(`btn-${prefix}-mute`);
+    if (slider) slider.value = Math.round(volume * 100);
+    if (value) value.textContent = `${Math.round(volume * 100)}%`;
+    if (icon) icon.textContent = off ? '🔇' : '🔊';
+    if (mute) {
+      mute.textContent = off ? 'Activar' : 'Desactivar';
+      mute.classList.toggle('is-muted', off);
+      mute.setAttribute('aria-pressed', String(off));
+    }
+  };
+  syncChannel('music', _musicVolume, musicOff);
+  syncChannel('sfx', _sfxVolume, sfxOff);
 }
 
 // Exponer para uso externo

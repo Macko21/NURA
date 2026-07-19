@@ -1,6 +1,6 @@
 "use strict";
 
-const { createPlayer, getPlayer, updatePlayer, getRanking, pool } = require("./database");
+const { createPlayer, getPlayer, getRanking, pool } = require("./database");
 
 async function createOrLoadPlayer(player) {
   await createPlayer(player);
@@ -11,31 +11,38 @@ function getPlayerProfile(id) {
   return getPlayer(id);
 }
 
-async function registerGamePlayed(id, score) {
-  const safeScore = Math.max(0, Number(score) || 0);
-  const res = await pool.query(`
-    UPDATE players SET
-      games_played = COALESCE(games_played, 0) + 1,
-      total_score = COALESCE(total_score, 0) + $2,
-      highest_score = GREATEST(COALESCE(highest_score, 0), $2)
-    WHERE id = $1 RETURNING *
-  `, [id, safeScore]);
-  return res.rows[0];
-}
-
-async function registerWin(id) {
-  const res = await pool.query(`
-    UPDATE players SET
-      games_won = COALESCE(games_won, 0) + 1,
-      ranking_points = COALESCE(ranking_points, 0) + 100,
-      win_streak = COALESCE(win_streak, 0) + 1
-    WHERE id = $1 RETURNING *
-  `, [id]);
-  return res.rows[0];
-}
-
-function resetWinStreak(id) {
-  return updatePlayer(id, { win_streak: 0 });
+async function recordMatchResults(players, winnerId) {
+  const client = await pool.connect();
+  const registeredPlayerIds = [];
+  try {
+    await client.query('BEGIN');
+    const uniquePlayers = new Map(
+      (players || []).filter(player => player?.id && !player.isBot).map(player => [player.id, player])
+    );
+    for (const player of uniquePlayers.values()) {
+      const safeScore = Math.max(0, Number(player.score) || 0);
+      const isWinner = player.id === winnerId;
+      const result = await client.query(`
+        UPDATE players SET
+          games_played = COALESCE(games_played, 0) + 1,
+          games_won = COALESCE(games_won, 0) + CASE WHEN $3 THEN 1 ELSE 0 END,
+          ranking_points = COALESCE(ranking_points, 0) + CASE WHEN $3 THEN 100 ELSE 0 END,
+          win_streak = CASE WHEN $3 THEN COALESCE(win_streak, 0) + 1 ELSE 0 END,
+          total_score = COALESCE(total_score, 0) + $2,
+          highest_score = GREATEST(COALESCE(highest_score, 0), $2)
+        WHERE id = $1 AND user_id IS NOT NULL
+        RETURNING id
+      `, [player.id, safeScore, isWinner]);
+      if (result.rows[0]?.id) registeredPlayerIds.push(result.rows[0].id);
+    }
+    await client.query('COMMIT');
+    return registeredPlayerIds;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // Stubs — para uso futuro
@@ -56,9 +63,7 @@ function getTopRanking() {
 module.exports = {
   createOrLoadPlayer,
   getPlayerProfile,
-  registerGamePlayed,
-  registerWin,
-  resetWinStreak,
+  recordMatchResults,
   registerStraight,
   registerFiveOnes,
   registerKick,

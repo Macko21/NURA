@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.8.1"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.8.2"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -65,17 +65,6 @@
       <div class="notif-wrapper hidden">
         <button id="btn-notif" class="btn-notif-bell" title="Notificaciones" aria-label="Notificaciones">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
         <button id="btn-music-toggle" class="btn-music-toggle" title="Ajustar música" aria-label="Ajustar música" aria-expanded="false">🎵</button>
-        <div id="music-panel" class="music-panel hidden">
-          <div class="music-panel-header">
-            <span>🎵 Música</span>
-            <button id="btn-music-mute" class="music-mute-toggle" type="button">Desactivar</button>
-          </div>
-          <div class="music-panel-volume-row">
-            <span id="music-vol-icon" class="music-vol-icon" aria-hidden="true">🔊</span>
-            <input type="range" id="music-volume-slider" class="music-volume-slider" min="0" max="100" value="30" aria-label="Volumen de la música">
-            <output id="music-volume-value" for="music-volume-slider">30%</output>
-          </div>
-        </div>
         <div id="notif-panel" class="notif-panel hidden">
           <div class="notif-header">
             <span>🔔 Notificaciones</span>
@@ -108,7 +97,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v3.8.1</p>
+      <p class="app-version">v3.8.2</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -151,6 +140,32 @@
 </div>
 
 <!-- ══ UNIRSE ══ -->
+<div id="sound-panel" class="sound-panel hidden" role="dialog" aria-label="Controles de sonido">
+  <div class="sound-panel-title">Sonido</div>
+  <div class="sound-channel">
+    <div class="sound-channel-header">
+      <span>🎵 Música</span>
+      <button id="btn-music-mute" class="sound-mute-toggle" type="button">Desactivar</button>
+    </div>
+    <div class="sound-volume-row">
+      <span id="music-vol-icon" class="sound-vol-icon" aria-hidden="true">🔊</span>
+      <input type="range" id="music-volume-slider" class="sound-volume-slider" min="0" max="100" value="30" aria-label="Volumen de la música">
+      <output id="music-volume-value" for="music-volume-slider">30%</output>
+    </div>
+  </div>
+  <div class="sound-channel">
+    <div class="sound-channel-header">
+      <span>🎲 Efectos</span>
+      <button id="btn-sfx-mute" class="sound-mute-toggle" type="button">Desactivar</button>
+    </div>
+    <div class="sound-volume-row">
+      <span id="sfx-vol-icon" class="sound-vol-icon" aria-hidden="true">🔊</span>
+      <input type="range" id="sfx-volume-slider" class="sound-volume-slider" min="0" max="100" value="80" aria-label="Volumen de los efectos">
+      <output id="sfx-volume-value" for="sfx-volume-slider">80%</output>
+    </div>
+  </div>
+</div>
+
 <div id="screen-join" class="screen">
   <div class="top-bar">
     <button class="back-btn" id="btn-back-join">‹ Volver</button>
@@ -173,7 +188,7 @@
     <div class="room-header-actions">
       <span class="code-badge" id="room-code-display"></span>
       <button class="btn-icon-sm" id="btn-copy-code" title="Copiar número de sala" aria-label="Copiar número de sala">📋</button>
-      <button id="btn-room-sound" class="btn-room-sound" title="Activar o desactivar música" aria-label="Activar o desactivar música">🔊</button>
+      <button id="btn-room-sound" class="btn-room-sound" title="Ajustar sonido" aria-label="Ajustar sonido" aria-expanded="false">🔊</button>
     </div>
   </div>
   <div class="page-body">
@@ -199,7 +214,7 @@
     </div>
     <div class="game-user-info">
       <span id="game-coins-display" class="game-coins-display hidden">🪙 <span id="game-coins-amount">0</span></span>
-      <button id="btn-sound" class="btn-sound" title="Ajustar sonido">🔊</button>
+      <button id="btn-sound" class="btn-sound" title="Ajustar sonido" aria-label="Ajustar sonido" aria-expanded="false">🔊</button>
       <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
     </div>
   </div>
@@ -777,10 +792,10 @@
     }).catch(function(){});
   }
 })();
-></script><script src="/version.js?v=3.8.1"></script>
-  <script src="/dice-renderer.js?v=3.8.1"></script>
-  <script src="/audio.js?v=3.8.1"></script>
-  <script src="/app.js?v=3.8.1"></script>
+</script><script src="/version.js?v=3.8.2"></script>
+  <script src="/dice-renderer.js?v=3.8.2"></script>
+  <script src="/audio.js?v=3.8.2"></script>
+  <script src="/app.js?v=3.8.2"></script>
 <!-- FIN ⚠️ -->
 
 

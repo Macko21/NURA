@@ -20,6 +20,8 @@ const { AUTO_BANK_DELAY_MS } = require("../backend/constants");
 const { DICE_SKINS, SHOP_DICE_PREVIEW } = require("../frontend/dice-renderer");
 const { SKIN_SOUND } = require("../frontend/audio");
 const { createPlayerState } = require("../backend/matchState");
+const { pool } = require("../backend/database");
+const { recordMatchResults } = require("../backend/playerManager");
 
 let passed = 0;
 
@@ -224,6 +226,40 @@ async function run() {
       console.log("  OK dados calientes se encadenan y muestran el total antes del autobanco");
     } finally {
       destroyMatch(roomId);
+    }
+  })();
+
+  await (async () => {
+    const originalConnect = pool.connect;
+    const updates = [];
+    const transactionLog = [];
+    pool.connect = async () => ({
+      query: async (sql, params) => {
+        if (params) {
+          updates.push(params);
+          return { rows: params[0] === 'registered' ? [{ id: params[0] }] : [] };
+        }
+        transactionLog.push(sql);
+        return { rows: [] };
+      },
+      release: () => transactionLog.push('RELEASE')
+    });
+    try {
+      const registered = await recordMatchResults([
+        { id: 'registered', score: 10000 },
+        { id: 'guest', score: 2500 },
+        { id: 'bot-1', score: 4000, isBot: true }
+      ], 'registered');
+      assert.deepEqual(registered, ['registered']);
+      assert.deepEqual(updates, [
+        ['registered', 10000, true],
+        ['guest', 2500, false]
+      ]);
+      assert.deepEqual(transactionLog, ['BEGIN', 'COMMIT', 'RELEASE']);
+      passed++;
+      console.log('  OK ranking registra victorias autenticadas y excluye bots');
+    } finally {
+      pool.connect = originalConnect;
     }
   })();
 

@@ -355,7 +355,10 @@ async function getServiceWorkerRegistration() {
   if (_swRegistration) return _swRegistration;
   if (!('serviceWorker' in navigator)) return null;
   try {
-    _swRegistration = await navigator.serviceWorker.ready;
+    _swRegistration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('La aplicación todavía no está lista')), 8000))
+    ]);
     return _swRegistration;
   } catch(e) {
     return null;
@@ -374,6 +377,16 @@ async function subscribeToPush() {
   const token = localStorage.getItem('gameToken');
   if (!token) { toast('Debés iniciar sesión'); return false; }
   try {
+    if (!window.isSecureContext || !('Notification' in window) || !('PushManager' in window)) {
+      throw new Error('Las notificaciones no están disponibles en este dispositivo');
+    }
+    let permission = Notification.permission;
+    if (permission === 'default') permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      const error = new Error('Permiso de notificaciones rechazado');
+      error.name = 'NotAllowedError';
+      throw error;
+    }
     const registration = await getServiceWorkerRegistration();
     if (!registration) throw new Error('Service Worker no disponible');
     // Obtener VAPID public key
@@ -385,18 +398,19 @@ async function subscribeToPush() {
       return false;
     }
     // Subscription (convertir key a Uint8Array)
+    const expectedKey = urlBase64ToUint8Array(keyData.publicKey);
     let sub = await registration.pushManager.getSubscription();
+    if (sub && !pushKeysMatch(sub, expectedKey)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
     if (!sub) {
       sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+        applicationServerKey: expectedKey
       });
     }
-    const saveRes = await fetch('/api/push/subscribe', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ subscription: sub.toJSON() })
-    });
-    if (!saveRes.ok) throw new Error('No se pudo guardar la suscripción');
+    await savePushSubscriptionOnServer(sub, token);
     _pushSubscribed = true;
     localStorage.setItem('macko_push', 'subscribed');
     updatePushBtn();
@@ -437,11 +451,19 @@ async function unsubscribeFromPush() {
 async function checkPushStatus() {
   if (!isLogged()) return false;
   try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      _pushSubscribed = false;
+      localStorage.removeItem('macko_push');
+      updatePushBtn();
+      return false;
+    }
     const registration = await getServiceWorkerRegistration();
     if (!registration) return false;
     const sub = await registration.pushManager.getSubscription();
     const browserSubscribed = !!sub;
     if (browserSubscribed) {
+      const token = localStorage.getItem('gameToken');
+      if (token) await savePushSubscriptionOnServer(sub, token);
       _pushSubscribed = true;
       localStorage.setItem('macko_push', 'subscribed');
       updatePushBtn();
@@ -599,6 +621,24 @@ function clearAuth() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem('gameToken');
   sessionStorage.removeItem('macko_guest_token');
+}
+
+function pushKeysMatch(subscription, expectedKey) {
+  const current = subscription?.options?.applicationServerKey;
+  if (!current) return false;
+  const currentBytes = new Uint8Array(current);
+  if (currentBytes.length !== expectedKey.length) return false;
+  return currentBytes.every((byte, index) => byte === expectedKey[index]);
+}
+
+async function savePushSubscriptionOnServer(subscription, token) {
+  const response = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ subscription: subscription.toJSON() })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'No se pudo guardar la suscripción');
 }
 
 // Ejecutar cache check al cargar la página
@@ -2946,7 +2986,7 @@ function renderRanking(rows) {
     d.className = 'rk-item';
     d.innerHTML = `<div class="rk-pos ${cls}">${pos}</div>
       <div class="rk-info"><div class="rk-nm">${esc(r.alias||r.name)}</div>
-      <div class="rk-mt">${r.games_played||0} partidas</div></div>
+      <div class="rk-mt">Jugador verificado</div></div>
       <div class="rk-wins"><div class="rk-w">${r.games_won||0}</div><div class="rk-wl">victorias</div></div>`;
     list.appendChild(d);
   });
@@ -3135,13 +3175,52 @@ function initUI() {
   $('lobby-avatar').onclick = () => {
     if (isLogged()) { loadProfile(); }
   };
+  const soundButtonIds = ['btn-music-toggle', 'btn-room-sound', 'btn-sound'];
+  let soundPanelAnchor = null;
+  function closeSoundPanel() {
+    $('sound-panel')?.classList.add('hidden');
+    soundPanelAnchor = null;
+    soundButtonIds.forEach(id => $(id)?.setAttribute('aria-expanded', 'false'));
+  }
+  function positionSoundPanel(anchor) {
+    const panel = $('sound-panel');
+    if (!panel || !anchor || panel.classList.contains('hidden')) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 12;
+    const left = Math.max(margin, Math.min(
+      window.innerWidth - panelRect.width - margin,
+      anchorRect.right - panelRect.width
+    ));
+    const below = anchorRect.bottom + 8;
+    const top = below + panelRect.height <= window.innerHeight - margin
+      ? below
+      : Math.max(margin, anchorRect.top - panelRect.height - 8);
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(top)}px`;
+  }
+  function toggleSoundPanel(anchor) {
+    const panel = $('sound-panel');
+    if (!panel) return;
+    const shouldOpen = panel.classList.contains('hidden') || soundPanelAnchor !== anchor;
+    closeSoundPanel();
+    if (!shouldOpen) return;
+    ensureAudioContext();
+    updateMusicBtns();
+    soundPanelAnchor = anchor;
+    panel.classList.remove('hidden');
+    anchor.setAttribute('aria-expanded', 'true');
+    positionSoundPanel(anchor);
+    $('notif-panel')?.classList.add('hidden');
+    $('user-menu')?.classList.add('hidden');
+    $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
+  }
   $('btn-user-menu')?.addEventListener('click', (e) => {
     e.stopPropagation();
     const menu = $('user-menu');
     const open = menu.classList.toggle('hidden') === false;
     $('btn-user-menu').setAttribute('aria-expanded', String(open));
-    $('music-panel')?.classList.add('hidden');
-    $('btn-music-toggle')?.setAttribute('aria-expanded', 'false');
+    closeSoundPanel();
     $('notif-panel')?.classList.add('hidden');
   });
   $('btn-user-profile')?.addEventListener('click', () => {
@@ -3417,8 +3496,7 @@ function initUI() {
     e.stopPropagation();
     const panel = $('notif-panel');
     panel.classList.toggle('hidden');
-    $('music-panel')?.classList.add('hidden');
-    $('btn-music-toggle')?.setAttribute('aria-expanded', 'false');
+    closeSoundPanel();
     $('user-menu')?.classList.add('hidden');
     $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
     if (!panel.classList.contains('hidden')) {
@@ -3431,18 +3509,10 @@ function initUI() {
     markAllRead();
     renderNotifPanel();
   });
-  /* ── Music toggle ──────────────────────────────── */
-  /* ── Panel de música independiente del menú de usuario ── */
-  $('btn-music-toggle')?.addEventListener('click', (e) => {
+  soundButtonIds.forEach(id => $(id)?.addEventListener('click', (e) => {
     e.stopPropagation();
-    ensureAudioContext();
-    const panel = $('music-panel');
-    const open = panel?.classList.toggle('hidden') === false;
-    $('btn-music-toggle')?.setAttribute('aria-expanded', String(open));
-    $('notif-panel')?.classList.add('hidden');
-    $('user-menu')?.classList.add('hidden');
-    $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
-  });
+    toggleSoundPanel(e.currentTarget);
+  }));
 
   $('btn-music-mute')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -3450,19 +3520,12 @@ function initUI() {
     toggleMusic();
     updateMusicBtn();
   });
-  
-  /* ── Botón sonido en partida: mute toggle rápido ──── */
-  $('btn-sound')?.addEventListener('click', (e) => {
+
+  $('btn-sfx-mute')?.addEventListener('click', (e) => {
     e.stopPropagation();
     ensureAudioContext();
     toggleSfx();
-  });
-  
-  /* ── Botón sonido en sala espera: mute toggle rápido ─ */
-  $('btn-room-sound')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    ensureAudioContext();
-    toggleMusic();
+    updateMusicBtn();
   });
   
   // Inicializar audio en la primera interacción del usuario
@@ -3483,8 +3546,16 @@ function initUI() {
     volSlider.addEventListener('input', (e) => {
       e.stopPropagation();
       const vol = parseInt(e.target.value, 10) / 100;
-      if (vol > 0 && isMusicMuted()) setMusicMuted(false);
       setMusicVolume(vol);
+      updateMusicBtn();
+    });
+  }
+  const sfxSlider = $('sfx-volume-slider');
+  if (sfxSlider) {
+    sfxSlider.value = Math.round(getSfxVolume() * 100);
+    sfxSlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      setSfxVolume(parseInt(e.target.value, 10) / 100);
       updateMusicBtn();
     });
   }
@@ -3493,14 +3564,14 @@ function initUI() {
     const panel = $('notif-panel');
     const wrapper = e.target.closest('.notif-wrapper');
     if (panel && !wrapper) panel.classList.add('hidden');
-    if (!wrapper) {
-      $('music-panel')?.classList.add('hidden');
-      $('btn-music-toggle')?.setAttribute('aria-expanded', 'false');
-    }
+    if (!e.target.closest('#sound-panel') && !e.target.closest('#btn-music-toggle, #btn-room-sound, #btn-sound')) closeSoundPanel();
     if (!e.target.closest('.user-menu-wrap')) {
       $('user-menu')?.classList.add('hidden');
       $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
     }
+  });
+  window.addEventListener('resize', () => {
+    if (soundPanelAnchor) positionSoundPanel(soundPanelAnchor);
   });
 
   /* ── Click SFX solo DENTRO de la partida ──────────── */

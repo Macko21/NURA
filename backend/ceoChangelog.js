@@ -2,6 +2,33 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.8.2": {
+    title: "🔊 Audio por canales, push estable y ranking verificado",
+    scope: "ceo",
+    files: [
+      "backend/database.js",
+      "backend/playerManager.js",
+      "backend/pushManager.js",
+      "backend/server.js",
+      "frontend/app.js",
+      "frontend/audio.js",
+      "frontend/index.html",
+      "frontend/styles.css",
+      "frontend/sw.js"
+    ],
+    changes: [
+      "Audio: panel flotante único disponible desde lobby, sala de espera y partida, posicionado dentro del viewport también en PWA móvil.",
+      "Audio: Música y Efectos tienen volumen, mute y persistencia independientes; los efectos conservan un volumen inicial superior.",
+      "Audio: las transiciones de pantalla cancelan cargas anteriores y detienen la pista activa antes de iniciar principal, lobby o partida, evitando superposiciones.",
+      "Notificaciones: solicitud explícita de permisos, espera acotada del Service Worker y mensajes de error reales sin falsos estados activados.",
+      "Notificaciones: renovación automática de suscripciones asociadas a una clave VAPID anterior y resincronización con PostgreSQL.",
+      "Notificaciones: asunto VAPID normalizado, validación estructural del endpoint y propagación de errores de persistencia al cliente.",
+      "Ranking: consulta limitada por unión a usuarios registrados y ordenada exclusivamente por victorias verificadas.",
+      "Estadísticas: el resultado completo se registra en una transacción atómica y suma victorias reales también en partidas contra bots.",
+      "Estadísticas: bots e invitados quedan excluidos de victorias, ranking, rachas y progresión persistente.",
+      "Interfaz: el ranking identifica jugadores verificados y elimina métricas secundarias que alteraban la lectura por victorias."
+    ]
+  },
   "3.8.1": {
     title: "🛡️ Endurecimiento de producción, audio móvil y limpieza integral",
     scope: "ceo",

@@ -30,8 +30,7 @@ const {
 } = require("./roomManager");
 
 const {
-  createOrLoadPlayer, registerGamePlayed,
-  registerWin, resetWinStreak,
+  createOrLoadPlayer, recordMatchResults,
   registerStraight, registerFiveOnes,
   registerDisconnect, getTopRanking
 } = require("./playerManager");
@@ -1369,7 +1368,14 @@ app.get("/api/push/vapid-key", (req, res) => {
 app.post("/api/push/subscribe", requireAuth, async (req, res) => {
   try {
     const { subscription } = req.body;
-    if (!subscription) return res.status(400).json({ error: 'subscription requerida' });
+    const endpoint = subscription?.endpoint;
+    const p256dh = subscription?.keys?.p256dh;
+    const auth = subscription?.keys?.auth;
+    if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') ||
+        typeof p256dh !== 'string' || p256dh.length < 40 ||
+        typeof auth !== 'string' || auth.length < 10) {
+      return res.status(400).json({ error: 'Suscripción push inválida' });
+    }
     const playerId = req.user.playerId;
     await savePushSubscription(playerId, subscription);
     res.json({ success: true });
@@ -1707,12 +1713,13 @@ async function onMatchWon(match, roomId) {
   });
   destroyMatch(roomId);
 
-  // Si es partida contra bots, saltar toda la lógica de BD (no hay jugadores reales para premiar)
-  const isBotGame = room && room.isBotGame;
-  if (!isBotGame) {
-    try {
-      await registerWin(winner.id);
-      
+  const isBotGame = !!room?.isBotGame;
+  try {
+    const winnerId = winner.isBot ? null : winner.id;
+    const registeredPlayerIds = await recordMatchResults(match.players, winnerId);
+    const registeredIdSet = new Set(registeredPlayerIds);
+
+    if (!isBotGame) {
       if (!isTournamentMatch) {
         // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
         const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -1730,20 +1737,17 @@ async function onMatchWon(match, roomId) {
           }
         }
       }
-      
-      // Dar XP base a todos los jugadores
-      for (const p of match.players) {
-        try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
-      }
-      for (const p of match.players) {
-        await registerGamePlayed(p.id, p.score);
-        if (p.id !== winner.id) await resetWinStreak(p.id);
-        if (p.straights > 0) await registerStraight(p.id);
-        if (p.fiveOnes  > 0) await registerFiveOnes(p.id);
-      }
-    } catch (e) { console.error("DB post-win:", e.message); }
-  } else {
-    console.log(`🤖 Partida contra bots finalizada. Ganador: ${winner.name || winner.id}`);
+    }
+
+    for (const p of match.players) {
+      if (!registeredIdSet.has(p.id)) continue;
+      try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
+      if (p.straights > 0) await registerStraight(p.id);
+      if (p.fiveOnes > 0) await registerFiveOnes(p.id);
+    }
+    if (isBotGame) console.log(`🤖 Partida contra bots registrada. Ganador: ${winner.name || winner.id}`);
+  } catch (e) {
+    console.error("DB post-win:", e.message);
   }
 
   if (isTournamentMatch && room) {

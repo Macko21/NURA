@@ -45,7 +45,10 @@ async function initPush() {
     }
   }
 
-  webPush.setVapidDetails(`mailto:${VAPID_EMAIL}`, publicKey, privateKey);
+  const vapidSubject = /^(mailto:|https?:\/\/)/i.test(VAPID_EMAIL)
+    ? VAPID_EMAIL
+    : `mailto:${VAPID_EMAIL}`;
+  webPush.setVapidDetails(vapidSubject, publicKey, privateKey);
   activePublicKey = publicKey;
   vapidReady = true;
   console.log("🔔 Web Push configurado con claves VAPID persistentes");

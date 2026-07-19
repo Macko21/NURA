@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.8.1";
+const GAME_VERSION = "3.8.2";
 
 const CHANGELOG = [
+  // ═══ 3.8.2 — PRODUCCIÓN ═══
+  {
+    version: "3.8.2",
+    date: "2026-07-19",
+    title: "✨ Mejoras generales",
+    scope: "game",
+    changes: [
+      "Mejoras de sonido",
+      "Mejoras de notificaciones",
+      "Mejoras de seguridad",
+      "Correcciones generales"
+    ]
+  },
   // ═══ 3.8.1 — PRODUCCIÓN ═══
   {
     version: "3.8.1",
