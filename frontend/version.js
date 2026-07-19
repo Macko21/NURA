@@ -10,9 +10,27 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.1";
+const GAME_VERSION = "3.7.2";
 
 const CHANGELOG = [
+  // ═══ 3.7.2 — GAME ═══
+  {
+    version: "3.7.2",
+    date: "2026-07-18",
+    title: "🔊 Sistema de audio rediseñado + tutorial corregido",
+    scope: "game",
+    files: ["frontend/audio.js", "frontend/app.js", "frontend/index.html", "frontend/styles.css", "frontend/version.js"],
+    changes: [
+      "🔊 Música y SFX ahora tienen controles separados: podés silenciar la música o los efectos de forma independiente",
+      "🎵 Tema principal (principal.mp3 sintetizado): suena en lobby, tienda, portal, perfil y ranking — con volumen ajustable",
+      "🎵 Música de sala de espera (lobby.mp3): solo suena en la sala de espera (screen-room) y al volver de revancha",
+      "🎵 Música de partida suave (partida.mp3): ambiente bajito para que se escuchen bien los dados, controles separados en el juego",
+      "💀 Sonido de game-over: se reproduce cuando perdés contra bots",
+      "📖 Tutorial corregido: escaleras 1-2-3-4-5, 2-3-4-5-6 y 1-3-4-5-6 dan 500 pts + dados calientes (no 3.000 pts)",
+      "📖 Hot dice funciona aunque hayas tirado 3 veces — ahora explicado correctamente",
+      "🔇 Dos botones en la pantalla de juego: 🎵 (música on/off) y 🔊 (efectos on/off)"
+    ]
+  },
   // ═══ 3.7.1 — GAME ═══
   {
     version: "3.7.1",

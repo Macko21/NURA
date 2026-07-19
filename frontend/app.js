@@ -717,10 +717,10 @@ function launchConfetti() {
 }
 
 // ── Sistema de audio → audio.js ───────────────────────
-// (AC, ac, tone, SFX, SKIN_PARTICLES, spawnSkinParticles, SKIN_SOUND, getActiveSkinAudio, playSkinRoll, playSkinScore, playSkinHot)
+// (AC, ac, tone, SFX, SKIN_SOUND, getActiveSkinAudio, playSkinRoll, playSkinScore, playSkinHot)
 // Funciones de música (definidas en audio.js):
-// startLobbyMusic, startGameMusic, startRoomMusic, playWinMusic, stopMusic,
-// toggleMute, isMuted, getMusicVolume, setMusicVolume, SFX, ensureAudioContext
+// startMusicForScreen, stopMusic, SFX, toggleMusicMute, toggleSfxMute,
+// isMusicMuted, isSfxMuted, getMusicVolume, setMusicVolume, updateMusicBtns, ensureAudioContext, playGameOver
 
 /* ── Helpers ─────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
@@ -765,65 +765,28 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
   // Gestión de música de fondo según la pantalla
-  if (id === 'screen-lobby') {
-    startLobbyMusic();
-  } else if (id === 'screen-room') {
-    startRoomMusic();
-  } else if (id === 'screen-game') {
-    startGameMusic();
-  } else if (id === 'screen-ranking') {
-    startRankingMusic();
-  } else if (id === 'screen-profile') {
-    startProfileMusic();
-  } else if (id === 'screen-portal') {
-    startPortalMusic();
-  } else {
-    // Pantallas de auth, join, ranking, etc. → silencio
-    stopMusic();
-  }
-  // Actualizar estado del botón de música
-  updateMusicBtn();
+  // principal = lobby, auth, join, ranking, profile, portal
+  // lobby = sala de espera (screen-room)
+  // partida = juego (screen-game)
+  startMusicForScreen(id);
+  // Actualizar estado de los botones de música/SFX
+  updateMusicBtns();
 }
 
-// ── Botón de música ────────────────────────────────────
+// ── Botones de música y SFX ────────────────────────────
 function updateMusicBtn() {
-  const btn = $('btn-music-toggle');
-  const vol = getMusicVolume();
-  const iconChar = _isMuted || vol === 0 ? '🔇' : vol < 0.33 ? '🔈' : vol < 0.66 ? '🔉' : '🔊';
-  const titleText = _isMuted || vol === 0 ? 'Sonido desactivado' : `Volumen ${Math.round(vol * 100)}%`;
-  
-  if (btn) {
-    btn.textContent = iconChar;
-    btn.title = titleText;
-  }
-  
-  // Botón de música durante la partida
-  const gameBtn = $('btn-game-music');
-  if (gameBtn) {
-    gameBtn.textContent = iconChar;
-    gameBtn.title = titleText;
-  }
-  
-  // Sincronizar slider si existe
-  const slider = $('music-volume-slider');
-  if (slider) slider.value = Math.round(vol * 100);
-  const icon = $('music-vol-icon');
-  if (icon) icon.textContent = iconChar;
+  // Delegar a la función unificada de audio.js
+  updateMusicBtns();
 }
 
 function toggleMusic() {
   ensureAudioContext();
-  const nowMuted = toggleMute(); // toggleMute() devuelve el NUEVO estado
-  if (!nowMuted && _musicType) {
-    // Se acaba de desmutear → reiniciar música según pantalla actual
-    const activeScreen = document.querySelector('.screen.active');
-    if (activeScreen) showScreen(activeScreen.id);
-    else startLobbyMusic();
-  } else if (nowMuted) {
-    // Se acaba de mutear → detener música
-    stopMusic();
-  }
-  updateMusicBtn();
+  toggleMusicMute();
+}
+
+function toggleSfx() {
+  ensureAudioContext();
+  toggleSfxMute();
 }
 
 let _toastT;
@@ -1545,7 +1508,12 @@ function handle(type, data) {
         winSkin,
         winSpecial
       );
-      SFX.win();
+      // Si perdimos contra bots, sonido de game-over
+      if (data.winner?.id !== S.id && S.match?.players?.some(p => p.isBot)) {
+        playGameOver();
+      } else {
+        SFX.win();
+      }
       break;
     }
 
@@ -3394,6 +3362,10 @@ function initUI() {
   
   $('btn-game-music')?.addEventListener('click', () => {
     toggleMusic();
+  });
+  
+  $('btn-game-sfx')?.addEventListener('click', () => {
+    toggleSfx();
   });
 
   /* ── Volume slider ─────────────────────────────── */

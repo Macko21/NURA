@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.7.1"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.7.2"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -102,7 +102,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v3.7.1</p>
+      <p class="app-version">v3.7.2</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -192,7 +192,8 @@
     </div>
     <div class="game-user-info">
       <span id="game-coins-display" class="game-coins-display hidden">🪙 <span id="game-coins-amount">0</span></span>
-      <button id="btn-game-music" class="btn-game-music" title="🎵 Sonido">🎵</button>
+      <button id="btn-game-music" class="btn-game-music" title="🎵 Música">🎵</button>
+      <button id="btn-game-sfx" class="btn-game-sfx" title="🔊 Efectos">🔊</button>
       <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
     </div>
   </div>
@@ -567,7 +568,7 @@
             <li><strong>Tirá los 5 dados</strong> — tocá el botón 🎲 <em>Tirar</em></li>
             <li><strong>Separá al menos un dado</strong> que puntúe (1, 5 o combinaciones)</li>
             <li>Decidí: <strong>seguir tirando</strong> los dados restantes o <strong>plantarte</strong> ✔</li>
-            <li>Si TODOS los dados puntúan → 😎 <strong>Dados calientes:</strong> tirás los 6 de nuevo</li>
+            <li>Si TODOS los dados puntúan → 😎 <strong>Dados calientes:</strong> tirás los 5 de nuevo</li>
           </ol>
         </div>
         <div class="rules-section">
@@ -615,12 +616,14 @@
             <tr><td class="rt-dice">5 iguales</td><td class="rt-pts">x4 del trio</td></tr>
             <tr><td class="rt-dice">6 iguales</td><td class="rt-pts">x8 del trio</td></tr>
             <tr><td class="rt-dice">3 pares</td><td class="rt-pts">1.500 pts</td></tr>
-            <tr><td class="rt-dice">Escalera 1-2-3-4-5-6</td><td class="rt-pts">3.000 pts</td></tr>
+            <tr><td class="rt-dice rt-highlight">Escalera 1-2-3-4-5</td><td class="rt-pts rt-gold">🔥 500 pts + Dados calientes</td></tr>
+            <tr><td class="rt-dice rt-highlight">Escalera 2-3-4-5-6</td><td class="rt-pts rt-gold">🔥 500 pts + Dados calientes</td></tr>
+            <tr><td class="rt-dice rt-highlight">Escalera 1-3-4-5-6</td><td class="rt-pts rt-gold">🔥 500 pts + Dados calientes</td></tr>
             <tr><td class="rt-dice rt-highlight">5 unos</td><td class="rt-pts rt-gold">🏆 Victoria instantánea</td></tr>
           </table>
         </div>
         <div class="rules-section rules-tip">
-          <p>💡 <strong>Tip:</strong> Si sacás 3 unos, son 1.000 pts (no 300 como los otros triples). Es la combinación más valiosa junto a la escalera.</p>
+          <p>💡 <strong>Tip:</strong> Si sacás 3 unos, son 1.000 pts (no 300 como los otros triples). Las escaleras también dan 500 pts y dados calientes aunque ya hayas tirado 3 veces.</p>
         </div>
       </div>
 
@@ -632,7 +635,7 @@
             <li>🎯 <strong>Entrá rápido:</strong> Enfocate en llegar a 1.000 en el primer turno. No te arriesgues de más.</li>
             <li>📊 <strong>Plantate temprano:</strong> Si tenés 1.000+ puntos en un turno, considerar plantarte es buena idea. No siempre conviene seguir.</li>
             <li>🎲 <strong>Con 2 dados:</strong> Si te quedan 2 dados, tenés ~33% de probabilidad de sacar al menos un 1 o 5. Evaluá el riesgo.</li>
-            <li>🔥 <strong>Dados calientes:</strong> Si puntúan todos los dados, tirás los 6 de nuevo. ¡Aprovechá para sumar grande!</li>
+            <li>🔥 <strong>Dados calientes:</strong> Si puntúan todos los dados, tirás los 5 de nuevo (o todos de nuevo con escalera). ¡Aprovechá para sumar grande!</li>
             <li>👀 <strong>Mirá a los rivales:</strong> Si un rival está cerca de 10.000, tomá más riesgos. Si va atrás, sé conservador.</li>
             <li>💥 <strong>Cuidado con el bust:</strong> Si estás en 9.500, no te arriesgues a pasarte. Plantate y sumá seguro.</li>
           </ul>
@@ -768,10 +771,10 @@
     }).catch(function(){});
   }
 })();
-</script><script src="/version.js?v=3.7.1"></script>
-  <script src="/dice-renderer.js?v=3.7.1"></script>
-  <script src="/audio.js?v=3.7.1"></script>
-  <script src="/app.js?v=3.7.1"></script>
+></script><script src="/version.js?v=3.7.2"></script>
+  <script src="/dice-renderer.js?v=3.7.2"></script>
+  <script src="/audio.js?v=3.7.2"></script>
+  <script src="/app.js?v=3.7.2"></script>
 <!-- FIN ⚠️ -->
 
 

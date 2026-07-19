@@ -1,88 +1,96 @@
 /**
  * ═══════════════════════════════════════════════════════
  * LOS 10.000 DE MACKO — audio.js
- * Sistema de audio: tonos sintetizados, SFX y música ambiente
+ * Sistema de audio: tonos sintetizados, SFX y música
+ * ═══════════════════════════════════════════════════════
+ *
+ * CANALES DE AUDIO:
+ *   🎵 Música  — tema principal, lobby, partida
+ *   🔊 Efectos — dados, UI, notificaciones
+ *
+ * Cada canal tiene su propio toggle on/off.
+ * La música tiene un slider de volumen global.
  * ═══════════════════════════════════════════════════════
  */
 
 let AC = null;
 const ac = () => AC || (AC = new (window.AudioContext||window.webkitAudioContext)());
 
-// ── Volumen y mute ─────────────────────────────────────
-let _masterGain = null; // nodo de ganancia maestro
+// ── Volumen y toggles ─────────────────────────────────
+let _masterGain = null;
 let _masterVolume = 1.0;
-let _musicVolume = 0.35; // volumen relativo de la música (0-1)
-let _sfxVolume = 0.8;    // volumen relativo de SFX (0-1)
-let _isMuted = false;    // mute global
+let _musicVolume = 0.3;     // volumen de la música (0-1)
+let _sfxVolume = 0.8;       // volumen de SFX (0-1)
+let _musicMuted = false;    // música silenciada?
+let _sfxMuted = false;      // efectos silenciados?
 
 // Persistencia
 function loadAudioPrefs() {
   try {
-    const muted = localStorage.getItem('macko_audio_muted');
+    _musicMuted = localStorage.getItem('macko_music_muted') === 'true';
+    _sfxMuted = localStorage.getItem('macko_sfx_muted') === 'true';
     const musicVol = localStorage.getItem('macko_music_vol');
-    _isMuted = muted === 'true';
     if (musicVol !== null) _musicVolume = parseFloat(musicVol);
   } catch(e) {}
 }
 function saveAudioPrefs() {
   try {
-    localStorage.setItem('macko_audio_muted', String(_isMuted));
+    localStorage.setItem('macko_music_muted', String(_musicMuted));
+    localStorage.setItem('macko_sfx_muted', String(_sfxMuted));
     localStorage.setItem('macko_music_vol', String(_musicVolume));
   } catch(e) {}
 }
 loadAudioPrefs();
 
-// Obtener o crear el nodo de ganancia maestro
 function getMasterGain() {
   if (!_masterGain) {
     const ctx = ac();
     _masterGain = ctx.createGain();
-    _masterGain.gain.value = _isMuted ? 0 : _masterVolume;
+    _masterGain.gain.value = _masterVolume;
     _masterGain.connect(ctx.destination);
   }
   return _masterGain;
 }
 
-// Asegurar que el AudioContext esté iniciado (requiere interacción del usuario)
 function ensureAudioContext() {
   const ctx = ac();
-  if (ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
-  }
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   return ctx;
 }
 
-function setMasterVolume(vol) {
-  _masterVolume = Math.max(0, Math.min(1, vol));
-  if (_masterGain) _masterGain.gain.value = _isMuted ? 0 : _masterVolume;
-}
+// ── Getters / Setters ─────────────────────────────────
+function getMusicVolume() { return _musicVolume; }
+function isMusicMuted() { return _musicMuted; }
+function isSfxMuted() { return _sfxMuted; }
 
 function setMusicVolume(vol) {
   _musicVolume = Math.max(0, Math.min(1, vol));
-  // Actualizar ganancia de la música si está sonando
-  if (_musicNodes.length > 0) {
-    _musicNodes.forEach(n => {
-      if (n.gainNode && n.rawGain != null) {
-        const target = n.rawGain * _musicVolume * (_isMuted ? 0 : 1);
-        n.gainNode.gain.setTargetAtTime(target, ac().currentTime, 0.1);
-      }
-    });
+  _refreshMusicVolume();
+  saveAudioPrefs();
+}
+
+function toggleMusicMute() {
+  _musicMuted = !_musicMuted;
+  if (_musicMuted) {
+    _stopMusic();
+  } else {
+    const active = document.querySelector('.screen.active');
+    startMusicForScreen(active ? active.id : 'screen-lobby');
   }
   saveAudioPrefs();
+  _updateMusicBtns();
+  return _musicMuted;
 }
 
-function getMusicVolume() { return _musicVolume; }
-function isMuted() { return _isMuted; }
-
-function toggleMute() {
-  _isMuted = !_isMuted;
-  if (_masterGain) _masterGain.gain.value = _isMuted ? 0 : _masterVolume;
+function toggleSfxMute() {
+  _sfxMuted = !_sfxMuted;
   saveAudioPrefs();
-  return _isMuted;
+  return _sfxMuted;
 }
 
-// ── Tone helper (conectado al master gain) ────────────
+// ── Tone helper (usa canal SFX) ──────────────────────
 function tone(freq, type='sine', dur=.12, vol=.2, delay=0) {
+  if (_sfxMuted) return;
   try {
     const ctx = ensureAudioContext();
     const master = getMasterGain();
@@ -101,19 +109,18 @@ function tone(freq, type='sine', dur=.12, vol=.2, delay=0) {
   } catch(e) {}
 }
 
-// ── Efectos de sonido (SFX) ────────────────────────────
+// ── Efectos de sonido (SFX) ──────────────────────────
 const SFX = {
   roll: () => {
-    // Tirada con más cuerpo: 3 sonidos superpuestos
     tone(200,'sawtooth',.08,.35);
     tone(280,'sawtooth',.06,.28,.04);
     tone(350,'sawtooth',.05,.2,.08);
-    tone(150,'triangle',.04,.15,.02); // más grave para peso
+    tone(150,'triangle',.04,.15,.02);
   },
   score: () => {
     tone(523,'sine',.12,.28);
     tone(659,'sine',.12,.22,.1);
-    tone(784,'sine',.08,.15,.18); // tercera nota
+    tone(784,'sine',.08,.15,.18);
   },
   bank: () => {
     tone(440,'sine',.1,.25);
@@ -123,18 +130,16 @@ const SFX = {
   fail: () => {
     tone(200,'sawtooth',.25,.35);
     tone(160,'sawtooth',.25,.25,.12);
-    tone(120,'sawtooth',.3,.15,.25); // descendente
+    tone(120,'sawtooth',.3,.15,.25);
   },
   hot: () => {
     [523,659,784,1047].forEach((f,i)=>tone(f,'sine',.18,.38,i*.08));
   },
   win: () => {
-    // Victoria épica: arpegio ascendente de 7 notas
     [523,587,659,784,880,1047,1318].forEach((f,i)=>{
       tone(f,'triangle',.35,.45,i*.1);
-      tone(f*0.5,'sine',.4,.12,i*.1); // sub-octava para cuerpo
+      tone(f*0.5,'sine',.4,.12,i*.1);
     });
-    // Final con acorde completo
     setTimeout(() => {
       [523,659,784].forEach(f => tone(f,'sine',.6,.3,.05));
     }, 720);
@@ -155,22 +160,33 @@ const SFX = {
     tone(800,'triangle',.08,.2,.08);
     tone(1000,'triangle',.15,.3,.2);
   },
-  click: () => tone(1000,'sine',.03,.06), // Click UI sutil
-  hover: () => tone(660,'sine',.015,.025), // Hover menú — muy sutil, casi imperceptible
-  countdown: () => tone(440,'square',.08,.15), // tick de countdown
+  click: () => tone(1000,'sine',.03,.06),
+  hover: () => tone(660,'sine',.015,.025),
+  countdown: () => tone(440,'square',.08,.15),
   error: () => {
     tone(300,'sawtooth',.15,.25);
     tone(250,'sawtooth',.2,.2,.1);
+  },
+  // Game-over: sonido descendente triste para cuando se pierde contra bots
+  gameOver: () => {
+    tone(440,'sawtooth',.25,.25);
+    tone(370,'sawtooth',.2,.2,.2);
+    tone(311,'sawtooth',.2,.15,.35);
+    tone(261,'sawtooth',.3,.1,.5);
+    tone(220,'sawtooth',.5,.08,.7);
+    // Nota final grave como "derrota"
+    setTimeout(() => {
+      tone(110,'sine',.8,.15,0);
+    }, 950);
   }
 };
 
-// ── Sistema de música de fondo ──────────────────────────
+// ── Sistema de música ─────────────────────────────────
 let _musicNodes = [];
-let _musicType = null; // 'lobby' | 'game' | 'win' | null
+let _musicType = null; // 'principal' | 'lobby' | 'partida' | 'win' | null
 let _musicInterval = null;
 
-// Limpiar todos los nodos de música activos
-function _clearMusicNodes() {
+function _stopMusic() {
   if (_musicInterval) { clearInterval(_musicInterval); _musicInterval = null; }
   _musicNodes.forEach(n => {
     try {
@@ -182,23 +198,16 @@ function _clearMusicNodes() {
   _musicNodes = [];
 }
 
-// Crear una nota continua (drone) con modulación
 function _createDroneNote(freq, type, baseGain, lfoFreq, lfoDepth) {
+  if (_musicMuted) return null;
   try {
     const ctx = ensureAudioContext();
     const master = getMasterGain();
-    
-    // Oscilador principal
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
-    
-    // Ganancia del oscilador
     const gain = ctx.createGain();
-    const adjustedGain = baseGain * _musicVolume;
-    gain.gain.value = adjustedGain;
-    
-    // LFO para modulación de ganancia (tremolo)
+    gain.gain.value = baseGain * _musicVolume;
     if (lfoFreq && lfoDepth) {
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
@@ -210,206 +219,166 @@ function _createDroneNote(freq, type, baseGain, lfoFreq, lfoDepth) {
       lfo.start();
       _musicNodes.push({ lfoNode: lfo });
     }
-    
     osc.connect(gain);
     gain.connect(master);
     osc.start();
-    
     const nodeInfo = { oscNode: osc, gainNode: gain, rawGain: baseGain };
     _musicNodes.push(nodeInfo);
     return nodeInfo;
   } catch(e) { return null; }
 }
 
-// Crear un arpegio en loop
-function _createArpeggio(notes, type, baseVolume, interval, loop = true) {
+function _createArpeggio(notes, type, baseVolume, interval) {
   let noteIndex = 0;
   let stopped = false;
-  
   function playNext() {
     if (stopped || _musicNodes.length === 0) return;
-    if (_isMuted) { noteIndex = (noteIndex + 1) % notes.length; return; }
-    
+    if (_musicMuted) { noteIndex = (noteIndex + 1) % notes.length; return; }
     const note = notes[noteIndex];
+    // Los arpegios usan ondas senoidales muy suaves, no pasan por tone()
+    const ctx = ensureAudioContext();
+    const master = getMasterGain();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(master);
+    o.type = type;
+    o.frequency.value = note;
     const vol = baseVolume * _musicVolume;
-    tone(note, type, interval * 0.8, vol);
+    g.gain.setValueAtTime(vol, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + interval * 0.8);
+    o.start(ctx.currentTime);
+    o.stop(ctx.currentTime + interval * 0.8);
     noteIndex = (noteIndex + 1) % notes.length;
   }
-  
   if (_musicInterval) clearInterval(_musicInterval);
   _musicInterval = setInterval(playNext, interval * 1000);
-  
   return () => { stopped = true; };
 }
 
-// Iniciar música del lobby — ambiente relajante
-function startLobbyMusic() {
-  _clearMusicNodes();
+// ── TEMAS MUSICALES ───────────────────────────────────
+
+// 🎵 principal.mp3 — Tema principal para navegación (lobby, shop, portal, perfil, ranking)
+function _startPrincipalMusic() {
+  _stopMusic();
+  _musicType = 'principal';
+  if (_musicMuted) return;
+  const ctx = ensureAudioContext();
+  if (!ctx) return;
+  // Drone en Do mayor — tono acogedor y versátil
+  _createDroneNote(130.81, 'sine', 0.06, 0.25, 0.2);   // C3
+  _createDroneNote(261.63, 'sine', 0.04, 0.15, 0.15);  // C4
+  _createDroneNote(392.00, 'sine', 0.02, 0.1, 0.08);   // G4
+  // Arpegio pausado cada 3s
+  _createArpeggio([261.63, 329.63, 392.00, 523.25], 'triangle', 0.08, 3.0);
+}
+
+// 🎵 lobby.mp3 — Sala de espera (cuando se junta con jugadores o revancha)
+function _startLobbyMusic() {
+  _stopMusic();
   _musicType = 'lobby';
-  if (_isMuted) return;
-  
+  if (_musicMuted) return;
   const ctx = ensureAudioContext();
   if (!ctx) return;
-  
-  // Drone ambiente en C mayor (notas suaves)
-  _createDroneNote(130.81, 'sine', 0.08, 0.3, 0.3);   // C3 - grave
-  _createDroneNote(261.63, 'sine', 0.06, 0.2, 0.25);  // C4 - media
-  _createDroneNote(392.00, 'sine', 0.03, 0.15, 0.2);  // G4 - aguda
-  
-  // Arpegio lento de 4 notas cada 2.5s
-  _createArpeggio([261.63, 329.63, 392.00, 523.25], 'triangle', 0.12, 2.5);
+  // Drone expectante en La menor — anticipación
+  _createDroneNote(110.00, 'sine', 0.05, 0.2, 0.15);  // A2
+  _createDroneNote(220.00, 'sine', 0.04, 0.15, 0.1);  // A3
+  // Arpegio cada 2.5s — ligera tensión
+  _createArpeggio([220.00, 261.63, 329.63, 261.63], 'triangle', 0.07, 2.5);
 }
 
-// Iniciar música del juego — ambiente sutil y tranquilo
-function startGameMusic() {
-  _clearMusicNodes();
-  _musicType = 'game';
-  if (_isMuted) return;
-  
+// 🎵 partida.mp3 — Durante la partida (sutil, la música bajita para que se escuchen los dados)
+function _startPartidaMusic() {
+  _stopMusic();
+  _musicType = 'partida';
+  if (_musicMuted) return;
   const ctx = ensureAudioContext();
   if (!ctx) return;
-  
-  // Drone suave y relajante en Re mayor (D3 + A3) — tono cálido
-  _createDroneNote(146.83, 'sine', 0.04, 0.2, 0.15);  // D3 - grave suave
-  _createDroneNote(220.00, 'sine', 0.03, 0.15, 0.1);  // A3 - medio
-  _createDroneNote(293.66, 'sine', 0.015, 0.1, 0.08); // D4 - brillo tenue
-  
-  // Arpegio lento cada 3.5s — sin presión, relajado
-  _createArpeggio([220.00, 293.66, 369.99, 440.00], 'sine', 0.06, 3.5);
+  // Drone muy suave en Re mayor — casi imperceptible, solo atmósfera
+  _createDroneNote(146.83, 'sine', 0.03, 0.15, 0.1);   // D3
+  _createDroneNote(220.00, 'sine', 0.02, 0.1, 0.08);   // A3
+  // Arpegio lentísimo cada 4s — solo un susurro de fondo
+  _createArpeggio([293.66, 369.99, 440.00], 'sine', 0.04, 4.0);
 }
 
-// Iniciar música de sala de espera — tranquila, expectante
-function startRoomMusic() {
-  _clearMusicNodes();
-  _musicType = 'room';
-  if (_isMuted) return;
-  
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  
-  // Drone suave y expectante
-  _createDroneNote(220.00, 'sine', 0.05, 0.2, 0.2);  // A3
-  _createDroneNote(329.63, 'sine', 0.03, 0.15, 0.15); // E4
-  
-  // Arpegio cada 3s - relajado
-  _createArpeggio([220.00, 261.63, 329.63], 'triangle', 0.08, 3.0);
+// ── API pública ───────────────────────────────────────
+
+/** Inicia la música según la pantalla activa */
+function startMusicForScreen(screenId) {
+  if (screenId === 'screen-game') {
+    _startPartidaMusic();
+  } else if (screenId === 'screen-room') {
+    _startLobbyMusic();
+  } else {
+    // screen-auth, screen-lobby, screen-join, screen-ranking, screen-profile, screen-portal
+    _startPrincipalMusic();
+  }
 }
 
-// Iniciar música del perfil — introspectiva, suave
-function startProfileMusic() {
-  _clearMusicNodes();
-  _musicType = 'profile';
-  if (_isMuted) return;
-  
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  
-  // Drone en Re menor (D3 + A3) — tono íntimo y reflexivo
-  _createDroneNote(146.83, 'sine', 0.05, 0.2, 0.2);  // D3
-  _createDroneNote(220.00, 'sine', 0.03, 0.15, 0.15); // A3
-  
-  // Arpegio muy lento cada 4s — notas altas como pensamientos
-  _createArpeggio([293.66, 349.23, 440.00, 349.23], 'sine', 0.06, 4.0);
-}
-
-// Iniciar música del ranking — ambiente de logro y aspiración
-function startRankingMusic() {
-  _clearMusicNodes();
-  _musicType = 'ranking';
-  if (_isMuted) return;
-  
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  
-  // Drone en Mi mayor (E2 + B3 + E4) — tono brillante y de logro
-  _createDroneNote(82.41, 'sine', 0.04, 0.3, 0.25);   // E2 - pulso grave
-  _createDroneNote(246.94, 'sine', 0.05, 0.2, 0.2);   // B3 - medio
-  _createDroneNote(329.63, 'sine', 0.03, 0.1, 0.1);   // E4 - brillo
-  
-  // Arpegio pausado cada 3.5s — sensación de ascenso
-  _createArpeggio([329.63, 392.00, 523.25, 659.25], 'triangle', 0.08, 3.5);
-}
-
-// Iniciar música del portal social — ambiente abierto y social
-function startPortalMusic() {
-  _clearMusicNodes();
-  _musicType = 'portal';
-  if (_isMuted) return;
-  
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  
-  // Drone en La mayor (A3 + E4) — tono cálido y acogedor
-  _createDroneNote(220.00, 'sine', 0.06, 0.25, 0.2);  // A3
-  _createDroneNote(329.63, 'sine', 0.04, 0.15, 0.15); // E4
-  _createDroneNote(440.00, 'sine', 0.02, 0.1, 0.1);   // A4 - toque brillante
-  
-  // Arpegio amigable cada 2.8s — movimiento social
-  _createArpeggio([261.63, 329.63, 392.00, 523.25], 'triangle', 0.08, 2.8);
-}
-
-// Música de victoria (se reproduce UNA vez, no loop)
-function playWinMusic() {
-  _clearMusicNodes();
-  _musicType = 'win';
-  if (_isMuted) return;
-  
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  
-  // Acorde de victoria sostenido
-  _createDroneNote(261.63, 'sine', 0.1, 0.1, 0.1);   // C4
-  _createDroneNote(329.63, 'sine', 0.08, 0.05, 0.05); // E4
-  _createDroneNote(392.00, 'sine', 0.06, 0.02, 0.02); // G4
-  
-  // Detener después de 3s y volver al lobby/game
-  setTimeout(() => {
-    // Hacer fade out
-    _musicNodes.forEach(n => {
-      if (n.gainNode) {
-        try {
-          n.gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.5);
-        } catch(e) {}
-      }
-    });
-    setTimeout(() => {
-      _clearMusicNodes();
-      _musicType = null;
-    }, 2000);
-  }, 3000);
-}
-
-// Detener toda la música
+/** Detiene toda la música */
 function stopMusic() {
-  _clearMusicNodes();
+  _stopMusic();
   _musicType = null;
+}
+
+/** Reproduce game-over (solo bots) */
+function playGameOver() {
+  SFX.gameOver();
 }
 
 function getMusicType() { return _musicType; }
 
-// Actualizar volumen de la música en tiempo real (cuando se cambia mute)
-function refreshMusicVolume() {
+function _refreshMusicVolume() {
   _musicNodes.forEach(n => {
     if (n.gainNode && n.rawGain != null) {
-      const target = n.rawGain * _musicVolume * (_isMuted ? 0 : 1);
+      const target = n.rawGain * _musicVolume * (_musicMuted ? 0 : 1);
       n.gainNode.gain.setTargetAtTime(target, ac().currentTime, 0.1);
     }
   });
 }
 
-// ── Skin sounds ─────────────────────────────────────────
+// ── Botones de música en UI ──────────────────────────
+function _updateMusicBtns() {
+  // Botón del topbar (lobby)
+  const btn = document.getElementById('btn-music-toggle');
+  if (btn) {
+    btn.textContent = _musicMuted ? '🔇' : '🎵';
+    btn.title = _musicMuted ? 'Música desactivada' : `Música ${Math.round(_musicVolume * 100)}%`;
+  }
+  // Botones de la partida (juego)
+  const musicBtn = document.getElementById('btn-game-music');
+  if (musicBtn) {
+    musicBtn.textContent = _musicMuted ? '🔇' : '🎵';
+    musicBtn.title = _musicMuted ? 'Música desactivada' : `Música ${Math.round(_musicVolume * 100)}%`;
+  }
+  const sfxBtn = document.getElementById('btn-game-sfx');
+  if (sfxBtn) {
+    sfxBtn.textContent = _sfxMuted ? '🔇' : '🔊';
+    sfxBtn.title = _sfxMuted ? 'Efectos desactivados' : 'Efectos activados';
+  }
+  // Slider de volumen
+  const slider = document.getElementById('music-volume-slider');
+  if (slider) slider.value = Math.round(_musicVolume * 100);
+  const icon = document.getElementById('music-vol-icon');
+  if (icon) icon.textContent = _musicMuted ? '🔇' : '🎵';
+}
+
+// Exponer para que app.js lo use
+function updateMusicBtns() { _updateMusicBtns(); }
+
+// ── Skin sounds ───────────────────────────────────────
 const SKIN_SOUND = {
   '1':  { freq: 500, wave: 'square' },
   '2':  { freq: 180, wave: 'sawtooth' },
   '4':  { freq: 660, wave: 'sine' },
   '5':  { freq: 880, wave: 'sine' },
-  '6':  { freq: 1100,wave: 'sine' },
+  '6':  { freq: 1100, wave: 'sine' },
   '18': { freq: 160, wave: 'sawtooth' },
   '19': { freq: 440, wave: 'sine' },
   '20': { freq: 520, wave: 'sine' },
   '21': { freq: 140, wave: 'sawtooth' },
   '22': { freq: 770, wave: 'triangle' },
-  '32': { freq: 1200,wave: 'sine' },
+  '32': { freq: 1200, wave: 'sine' },
   '33': { freq: 200, wave: 'triangle' },
 };
 
@@ -444,10 +413,6 @@ function playSkinHot() {
     tone(f, 'sine', .18, .38, i * .08)
   );
 }
-
-// ── Init al cargar ─────────────────────────────────────
-// No inicializar el AudioContext aquí (debe hacerse con interacción del usuario)
-// Solo restaurar preferencias
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { SKIN_SOUND };
