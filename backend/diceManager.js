@@ -120,7 +120,8 @@ function snapshotMatch(match) {
       equippedDice:      p.equippedDice || null,
       equippedSpecial:   p.equippedSpecial || null,
       winStreak:         p.winStreak || 0,
-      lives:             p.lives != null ? p.lives : 5
+      lives:             p.lives != null ? p.lives : 5,
+      isBot:             p.isBot || false
     }))
   };
 }

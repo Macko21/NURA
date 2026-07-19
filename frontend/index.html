@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.6.3"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.7.0"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -59,11 +59,17 @@
           <button id="btn-user-profile" type="button">👤 Mi perfil</button>
           <button id="btn-user-changelog" type="button">📋 Notas de la versión</button>
           <button id="btn-user-update" type="button">🔄 Actualizar</button>
+          <div class="user-menu-divider"></div>
+          <div class="user-menu-volume-row">
+            <span id="music-vol-icon" class="music-vol-icon">🔊</span>
+            <input type="range" id="music-volume-slider" class="music-volume-slider" min="0" max="100" value="35">
+          </div>
           <button id="btn-logout-topbar" class="user-menu-logout hidden" type="button">🚪 Cerrar sesión</button>
         </div>
       </div>
       <div class="notif-wrapper hidden">
         <button id="btn-notif" class="btn-notif-bell" title="Notificaciones">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
+        <button id="btn-music-toggle" class="btn-music-toggle" title="🎵 Activar sonido">🎵</button>
         <div id="notif-panel" class="notif-panel hidden">
           <div class="notif-header">
             <span>🔔 Notificaciones</span>
@@ -109,10 +115,12 @@
         <button class="btn btn-gold glow-btn" id="btn-create">+ Crear sala</button>
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
       </div>
+      <button class="btn btn-ghost" id="btn-bot-game" style="border-color:rgba(100,200,255,.25);color:#64c8ff">🤖 Jugar vs Bots</button>
       <button class="btn btn-link" id="btn-portal">🏛️ Portal social</button>
       <button class="btn btn-link" id="btn-ranking">🏆 Ranking global</button>
       <button class="btn btn-link" id="btn-tournaments" style="color:var(--gold2)">🏆 Torneos<span id="tournament-push-badge" class="push-badge hidden">🔔</span></button>
       <button class="btn btn-link" id="btn-feedback">💬 Feedback</button>
+      <button class="btn btn-link" id="btn-rules">📖 ¿Cómo se juega?</button>
 
       <!-- Misiones diarias (MÓVIL: botón que abre el modal) -->
       <button id="btn-missions-mobile" class="btn btn-ghost hidden" onclick="openMissionTab()">🎯 Misiones diarias</button>
@@ -304,6 +312,19 @@
         <div class="profile-stat"><span class="ps-val" id="ps-highest">0</span><span class="ps-label">💥 Récord</span></div>
       </div>
 
+      <!-- Privacidad -->
+      <div class="profile-section">
+        <p class="profile-section-title">🔒 <span>Privacidad</span></p>
+        <div class="profile-setting-row">
+          <span class="profile-setting-label">Ocultar última conexión</span>
+          <span class="profile-setting-desc">Si activás esto, tus amigos verán solo "Desconectado" sin la hora exacta</span>
+          <label class="switch-toggle">
+            <input type="checkbox" id="profile-hide-last-seen">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
       <!-- INVENTARIO: Items comprados -->
       <div class="profile-section" id="profile-inventory-section">
         <p class="profile-section-title">🎒 <span>Mi Inventario</span></p>
@@ -397,6 +418,7 @@
     <div id="win-dice" class="win-dice-row"></div>
     <div class="win-actions">
       <button class="btn btn-gold" id="btn-play-again">🎲 Revancha</button>
+      <button class="btn btn-ghost" id="btn-share-win">🔥 Gané esta partida</button>
       <button class="btn btn-ghost" id="btn-new-game">← Salir</button>
     </div>
     <p id="play-again-hint" class="play-again-hint hidden">
@@ -514,6 +536,172 @@
   </div>
 </div>
 
+<!-- ══ MODAL REGLAS ══ -->
+<div id="modal-rules" class="modal hidden">
+  <div class="modal-box rules-modal-box">
+    <button id="btn-close-rules" class="close-modal-btn">✕</button>
+    <div class="rules-modal-header">
+      <span class="rules-modal-icon">📖</span>
+      <h2>¿Cómo se juega?</h2>
+      <p class="rules-modal-sub">Los 10.000 — Todo lo que necesitás saber</p>
+    </div>
+
+    <div class="rules-tabs">
+      <button class="rules-tab active" data-rules-tab="basico">🎲 Básico</button>
+      <button class="rules-tab" data-rules-tab="puntuacion">📊 Puntos</button>
+      <button class="rules-tab" data-rules-tab="estrategia">🧠 Tips</button>
+      <button class="rules-tab" data-rules-tab="glosario">📋 Glosario</button>
+    </div>
+
+    <div class="rules-scroll">
+      <!-- TAB: Básico -->
+      <div id="rules-tab-basico" class="rules-tab-content active">
+        <div class="rules-section">
+          <h3>🎯 Objetivo</h3>
+          <p>Ser el <strong>primero en llegar exactamente a 10.000 puntos</strong>. Si te pasás, perdés los puntos del turno.</p>
+        </div>
+        <div class="rules-section">
+          <h3>🔄 Tu turno</h3>
+          <ol class="rules-list">
+            <li><strong>Tirá los 6 dados</strong> — tocá el botón 🎲 <em>Tirar</em></li>
+            <li><strong>Separá al menos un dado</strong> que puntúe (1, 5 o combinaciones)</li>
+            <li>Decidí: <strong>seguir tirando</strong> los dados restantes o <strong>plantarte</strong> ✔</li>
+            <li>Si TODOS los dados puntúan → 😎 <strong>Dados calientes:</strong> tirás los 6 de nuevo</li>
+          </ol>
+        </div>
+        <div class="rules-section">
+          <h3>🚪 Entrar al juego</h3>
+          <p>Necesitás <strong>1.000+ puntos</strong> en un solo turno para entrar. Tenés <strong>3 intentos</strong>. Si no lo lográs, perdés el turno.</p>
+        </div>
+        <div class="rules-section">
+          <h3>💀 Turno muerto</h3>
+          <p>Si en una tirada <strong>ningún dado puntúa</strong>, perdés todos los puntos acumulados en el turno. ¡Cuidado!</p>
+        </div>
+        <div class="rules-section">
+          <h3>💥 Te pasaste (Bust)</h3>
+          <p>Si al plantarte <strong>superás los 10.000</strong>, perdés los puntos del turno. Hay que llegar justo.</p>
+        </div>
+        <div class="rules-section rules-highlight">
+          <h3>⏰ Tiempo por turno</h3>
+          <p>Tenés <strong>15 segundos</strong> por turno. Si se acaba el tiempo, el juego tira automáticamente por vos. Tenés <strong>5 vidas</strong> de timeout antes de ser expulsado.</p>
+        </div>
+      </div>
+
+      <!-- TAB: Puntuación -->
+      <div id="rules-tab-puntuacion" class="rules-tab-content">
+        <div class="rules-section">
+          <h3>🎲 Dados individuales</h3>
+          <table class="rules-table">
+            <tr><td class="rt-dice">⚀ 1</td><td class="rt-pts">100 pts</td></tr>
+            <tr><td class="rt-dice">⚄ 5</td><td class="rt-pts">50 pts</td></tr>
+          </table>
+        </div>
+        <div class="rules-section">
+          <h3>🔢 Tres del mismo valor</h3>
+          <table class="rules-table">
+            <tr><td class="rt-dice">⚀⚀⚀ 1+1+1</td><td class="rt-pts"><strong>1.000 pts</strong></td></tr>
+            <tr><td class="rt-dice">⚁⚁⚁ 2+2+2</td><td class="rt-pts">200 pts</td></tr>
+            <tr><td class="rt-dice">⚂⚂⚂ 3+3+3</td><td class="rt-pts">300 pts</td></tr>
+            <tr><td class="rt-dice">⚃⚃⚃ 4+4+4</td><td class="rt-pts">400 pts</td></tr>
+            <tr><td class="rt-dice">⚄⚄⚄ 5+5+5</td><td class="rt-pts">500 pts</td></tr>
+            <tr><td class="rt-dice">⚅⚅⚅ 6+6+6</td><td class="rt-pts">600 pts</td></tr>
+          </table>
+        </div>
+        <div class="rules-section">
+          <h3>🔥 Combinaciones especiales</h3>
+          <table class="rules-table">
+            <tr><td class="rt-dice">4 iguales</td><td class="rt-pts">x2 del trio</td></tr>
+            <tr><td class="rt-dice">5 iguales</td><td class="rt-pts">x4 del trio</td></tr>
+            <tr><td class="rt-dice">6 iguales</td><td class="rt-pts">x8 del trio</td></tr>
+            <tr><td class="rt-dice">3 pares</td><td class="rt-pts">1.500 pts</td></tr>
+            <tr><td class="rt-dice">Escalera 1-2-3-4-5-6</td><td class="rt-pts">3.000 pts</td></tr>
+            <tr><td class="rt-dice rt-highlight">5 unos</td><td class="rt-pts rt-gold">🏆 Victoria instantánea</td></tr>
+          </table>
+        </div>
+        <div class="rules-section rules-tip">
+          <p>💡 <strong>Tip:</strong> Si sacás 3 unos, son 1.000 pts (no 300 como los otros triples). Es la combinación más valiosa junto a la escalera.</p>
+        </div>
+      </div>
+
+      <!-- TAB: Estrategia -->
+      <div id="rules-tab-estrategia" class="rules-tab-content">
+        <div class="rules-section">
+          <h3>🧠 Consejos para ganar</h3>
+          <ul class="rules-list rules-tips">
+            <li>🎯 <strong>Entrá rápido:</strong> Enfocate en llegar a 1.000 en el primer turno. No te arriesgues de más.</li>
+            <li>📊 <strong>Plantate temprano:</strong> Si tenés 1.000+ puntos en un turno, considerar plantarte es buena idea. No siempre conviene seguir.</li>
+            <li>🎲 <strong>Con 2 dados:</strong> Si te quedan 2 dados, tenés ~33% de probabilidad de sacar al menos un 1 o 5. Evaluá el riesgo.</li>
+            <li>🔥 <strong>Dados calientes:</strong> Si puntúan todos los dados, tirás los 6 de nuevo. ¡Aprovechá para sumar grande!</li>
+            <li>👀 <strong>Mirá a los rivales:</strong> Si un rival está cerca de 10.000, tomá más riesgos. Si va atrás, sé conservador.</li>
+            <li>💥 <strong>Cuidado con el bust:</strong> Si estás en 9.500, no te arriesgues a pasarte. Plantate y sumá seguro.</li>
+          </ul>
+        </div>
+        <div class="rules-section">
+          <h3>⚡ Para principiantes</h3>
+          <ul class="rules-list rules-tips">
+            <li>Empezá siempre separando los 1 y 5</li>
+            <li>No intentés combos grandes al principio</li>
+            <li>Si no sabés qué hacer, plantate con lo que tengas</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- TAB: Glosario -->
+      <div id="rules-tab-glosario" class="rules-tab-content">
+        <div class="rules-section">
+          <h3>📋 Términos del juego</h3>
+          <table class="rules-table rules-glossary">
+            <tr><td><strong>Plantarse</strong></td><td>Guardar los puntos acumulados y pasar el turno</td></tr>
+            <tr><td><strong>Bust</strong></td><td>Pasarse de 10.000 → perdés los puntos del turno</td></tr>
+            <tr><td><strong>Dados calientes</strong></td><td>Todos los dados puntúan → tirás otra vez los 6</td></tr>
+            <tr><td><strong>Entrada</strong></td><td>Necesitás 1.000+ puntos en un turno para empezar a sumar</td></tr>
+            <tr><td><strong>Turno muerto</strong></td><td>Ningún dado puntúa → perdés todo lo acumulado en el turno</td></tr>
+            <tr><td><strong>Timeout</strong></td><td>Se acabaron los 15 segundos → auto-tirada</td></tr>
+            <tr><td><strong>Vidas</strong></td><td>Tenés 5 vidas de timeout. Al perderlas, te expulsan</td></tr>
+            <tr><td><strong>Revancha</strong></td><td>Volvés a jugar contra los mismos rivales</td></tr>
+            <tr><td><strong>Boost</strong></td><td>Item especial que duplica las monedas ganadas por 15 min</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="rules-footer">
+      <button id="btn-rules-tour" class="btn btn-gold" style="width:auto;padding:8px 18px;font-size:12px">🎮 Tour guiado</button>
+      <button id="btn-rules-close" class="btn btn-ghost" style="width:auto;padding:8px 18px;font-size:12px">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL BOTS ══ -->
+<div id="modal-bot-game" class="modal hidden">
+  <div class="modal-box" style="max-width:400px">
+    <button id="btn-close-bot-game" class="close-modal-btn">✕</button>
+    <h2 style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:4px;font-size:20px">🤖 Jugar contra Bots</h2>
+    <p class="shop-desc">Elegí la cantidad de bots y la dificultad</p>
+    <div class="bot-config">
+      <div class="bot-config-row">
+        <label class="bot-config-label">Cantidad de bots</label>
+        <div class="bot-count-selector">
+          <button class="bot-count-btn active" data-count="1">1</button>
+          <button class="bot-count-btn" data-count="2">2</button>
+          <button class="bot-count-btn" data-count="3">3</button>
+          <button class="bot-count-btn" data-count="4">4</button>
+          <button class="bot-count-btn" data-count="5">5</button>
+        </div>
+      </div>
+      <div class="bot-config-row">
+        <label class="bot-config-label">Dificultad</label>
+        <div class="bot-diff-selector">
+          <button class="bot-diff-btn" data-diff="easy">🌱 Fácil</button>
+          <button class="bot-diff-btn active" data-diff="normal">⚖️ Normal</button>
+          <button class="bot-diff-btn" data-diff="hard">🔥 Difícil</button>
+        </div>
+      </div>
+      <button id="btn-start-bot-game" class="btn btn-gold glow-btn" style="margin-top:12px">🎮 Empezar partida</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL INVITAR JUGADOR ══ -->
 <div id="modal-invite" class="modal hidden">
   <div class="modal-box" style="max-width:400px">
@@ -532,6 +720,27 @@
   <span class="pwa-install-text">📲 Instalá Los 10.000 como app</span>
   <button id="pwa-install-btn" class="pwa-install-btn">Instalar</button>
   <button id="pwa-install-close" class="pwa-install-close">✕</button>
+</div>
+
+<!-- ══ TOUR OVERLAY ══ -->
+<div id="tour-overlay" class="tour-overlay hidden">
+  <div class="tour-backdrop"></div>
+  <div class="tour-spotlight" id="tour-spotlight"></div>
+  <div class="tour-card" id="tour-card">
+    <div class="tour-card-header">
+      <span class="tour-step-badge" id="tour-step-badge">1/6</span>
+      <button id="tour-skip" class="tour-skip-btn">✕ Saltar</button>
+    </div>
+    <div class="tour-card-body">
+      <div class="tour-icon" id="tour-icon">🎲</div>
+      <h3 class="tour-title" id="tour-title">Bienvenido</h3>
+      <p class="tour-desc" id="tour-desc">Texto del paso</p>
+    </div>
+    <div class="tour-card-footer">
+      <button id="tour-prev" class="tour-nav-btn" disabled>‹ Anterior</button>
+      <button id="tour-next" class="btn btn-gold" style="width:auto;padding:8px 18px;font-size:12px">Siguiente →</button>
+    </div>
+  </div>
 </div>
 
 <!-- ══ TOAST ══ -->
@@ -558,10 +767,10 @@
     }).catch(function(){});
   }
 })();
-</script><script src="/version.js?v=3.6.3"></script>
-  <script src="/dice-renderer.js?v=3.6.3"></script>
-  <script src="/audio.js?v=3.6.3"></script>
-  <script src="/app.js?v=3.6.3"></script>
+</script><script src="/version.js?v=3.7.0"></script>
+  <script src="/dice-renderer.js?v=3.7.0"></script>
+  <script src="/audio.js?v=3.7.0"></script>
+  <script src="/app.js?v=3.7.0"></script>
 <!-- FIN ⚠️ -->
 
 

@@ -92,7 +92,12 @@ function createPlayerState(player) {
     /**
      * Racha de victorias (cargada desde BD)
      */
-    winStreak: player.winStreak || 0
+    winStreak: player.winStreak || 0,
+
+    /**
+     * Es un bot (jugador automático)
+     */
+    isBot: player.isBot || false
   };
 }
 

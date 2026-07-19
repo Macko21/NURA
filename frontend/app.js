@@ -440,13 +440,10 @@ async function checkPushStatus() {
     if (!registration) return false;
     const sub = await registration.pushManager.getSubscription();
     const browserSubscribed = !!sub;
-    const savedPref = localStorage.getItem('macko_push') === 'subscribed';
     if (browserSubscribed) {
       _pushSubscribed = true;
       localStorage.setItem('macko_push', 'subscribed');
       updatePushBtn();
-    } else if (savedPref && (typeof Notification === 'undefined' || Notification.permission !== 'denied')) {
-      return await subscribeToPush();
     } else {
       _pushSubscribed = false;
       localStorage.removeItem('macko_push');
@@ -721,6 +718,9 @@ function launchConfetti() {
 
 // ── Sistema de audio → audio.js ───────────────────────
 // (AC, ac, tone, SFX, SKIN_PARTICLES, spawnSkinParticles, SKIN_SOUND, getActiveSkinAudio, playSkinRoll, playSkinScore, playSkinHot)
+// Funciones de música (definidas en audio.js):
+// startLobbyMusic, startGameMusic, startRoomMusic, playWinMusic, stopMusic,
+// toggleMute, isMuted, getMusicVolume, setMusicVolume, SFX, ensureAudioContext
 
 /* ── Helpers ─────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
@@ -764,6 +764,65 @@ function preparePlayerIdentity() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  // Gestión de música de fondo según la pantalla
+  if (id === 'screen-lobby') {
+    startLobbyMusic();
+  } else if (id === 'screen-room') {
+    startRoomMusic();
+  } else if (id === 'screen-game') {
+    startGameMusic();
+  } else if (id === 'screen-ranking') {
+    startRankingMusic();
+  } else if (id === 'screen-profile') {
+    startProfileMusic();
+  } else if (id === 'screen-portal') {
+    startPortalMusic();
+  } else {
+    // Pantallas de auth, join, ranking, etc. → silencio
+    stopMusic();
+  }
+  // Actualizar estado del botón de música
+  updateMusicBtn();
+}
+
+// ── Botón de música ────────────────────────────────────
+function updateMusicBtn() {
+  const btn = $('btn-music-toggle');
+  if (!btn) return;
+  const vol = getMusicVolume();
+  if (_isMuted || vol === 0) {
+    btn.textContent = '🔇';
+    btn.title = 'Sonido desactivado';
+  } else if (vol < 0.33) {
+    btn.textContent = '🔈';
+    btn.title = `Volumen ${Math.round(vol * 100)}%`;
+  } else if (vol < 0.66) {
+    btn.textContent = '🔉';
+    btn.title = `Volumen ${Math.round(vol * 100)}%`;
+  } else {
+    btn.textContent = '🔊';
+    btn.title = `Volumen ${Math.round(vol * 100)}%`;
+  }
+  // Sincronizar slider si existe
+  const slider = $('music-volume-slider');
+  if (slider) slider.value = Math.round(vol * 100);
+  const icon = $('music-vol-icon');
+  if (icon) icon.textContent = btn.textContent;
+}
+
+function toggleMusic() {
+  ensureAudioContext();
+  const nowMuted = toggleMute(); // toggleMute() devuelve el NUEVO estado
+  if (!nowMuted && _musicType) {
+    // Se acaba de desmutear → reiniciar música según pantalla actual
+    const activeScreen = document.querySelector('.screen.active');
+    if (activeScreen) showScreen(activeScreen.id);
+    else startLobbyMusic();
+  } else if (nowMuted) {
+    // Se acaba de mutear → detener música
+    stopMusic();
+  }
+  updateMusicBtn();
 }
 
 let _toastT;
@@ -1357,10 +1416,16 @@ function handle(type, data) {
       $('turn-points').textContent = '0';
       $('roll-count').textContent  = '— / 3';
       $('bank-pts').textContent    = '';
+      // Detectar si es turno de un bot
+      const _curPlayer = data.match?.players?.find(p => p.id === data.playerId);
+      const _isBotTurn = _curPlayer && _curPlayer.isBot;
       if (data.playerId === S.id) {
         clearDice();
         setMsg('','');
         startTimer(TURN_SECS);
+      } else if (_isBotTurn) {
+        stopTimer();
+        setMsg(`🤖 ${data.playerName} está pensando...`, 'bot');
       } else {
         stopTimer();
         setMsg(`Turno de ${data.playerName}`, '');
@@ -1550,10 +1615,12 @@ function handle(type, data) {
     case 'FRIEND_ACCEPTED':
       toast(`✅ ${data.byName} aceptó tu solicitud de amistad`, 4000);
       addNotification(`${data.byName}`, 'Aceptó tu solicitud de amistad', 'system');
+      loadPortalFriends();
       break;
 
     case 'FRIEND_ACCEPTED_OK':
       toast('✅ Amigo agregado', 'success');
+      loadPortalFriends();
       break;
 
     case 'FRIEND_REJECTED_OK':
@@ -1746,6 +1813,10 @@ function renderSB(match) {
       sub = p.entryAttemptsUsed>0 ? '⏳ intentando...' : '🔒 sin entrar';
     } else if (isCur && p.turnPoints>0) {
       sub = `🎲 +${p.turnPoints} turno`;
+    } else if (isCur && p.isBot) {
+      sub = '<span class="bot-thinking">🤔 pensando</span>';
+    } else if (p.isBot) {
+      sub = '🤖 bot';
     } else {
       sub = '✅ en juego';
     }
@@ -2033,19 +2104,24 @@ async function loadPortalFriends() {
       list.innerHTML = '<p class="portal-empty">Sin amigos aún. Buscalos por nombre 🔍</p>';
       return;
     }
-    // Online check: el server devuelve is_online según si tiene WebSocket activo
     list.innerHTML = friends.map(f => {
       const isOnline = f.is_online || false;
-      const timeAgo = f.last_seen > 0 ? formatTimeAgo(f.last_seen) : 'nunca conectado';
+      let statusHtml;
+      if (isOnline) {
+        statusHtml = '<span class="friend-online-tag">Conectado</span>';
+      } else if (f.hide_last_seen) {
+        statusHtml = '<span class="friend-offline-tag">Desconectado</span>';
+      } else if (f.last_seen > 0) {
+        statusHtml = `<span class="friend-offline-tag">${formatTimeAgo(f.last_seen)}</span>`;
+      } else {
+        statusHtml = '<span class="friend-offline-tag">Sin conexión</span>';
+      }
       return `
       <div class="portal-friend-item">
         <span class="portal-friend-status ${isOnline ? 'online' : 'offline'}"></span>
         <span class="portal-friend-av">${f.equipped_avatar ? f.equipped_avatar : '👤'}</span>
         <span class="portal-friend-name">${esc(f.alias || f.name)}</span>
-        <span class="portal-friend-stats">
-          ${isOnline ? '<span class="friend-online-tag">En línea</span>' : `<span class="friend-offline-tag">${timeAgo}</span>`}
-          ${f.games_won || 0}🏆
-        </span>
+        <span class="portal-friend-stats">${statusHtml}</span>
         <button class="portal-friend-msg" data-id="${esc(f.id)}" data-name="${esc(f.alias || f.name)}" title="Enviar mensaje">💬</button>
         <button class="portal-friend-remove" data-id="${esc(f.id)}" title="Eliminar amigo">✕</button>
       </div>
@@ -3056,6 +3132,53 @@ function initUI() {
     showScreen('screen-join');
   };
 
+  /* ── Partida contra bots ────────────────────────────────── */
+  $('btn-bot-game')?.addEventListener('click', () => {
+    if (!preparePlayerIdentity()) {
+      toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre');
+      return;
+    }
+    $('modal-bot-game')?.classList.remove('hidden');
+  });
+
+  // Bot count selector
+  document.querySelectorAll('.bot-count-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.bot-count-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Bot difficulty selector
+  document.querySelectorAll('.bot-diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.bot-diff-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Close bot modal
+  $('btn-close-bot-game')?.addEventListener('click', () => {
+    $('modal-bot-game')?.classList.add('hidden');
+  });
+
+  // Start bot game
+  $('btn-start-bot-game')?.addEventListener('click', () => {
+    if (S.ws?.readyState !== WebSocket.OPEN) {
+      toast('Conectando al servidor...', 2000);
+      connect(() => { setTimeout(() => $('btn-start-bot-game')?.click(), 500); });
+      return;
+    }
+    const countEl = document.querySelector('.bot-count-btn.active');
+    const diffEl = document.querySelector('.bot-diff-btn.active');
+    if (!countEl || !diffEl) { toast('Seleccioná cantidad y dificultad', 'error'); return; }
+    const botCount = parseInt(countEl.dataset.count);
+    const difficulty = diffEl.dataset.diff;
+    $('modal-bot-game')?.classList.add('hidden');
+    toast('🎮 Creando partida contra bots...', 2000);
+    wsSend('START_BOT_GAME', { botCount, difficulty, playerId: S.id, playerName: getPlayerName() });
+  });
+
   /* ── Cofre diario ──────────────────────────────────────── */
   loadChestStatus();
   $('btn-chest').onclick = async () => {
@@ -3239,7 +3362,6 @@ function initUI() {
       pushSwitch.disabled = true;
       if (shouldEnable) await subscribeToPush();
       else await unsubscribeFromPush();
-      await checkPushStatus();
       pushSwitch.disabled = false;
     });
     updatePushBtn();
@@ -3262,6 +3384,30 @@ function initUI() {
     markAllRead();
     renderNotifPanel();
   });
+  /* ── Music toggle ──────────────────────────────── */
+  $('btn-music-toggle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMusic();
+    // SFX.click() lo maneja el handler global
+  });
+
+  /* ── Volume slider ─────────────────────────────── */
+  const volSlider = $('music-volume-slider');
+  if (volSlider) {
+    // Sincronizar valor inicial
+    volSlider.value = Math.round(getMusicVolume() * 100);
+    volSlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      const vol = parseInt(e.target.value, 10) / 100;
+      setMusicVolume(vol);
+      // Si estaba muteado y sube el volumen, desmutear automáticamente
+      if (isMuted() && vol > 0) {
+        toggleMusic(); // desmutea
+      }
+      updateMusicBtn();
+      SFX.tick();
+    });
+  }
   // Cerrar panel al hacer click afuera
   document.addEventListener('click', (e) => {
     const panel = $('notif-panel');
@@ -3272,6 +3418,33 @@ function initUI() {
       $('btn-user-menu')?.setAttribute('aria-expanded', 'false');
     }
   });
+
+  /* ── Global click SFX ─────────────────────────────── */
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    // Excluir inputs, sliders y elementos con data-no-sfx
+    if (!target || target.closest('input, textarea, [type="range"], [data-no-sfx]')) return;
+    // Solo reproducir en botones y links
+    if (target.closest('button, a')) {
+      SFX.click();
+    }
+  }, { capture: true });
+
+  /* ── Global hover SFX (menú principal) ────────────── */
+  let _lastHoverTime = 0;
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target;
+    // Excluir inputs, sliders y data-no-sfx
+    if (!target || target.closest('input, textarea, [data-no-sfx]')) return;
+    // Solo botones del menú principal (.btn-gold, .btn-ghost, .btn-link)
+    const btn = target.closest('.btn-gold, .btn-ghost, .btn-link');
+    if (!btn || !btn.closest('.lobby-form, .top-bar')) return;
+    // Debounce: no repetir si pasaron menos de 80ms
+    const now = Date.now();
+    if (now - _lastHoverTime < 80) return;
+    _lastHoverTime = now;
+    SFX.hover();
+  }, { capture: true });
 
   // Check push status after login — also triggered reliably inside btn-login's handler
 
@@ -3649,6 +3822,31 @@ async function loadProfile() {
     $('ps-streak').textContent = p.winStreak || 0;
     $('ps-total').textContent = (p.totalScore || 0).toLocaleString();
     $('ps-highest').textContent = (p.highestScore || 0).toLocaleString();
+
+    // Privacidad: toggle ocultar última conexión
+    const hideLastSeenToggle = $('profile-hide-last-seen');
+    if (hideLastSeenToggle) {
+      hideLastSeenToggle.checked = !!p.hide_last_seen;
+      // Reemplazar event listeners previos (clonar y re-asignar evita duplicados)
+      const newToggle = hideLastSeenToggle.cloneNode(true);
+      hideLastSeenToggle.parentNode.replaceChild(newToggle, hideLastSeenToggle);
+      newToggle.addEventListener('change', async function() {
+        const token = localStorage.getItem('gameToken');
+        if (!token) return;
+        try {
+          const res = await fetch('/api/user/hide-last-seen', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ hide: this.checked })
+          });
+          if (res.ok) {
+            toast(this.checked ? '🔒 Última conexión oculta' : '🔓 Última conexión visible', 'success');
+          }
+        } catch(e) {
+          toast('Error al guardar preferencia', 'error');
+        }
+      });
+    }
 
     $('profile-loading').classList.add('hidden');
     $('profile-content').classList.remove('hidden');
@@ -4460,8 +4658,248 @@ async function loadCoinPacks() {
   }
 }
 
+/* ════════════════════════════════════════════════════════
+   REGLAS Y TUTORIAL
+   ════════════════════════════════════════════════════════ */
+
+/* ── Modal de reglas ───────────────────────────────── */
+function openRules() {
+  $('modal-rules')?.classList.remove('hidden');
+}
+
+function closeRules() {
+  $('modal-rules')?.classList.add('hidden');
+}
+
+// Inicializar tabs del modal de reglas
+function initRulesTabs() {
+  const tabs = document.querySelectorAll('.rules-tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.rules-tab-content').forEach(c => c.classList.remove('active'));
+      const target = document.getElementById('rules-tab-' + tab.dataset.rulesTab);
+      if (target) target.classList.add('active');
+    });
+  });
+}
+
+/* ── Tour interactivo ───────────────────────────────── */
+const TOUR_STEPS = [
+  {
+    icon: '🎲',
+    title: '¡Bienvenido a Los 10.000!',
+    desc: 'Este es el <strong>lobby principal</strong>. Acá podés crear una sala, unirte a una partida, o explorar el portal social. ¡Vamos a mostrarte cómo funciona!'
+  },
+  {
+    icon: '🎯',
+    title: 'Crear o unirse',
+    desc: 'Tocá <strong>"+ Crear sala"</strong> para crear tu propia partida, o <strong>"→ Unirse"</strong> para ingresar un código de sala. Necesitás al menos <strong>2 jugadores</strong> para jugar.',
+    highlight: 'btn-create',
+    highlightPadding: 8
+  },
+  {
+    icon: '🏛️',
+    title: 'Portal social',
+    desc: 'En el <strong>Portal social</strong> podés ver tus amigos, chatear con ellos, buscar jugadores, y ver partidas activas para unirte.',
+    highlight: 'btn-portal',
+    highlightPadding: 8
+  },
+  {
+    icon: '🏆',
+    title: 'Torneos y Ranking',
+    desc: 'Competí en <strong>torneos automáticos</strong> y subí en el <strong>ranking global</strong>. Ganá monedas, skins y demostrá quién es el mejor.',
+    highlight: 'btn-tournaments',
+    highlightPadding: 8
+  },
+  {
+    icon: '🎲',
+    title: 'Cómo se juega',
+    desc: 'En tu turno, tirá los <strong>6 dados</strong>. Separá los que puntúen (1 = 100pts, 5 = 50pts). Podés <strong>seguir tirando</strong> o <strong>plantarte</strong>. ¡Llegá a <strong>10.000 exactos</strong> para ganar!',
+    highlight: 'btn-rules',
+    highlightPadding: 8
+  },
+  {
+    icon: '🚀',
+    title: '¡A jugar!',
+    desc: 'Ya sabés lo básico. Creá una sala o unite a una partida existente. Recordá: necesitás <strong>1.000+ pts</strong> para entrar al juego. ¡Suerte! 🍀'
+  }
+];
+
+let _tourStep = 0;
+let _tourActive = false;
+
+function startTour(fromStep) {
+  _tourStep = fromStep || 0;
+  _tourActive = true;
+  const overlay = $('tour-overlay');
+  const spotlight = $('tour-spotlight');
+  if (overlay) overlay.classList.remove('hidden');
+  
+  // Cerrar modal de reglas si está abierto
+  closeRules();
+  
+  renderTourStep();
+}
+
+function renderTourStep() {
+  const step = TOUR_STEPS[_tourStep];
+  if (!step) { endTour(); return; }
+  
+  $('tour-step-badge').textContent = (_tourStep + 1) + '/' + TOUR_STEPS.length;
+  $('tour-icon').textContent = step.icon;
+  $('tour-title').textContent = step.title;
+  $('tour-desc').innerHTML = step.desc;
+  
+  // Navegación
+  $('tour-prev').disabled = _tourStep === 0;
+  $('tour-next').textContent = _tourStep === TOUR_STEPS.length - 1 ? '🎉 ¡Listo!' : 'Siguiente →';
+  
+  // Spotlight highlight (doble RAF para asegurar layout final)
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const spotlight = $('tour-spotlight');
+    const padding = step.highlightPadding || 4;
+    if (step.highlight) {
+      const target = $(step.highlight);
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        spotlight.classList.remove('hidden');
+        spotlight.style.left = (rect.left - padding) + 'px';
+        spotlight.style.top = (rect.top - padding) + 'px';
+        spotlight.style.width = (rect.width + padding * 2) + 'px';
+        spotlight.style.height = (rect.height + padding * 2) + 'px';
+      } else {
+        spotlight.classList.add('hidden');
+      }
+    } else {
+      spotlight.classList.add('hidden');
+    }
+  }));
+}
+
+function nextTourStep() {
+  if (_tourStep < TOUR_STEPS.length - 1) {
+    _tourStep++;
+    renderTourStep();
+  } else {
+    endTour();
+    toast('🎲 ¡Ya estás listo para jugar!', 3500);
+  }
+}
+
+function prevTourStep() {
+  if (_tourStep > 0) {
+    _tourStep--;
+    renderTourStep();
+  }
+}
+
+function endTour() {
+  _tourActive = false;
+  _tourStep = 0;
+  const overlay = $('tour-overlay');
+  const spotlight = $('tour-spotlight');
+  if (overlay) overlay.classList.add('hidden');
+  if (spotlight) spotlight.classList.add('hidden');
+  // Marcar que el tour ya se vio
+  localStorage.setItem('macko_tour_seen', '1');
+}
+
+/* ── Detectar primer ingreso ────────────────────────── */
+function checkFirstTimeTutorial() {
+  const tourSeen = localStorage.getItem('macko_tour_seen');
+  if (!tourSeen) {
+    // Esperar hasta que el lobby esté visible (el usuario puede estar en Auth)
+    const waitForLobby = setInterval(() => {
+      const lobby = $('screen-lobby');
+      if (lobby && lobby.classList.contains('active')) {
+        clearInterval(waitForLobby);
+        setTimeout(() => startTour(0), 800);
+      }
+    }, 300);
+    // Timeout de seguridad por si nunca llega al lobby
+    setTimeout(() => clearInterval(waitForLobby), 15000);
+  }
+}
+
+/* ── Compartir victoria en redes ─────────────────────── */
+function shareWin() {
+  const playerName = $('win-name')?.textContent?.replace('¡','').replace('!','').trim() || 'Alguien';
+  const gameUrl = window.location.href.split('?')[0].split('#')[0];
+  const roomCode = S.roomCode ? `\n📋 Código de sala: ${S.roomCode}` : '';
+  const text = `🎲 ¡${playerName} ganó una partida de Los 10.000 de Macko! 🏆${roomCode}\n\nJugá online gratis en: ${gameUrl}\n#Los10000DeMacko #JuegoDeDados`;
+  
+  if (navigator.share) {
+    navigator.share({ title: 'Los 10.000 de Macko', text, url: gameUrl })
+      .then(() => toast('📤 Publicado', 2500))
+      .catch(() => {});
+  } else if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('📋 Texto copiado al portapapeles', 3000);
+    }).catch(() => {
+      // Fallback manual
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); toast('📋 Copiado al portapapeles', 3000); }
+  catch(e) { toast('Copiá este texto manualmente: ' + text.slice(0, 60) + '...', 4000); }
+  document.body.removeChild(ta);
+}
+
+// Cerrar tour con Escape (con cleanup para evitar duplicados)
+function _tourKeydown(e) {
+  if (e.key === 'Escape' && _tourActive) endTour();
+}
+document.removeEventListener('keydown', _tourKeydown);
+document.addEventListener('keydown', _tourKeydown);
+
 /* ── Arranque ────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  initRulesTabs();
+  // Detectar primer ingreso para tour guiado
+  checkFirstTimeTutorial();
+  
+  // Bind rules button
+  const rulesBtn = $('btn-rules');
+  if (rulesBtn) rulesBtn.onclick = openRules;
+  
+  const closeRulesBtn = $('btn-close-rules');
+  if (closeRulesBtn) closeRulesBtn.onclick = closeRules;
+  
+  const closeRulesBtn2 = $('btn-rules-close');
+  if (closeRulesBtn2) closeRulesBtn2.onclick = closeRules;
+  
+  // Share win button
+  const shareWinBtn = $('btn-share-win');
+  if (shareWinBtn) shareWinBtn.onclick = shareWin;
+  
+  const tourBtn = $('btn-rules-tour');
+  if (tourBtn) tourBtn.onclick = () => startTour(0);
+  
+  // Tour navigation
+  const tourNext = $('tour-next');
+  if (tourNext) tourNext.onclick = nextTourStep;
+  
+  const tourPrev = $('tour-prev');
+  if (tourPrev) tourPrev.onclick = prevTourStep;
+  
+  const tourSkip = $('tour-skip');
+  if (tourSkip) tourSkip.onclick = endTour;
+  
+  // Click on backdrop to skip tour
+  const tourBackdrop = document.querySelector('.tour-backdrop');
+  if (tourBackdrop) tourBackdrop.onclick = endTour;
   initUI();
   setInterval(checkUpdateIndicator, 5 * 60 * 1000);
   if (sessionStorage.getItem('macko_show_changelog_after_update') === '1') {

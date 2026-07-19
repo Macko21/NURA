@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const path      = require("path");
@@ -45,6 +45,8 @@ const {
 
 const { createPlayerState, setWinner } = require("./matchState");
 const { register, login, requireAuth, requestPasswordReset } = require("./authManager");
+const botManager = require("./botManager");
+const botGameHandler = require("./botGameHandler");
 
 const {
   initTournamentManager,
@@ -235,6 +237,18 @@ app.get("/api/user/profile", requireAuth, async (req, res) => {
     res.json(profile);
   } catch (err) {
     console.error("Error perfil:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/user/hide-last-seen", requireAuth, async (req, res) => {
+  try {
+    const { hide } = req.body;
+    const playerId = req.user.playerId;
+    const result = await updateHideLastSeen(playerId, !!hide);
+    res.json(result);
+  } catch (err) {
+    console.error("Error hide-last-seen:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1487,6 +1501,7 @@ console.log("🎲 Iniciando Los 10.000 de Macko...");
 
 const clients      = new Map(); // playerId → socket
 const reconnTimers = new Map(); // playerId → timeoutId
+const botTurnTimers = new Map(); // timerId → {roomId, playerId} bot turns timeout
 const RECONN_MS    = 120_000;
 const XP_PER_GAME   = 25;
 const XP_PER_WIN    = 50;
@@ -1592,41 +1607,47 @@ async function onMatchWon(match, roomId) {
   });
   destroyMatch(roomId);
 
-  try {
-    await registerWin(winner.id);
-    
-    // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
-    // Ordenar jugadores por score descendente (el ganador ya está en match.winner)
-    const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
-    
-    // Premier al 1° con 500, 2° con 200, 3° con 100 monedas
-    const rewards = [500, 200, 100];
-    for (let i = 0; i < Math.min(sortedByScore.length, 3); i++) {
-      const player = sortedByScore[i];
-      const amount = rewards[i];
-      if (amount > 0 && player.id) {
-        // rewardWinner maneja la transacción con BEGIN/COMMIT, pero no podemos
-        // usar transacción anidada. Llamamos una por una.
-        try {
-          await rewardWinner(player.id, amount);
-          console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
-        } catch (e) {
-          console.error(`Error al premiar a ${player.id}:`, e.message);
+  // Si es partida contra bots, saltar toda la lógica de BD (no hay jugadores reales para premiar)
+  const isBotGame = room && room.isBotGame;
+  if (!isBotGame) {
+    try {
+      await registerWin(winner.id);
+      
+      // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
+      // Ordenar jugadores por score descendente (el ganador ya está en match.winner)
+      const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+      
+      // Premier al 1° con 500, 2° con 200, 3° con 100 monedas
+      const rewards = [500, 200, 100];
+      for (let i = 0; i < Math.min(sortedByScore.length, 3); i++) {
+        const player = sortedByScore[i];
+        const amount = rewards[i];
+        if (amount > 0 && player.id) {
+          // rewardWinner maneja la transacción con BEGIN/COMMIT, pero no podemos
+          // usar transacción anidada. Llamamos una por una.
+          try {
+            await rewardWinner(player.id, amount);
+            console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
+          } catch (e) {
+            console.error(`Error al premiar a ${player.id}:`, e.message);
+          }
         }
       }
-    }
-    
-    // Dar XP base a todos los jugadores
-    for (const p of match.players) {
-      try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
-    }
-    for (const p of match.players) {
-      await registerGamePlayed(p.id, p.score);
-      if (p.id !== winner.id) await resetWinStreak(p.id);
-      if (p.straights > 0) await registerStraight(p.id);
-      if (p.fiveOnes  > 0) await registerFiveOnes(p.id);
-    }
-  } catch (e) { console.error("DB post-win:", e.message); }
+      
+      // Dar XP base a todos los jugadores
+      for (const p of match.players) {
+        try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
+      }
+      for (const p of match.players) {
+        await registerGamePlayed(p.id, p.score);
+        if (p.id !== winner.id) await resetWinStreak(p.id);
+        if (p.straights > 0) await registerStraight(p.id);
+        if (p.fiveOnes  > 0) await registerFiveOnes(p.id);
+      }
+    } catch (e) { console.error("DB post-win:", e.message); }
+  } else {
+    console.log(`🤖 Partida contra bots finalizada. Ganador: ${winner.name || winner.id}`);
+  }
 
   if (room && room.status === "waiting") {
     // Limpiar invitados desconectados al terminar la partida
@@ -2383,6 +2404,66 @@ wss.on("connection", socket => {
         console.log('🧹 Limpieza de invitados antiguos completada');
       } catch(e) {}
       return;
+      }
+
+      if (type === "START_BOT_GAME") {
+        try {
+          const { botCount, difficulty } = data;
+          if (!botCount || botCount < 1 || botCount > 5) {
+            send(socket, "ERROR", { message: "Cantidad de bots inválida (1-5)" });
+            return;
+          }
+          const validDiff = ['easy','normal','hard'];
+          if (!validDiff.includes(difficulty)) {
+            send(socket, "ERROR", { message: "Dificultad inválida (easy/normal/hard)" });
+            return;
+          }
+          // Obtener datos del jugador
+          const playerName = data.playerName || socket.playerName || 'Jugador';
+          const playerId = data.playerId || socket.playerId;
+          if (!playerId) {
+            send(socket, "ERROR", { message: "No se pudo identificar al jugador" });
+            return;
+          }
+
+          // Crear sala para la partida contra bots
+          const room = createRoom({ ownerId: playerId, ownerName: playerName, isPrivate: true, maxPlayers: 10 });
+          room.isBotGame = true;
+          
+          // Vincular socket a la sala
+          clients.set(playerId, socket);
+          socket.playerId = playerId;
+          socket.playerName = playerName;
+          socket.roomId = room.id;
+          
+          // Enviar ROOM_CREATED al jugador
+          send(socket, "ROOM_CREATED", { room });
+          
+          // Agregar bots a la sala
+          botGameHandler.addBotsToRoom(room, botCount, difficulty);
+          
+          // Marcar al jugador humano como listo
+          setReady(room.id, playerId, true);
+          
+          // Iniciar partida automáticamente
+          setTimeout(async () => {
+            try {
+              await startMatchForRoom(room.id);
+              // Programar el primer turno de bot si es necesario
+              setTimeout(() => {
+                botGameHandler.scheduleBotTurnIfNeeded(room.id, broadcastRoom);
+              }, 1000);
+            } catch (e) {
+              console.error("Error starting bot match:", e.message);
+            }
+          }, 500);
+          
+          console.log(`🤖 Partida contra bots iniciada: ${botCount} bots (${difficulty}), jugador: ${playerName}`);
+        } catch (err) {
+          console.error("Error en START_BOT_GAME:", err);
+          send(socket, "ERROR", { message: "Error al iniciar partida contra bots" });
+        }
+        return;
       }
 
     } catch (err) {

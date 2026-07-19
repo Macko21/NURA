@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.6.3";
+const GAME_VERSION = "3.7.0";
 
 const CHANGELOG = [
+  // ═══ 3.7.0 — GAME ═══
+  {
+    version: "3.7.0",
+    date: "2026-07-18",
+    title: "🤖 Partidas contra bots + Música ambiente + Sonido mejorado",
+    scope: "game",
+    files: ["backend/botManager.js", "backend/botGameHandler.js", "backend/server.js", "backend/matchState.js", "backend/diceManager.js", "frontend/index.html", "frontend/app.js", "frontend/styles.css", "frontend/audio.js"],
+    changes: [
+      "🤖 Jugar contra bots: hasta 5 oponentes con 3 niveles de dificultad (Fácil/Normal/Difícil)",
+      "🎵 Música ambiente para las pantallas de Perfil, Portal Social y Ranking",
+      "🔊 Slider de volumen para la música en el menú de usuario",
+      "🖱️ Efectos de sonido al hacer click en botones y hover en el menú principal",
+      "🤔 Indicadores visuales en el marcador cuando un bot está pensando o jugando",
+      "🎮 Los bots tienen nombres temáticos (🤖 Tron, ⚡ Byte, 🎲 D20, etc.)"
+    ]
+  },
   // ═══ 3.6.3 — GAME ═══
   {
     version: "3.6.3",
