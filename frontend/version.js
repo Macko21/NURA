@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.4";
+const GAME_VERSION = "3.7.5";
 
 const CHANGELOG = [
+  // ═══ 3.7.5 — GAME ═══
+  {
+    version: "3.7.5",
+    date: "2026-07-18",
+    title: "🎨 Bots con items de tienda + volumen en mobile",
+    scope: "game",
+    files: ["backend/botManager.js", "backend/botGameHandler.js", "frontend/audio.js"],
+    changes: [
+      "🎨 Bots ahora usan skins de dados, avatares y efectos especiales aleatorios de la tienda",
+      "📢 Propaganda integrada: los jugadores ven items que pueden comprar al jugar contra bots",
+      "📱 Fix: volumen de música ahora funciona en mobile y PWA — usa Web Audio API con GainNode",
+    ]
+  },
   // ═══ 3.7.4 — GAME ═══
   {
     version: "3.7.4",

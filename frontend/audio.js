@@ -72,7 +72,7 @@ function isSfxMuted() { return _sfxMuted; }
 
 function setMusicVolume(vol) {
   _musicVolume = Math.max(0, Math.min(1, vol));
-  if (_musicPlayer) _musicPlayer.volume = _musicMuted ? 0 : _musicVolume;
+  if (_musicGain) _musicGain.gain.value = _musicMuted ? 0 : _musicVolume;
   saveAudioPrefs();
   _updateSoundUI();
 }
@@ -85,10 +85,9 @@ function setSfxVolume(vol) {
 
 function toggleMusicMute() {
   _musicMuted = !_musicMuted;
-  if (_musicPlayer) _musicPlayer.volume = _musicMuted ? 0 : _musicVolume;
+  if (_musicGain) _musicGain.gain.value = _musicMuted ? 0 : _musicVolume;
   if (_musicMuted) _stopMusic();
   else {
-    // Reanudar según pantalla activa
     const active = document.querySelector('.screen.active');
     startMusicForScreen(active ? active.id : 'screen-lobby');
   }
@@ -104,26 +103,58 @@ function toggleSfxMute() {
   return _sfxMuted;
 }
 
-// ── Música mp3 ───────────────────────────────────────
+// ── Música mp3 (Web Audio API para volumen cross-platform) ──
+let _musicSource = null;  // AudioBufferSourceNode activo
+let _musicGain = null;    // GainNode para controlar volumen
+let _musicBuffers = {};   // Cache de AudioBuffer por track
+
 function _stopMusic() {
-  if (_musicPlayer) {
-    try { _musicPlayer.pause(); _musicPlayer.currentTime = 0; } catch(e) {}
-    _musicPlayer = null;
+  if (_musicSource) {
+    try { _musicSource.stop(); _musicSource.disconnect(); } catch(e) {}
+    _musicSource = null;
+  }
+  if (_musicGain) {
+    try { _musicGain.disconnect(); } catch(e) {}
+    _musicGain = null;
   }
   _currentTrack = null;
 }
 
-function _playTrack(track) {
+async function _loadTrack(track) {
+  if (_musicBuffers[track]) return _musicBuffers[track];
+  const src = TRACKS[track];
+  if (!src) return null;
+  try {
+    const ctx = ac();
+    const resp = await fetch(src);
+    const arrayBuffer = await resp.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    _musicBuffers[track] = audioBuffer;
+    return audioBuffer;
+  } catch(e) {
+    console.warn('Error loading track:', e.message);
+    return null;
+  }
+}
+
+async function _playTrack(track) {
   _stopMusic();
   if (_musicMuted) return;
-  const src = TRACKS[track];
-  if (!src) return;
+  const ctx = ac();
+  if (!ctx) return;
+  const buffer = await _loadTrack(track);
+  if (!buffer) return;
   try {
-    const audio = new Audio(src);
-    audio.loop = true;
-    audio.volume = _musicVolume;
-    audio.play().catch(() => {});
-    _musicPlayer = audio;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = _musicVolume;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+    _musicSource = source;
+    _musicGain = gain;
     _currentTrack = track;
   } catch(e) {
     console.warn('Audio error:', e.message);

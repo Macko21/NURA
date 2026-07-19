@@ -108,10 +108,31 @@ function getBotDelay(difficulty) {
   }
 }
 
+// ── Cosméticos de tienda para bots (propaganda/publicidad) ──
+const BOT_COSMETICS = {
+  dice: [1, 2, 4, 5, 6, 18, 19, 20, 21, 22, 32, 33],
+  avatar: [7, 8, 9, 10, 11, 12, 13, 14, 23, 24, 25, 26, 27, 34, 35],
+  special: [3, 15, 16, 17, 28, 29, 30, 31, 36]
+};
+
+/**
+ * Asigna cosméticos aleatorios de la tienda a un bot.
+ * Los bots muestran skins, avatares y efectos especiales
+ * que los jugadores pueden comprar.
+ */
+function getRandomCosmetics() {
+  return {
+    equippedDice: BOT_COSMETICS.dice[Math.floor(Math.random() * BOT_COSMETICS.dice.length)],
+    equippedAvatar: BOT_COSMETICS.avatar[Math.floor(Math.random() * BOT_COSMETICS.avatar.length)],
+    equippedSpecial: BOT_COSMETICS.special[Math.floor(Math.random() * BOT_COSMETICS.special.length)]
+  };
+}
+
 module.exports = {
   getBotName,
   generateBotId,
   shouldBank,
   getBotDelay,
+  getRandomCosmetics,
   BOT_NAMES
 };

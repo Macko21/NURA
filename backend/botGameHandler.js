@@ -30,6 +30,11 @@ function addBotsToRoom(room, botCount, difficulty) {
         botPlayer.isBot = true;
         botPlayer.botDifficulty = difficulty;
         botPlayer.connected = true;
+        // Cosméticos aleatorios de la tienda para propaganda
+        const cosmetics = botManager.getRandomCosmetics();
+        botPlayer.equippedDice = cosmetics.equippedDice;
+        botPlayer.equippedAvatar = cosmetics.equippedAvatar;
+        botPlayer.equippedSpecial = cosmetics.equippedSpecial;
       }
     } catch(e) {
       console.error("Error adding bot:", e.message);
