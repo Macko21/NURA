@@ -348,6 +348,7 @@ app.get("/api/friends", requireAuth, async (req, res) => {
     // Agregar is_online desde el server (WebSocket activo en clients Map)
     const friendsWithStatus = friends.map(f => ({
       ...f,
+      equipped_avatar: resolveAvatarIcon(f.equipped_avatar) || '👤',
       is_online: clients.has(f.id) && clients.get(f.id)?.readyState === WebSocket.OPEN
     }));
     res.json({ friends: friendsWithStatus });

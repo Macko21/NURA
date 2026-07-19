@@ -299,33 +299,25 @@ function _updateSoundUI() {
   // Botón de música en el topbar (lobby / salas)
   const topbarBtn = document.getElementById('btn-music-toggle');
   if (topbarBtn) {
+    topbarBtn.textContent = anyMuted ? '🔇' : '🎵';
     topbarBtn.classList.toggle('muted', anyMuted);
     topbarBtn.title = anyMuted ? '🔇 Sonido desactivado' : '🎵 Ajustar sonido';
   }
-  // Sliders del flyout
-  const musicSlider = document.getElementById('sound-music-slider');
-  if (musicSlider) musicSlider.value = Math.round(_musicVolume * 100);
-  const sfxSlider = document.getElementById('sound-sfx-slider');
-  if (sfxSlider) sfxSlider.value = Math.round(_sfxVolume * 100);
-  // Porcentajes del flyout
-  const musicPct = document.getElementById('sound-music-pct');
-  if (musicPct) musicPct.textContent = Math.round(_musicVolume * 100) + '%';
-  const sfxPct = document.getElementById('sound-sfx-pct');
-  if (sfxPct) sfxPct.textContent = Math.round(_sfxVolume * 100) + '%';
-  // Botones mute del flyout
-  const musicMuteBtn = document.getElementById('sound-music-mute');
-  if (musicMuteBtn) {
-    musicMuteBtn.textContent = _musicMuted ? '🔇' : '🔊';
-    musicMuteBtn.classList.toggle('muted', _musicMuted);
+  // Botón de sonido en la sala de espera
+  const roomBtn = document.getElementById('btn-room-sound');
+  if (roomBtn) {
+    roomBtn.textContent = anyMuted ? '🔇' : '🔊';
+    roomBtn.classList.toggle('muted', anyMuted);
+    roomBtn.title = anyMuted ? 'Sonido desactivado' : 'Ajustar sonido';
   }
-  const sfxMuteBtn = document.getElementById('sound-sfx-mute');
-  if (sfxMuteBtn) {
-    sfxMuteBtn.textContent = _sfxMuted ? '🔇' : '🔊';
-    sfxMuteBtn.classList.toggle('muted', _sfxMuted);
-  }
-  // Slider del menú de usuario (topbar)
+  // Slider del menú de usuario (topbar) — control unificado de volumen
   const menuSlider = document.getElementById('music-volume-slider');
   if (menuSlider) menuSlider.value = Math.round(_musicVolume * 100);
+  // También actualizar el icono de volumen en el menú de usuario
+  const volIcon = document.getElementById('music-vol-icon');
+  if (volIcon) {
+    volIcon.textContent = _musicMuted || _musicVolume === 0 ? '🔇' : '🔊';
+  }
 }
 
 // Exponer para uso externo

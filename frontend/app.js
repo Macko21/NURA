@@ -3356,55 +3356,29 @@ function initUI() {
     renderNotifPanel();
   });
   /* ── Music toggle ──────────────────────────────── */
+  /* ── Music toggle: abre el menú de usuario (volumen unificado) ── */
   $('btn-music-toggle')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Abrir el flyout de sonido global para regular volumen
-    const flyout = $('sound-flyout');
-    if (flyout) {
-      flyout.classList.toggle('hidden');
-      updateSoundUI();
+    ensureAudioContext();
+    const menu = $('user-menu');
+    if (menu) {
+      const open = menu.classList.toggle('hidden') === false;
+      $('btn-user-menu')?.setAttribute('aria-expanded', String(open));
     }
   });
   
-  // ── Botón de sonido con flyout ──────────────────────
+  /* ── Botón sonido en partida: mute toggle rápido ──── */
   $('btn-sound')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    const flyout = $('sound-flyout');
-    if (flyout) {
-      flyout.classList.toggle('hidden');
-      updateSoundUI();
-    }
+    ensureAudioContext();
+    toggleSfx();
   });
   
-  // Sliders del flyout
-  $('sound-music-slider')?.addEventListener('input', (e) => {
-    const vol = parseInt(e.target.value) / 100;
-    setMusicVolume(vol);
-    const pct = $('sound-music-pct');
-    if (pct) pct.textContent = Math.round(vol * 100) + '%';
-  });
-  $('sound-sfx-slider')?.addEventListener('input', (e) => {
-    const vol = parseInt(e.target.value) / 100;
-    setSfxVolume(vol);
-    const pct = $('sound-sfx-pct');
-    if (pct) pct.textContent = Math.round(vol * 100) + '%';
-  });
-  
-  // Botones mute del flyout
-  $('sound-music-mute')?.addEventListener('click', (e) => {
+  /* ── Botón sonido en sala espera: mute toggle rápido ─ */
+  $('btn-room-sound')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleMusicMute();
-    const pct = $('sound-music-pct');
-    if (pct) pct.textContent = Math.round(getMusicVolume() * 100) + '%';
-  });
-  $('sound-sfx-mute')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleSfxMute();
-  });
-  
-  // Cerrar flyout
-  $('sound-close')?.addEventListener('click', () => {
-    $('sound-flyout')?.classList.add('hidden');
+    ensureAudioContext();
+    toggleMusic();
   });
   
   // Inicializar audio en la primera interacción del usuario
@@ -3417,14 +3391,6 @@ function initUI() {
   document.addEventListener('click', _firstInteraction, { once: true });
   document.addEventListener('touchstart', _firstInteraction, { once: true });
   
-  // Cerrar flyout al hacer click fuera
-  document.addEventListener('click', (e) => {
-    const flyout = $('sound-flyout');
-    if (flyout && !flyout.classList.contains('hidden') && !flyout.contains(e.target)) {
-      flyout.classList.add('hidden');
-    }
-  });
-
   /* ── Volume slider ─────────────────────────────── */
   const volSlider = $('music-volume-slider');
   if (volSlider) {
@@ -3453,32 +3419,39 @@ function initUI() {
     }
   });
 
-  /* ── Global click SFX ─────────────────────────────── */
+  /* ── Click SFX solo DENTRO de la partida ──────────── */
   document.addEventListener('click', (e) => {
     const target = e.target;
-    // Excluir inputs, sliders y elementos con data-no-sfx
     if (!target || target.closest('input, textarea, [type="range"], [data-no-sfx]')) return;
-    // Solo reproducir en botones y links
-    if (target.closest('button, a')) {
+    // Solo botones dentro de la pantalla de juego
+    if (target.closest('#screen-game button, #screen-game a')) {
       SFX.click();
     }
   }, { capture: true });
 
-  /* ── Global hover SFX (menú principal) ────────────── */
+  /* ── Hover SFX solo DENTRO de la partida ──────────── */
   let _lastHoverTime = 0;
   document.addEventListener('mouseover', (e) => {
     const target = e.target;
-    // Excluir inputs, sliders y data-no-sfx
     if (!target || target.closest('input, textarea, [data-no-sfx]')) return;
-    // Solo botones del menú principal (.btn-gold, .btn-ghost, .btn-link)
-    const btn = target.closest('.btn-gold, .btn-ghost, .btn-link');
-    if (!btn || !btn.closest('.lobby-form, .top-bar')) return;
-    // Debounce: no repetir si pasaron menos de 80ms
+    const btn = target.closest('#screen-game .btn-gold, #screen-game .btn-ghost, #screen-game .btn-link');
+    if (!btn) return;
     const now = Date.now();
     if (now - _lastHoverTime < 80) return;
     _lastHoverTime = now;
     SFX.hover();
   }, { capture: true });
+
+  /* ── Sonido de navegación (cambio de pantalla) ────── */
+  const _origShowScreen = showScreen;
+  showScreen = function(id) {
+    _origShowScreen(id);
+    // Sonido sutil de navegación (no durante partida)
+    if (id !== 'screen-game' && id !== 'screen-room') {
+      tone(520, 'sine', .06, .05);
+      tone(660, 'sine', .1, .04, .06);
+    }
+  };
 
   // Check push status after login — also triggered reliably inside btn-login's handler
 
@@ -3860,7 +3833,10 @@ async function loadProfile() {
     // Privacidad: toggle ocultar última conexión
     const hideLastSeenToggle = $('profile-hide-last-seen');
     if (hideLastSeenToggle) {
-      hideLastSeenToggle.checked = !!p.hide_last_seen;
+      // Cargar desde localStorage primero, luego desde API
+      const saved = localStorage.getItem('macko_hide_last_seen');
+      const initialValue = saved !== null ? saved === 'true' : !!p.hide_last_seen;
+      hideLastSeenToggle.checked = initialValue;
       // Reemplazar event listeners previos (clonar y re-asignar evita duplicados)
       const newToggle = hideLastSeenToggle.cloneNode(true);
       hideLastSeenToggle.parentNode.replaceChild(newToggle, hideLastSeenToggle);
@@ -3874,10 +3850,18 @@ async function loadProfile() {
             body: JSON.stringify({ hide: this.checked })
           });
           if (res.ok) {
+            // Guardar localmente también
+            localStorage.setItem('macko_hide_last_seen', String(this.checked));
             toast(this.checked ? '🔒 Última conexión oculta' : '🔓 Última conexión visible', 'success');
+          } else {
+            // Revertir si el server falló
+            this.checked = !this.checked;
+            toast('Error al guardar preferencia', 'error');
           }
         } catch(e) {
-          toast('Error al guardar preferencia', 'error');
+          // Revertir si hay error de red
+          this.checked = !this.checked;
+          toast('Error de red al guardar preferencia', 'error');
         }
       });
     }

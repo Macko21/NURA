@@ -10,9 +10,26 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.6";
+const GAME_VERSION = "3.7.7";
 
 const CHANGELOG = [
+  // ═══ 3.7.7 — GAME ═══
+  {
+    version: "3.7.7",
+    date: "2026-07-19",
+    title: "🔊 Volumen unificado + avatares en amigos + fix ocultar conexión",
+    scope: "game",
+    files: ["backend/server.js", "frontend/audio.js", "frontend/app.js", "frontend/index.html", "frontend/styles.css", "frontend/version.js"],
+    changes: [
+      "👤 Fix: amigos ahora muestran avatar (icono) o 👤 por defecto, no números",
+      "🔒 Fix: toggle 'Ocultar última conexión' persiste correctamente con localStorage",
+      "🎵 Volumen unificado: se quitó el flyout flotante, ahora todo se controla desde el slider en el menú del usuario (click en nombre)",
+      "🔊 btn-music-toggle abre el menú de usuario con el slider de volumen",
+      "🎮 btn-sound en partida: mute rápido de efectos",
+      "🏠 btn-room-sound en sala espera: mute rápido de música",
+      "🧹 CSS: eliminados estilos del flyout de sonido (sound-flyout)",
+    ]
+  },
   // ═══ 3.7.5 — GAME ═══
   {
     version: "3.7.5",
