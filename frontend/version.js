@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.3";
+const GAME_VERSION = "3.7.4";
 
 const CHANGELOG = [
+  // ═══ 3.7.4 — GAME ═══
+  {
+    version: "3.7.4",
+    date: "2026-07-18",
+    title: "🔊 Audio siempre activo + indicador visual de mute",
+    scope: "game",
+    files: ["frontend/audio.js", "frontend/app.js", "frontend/styles.css"],
+    changes: [
+      "🔊 Música y efectos arrancan automáticamente al hacer el primer click en el juego",
+      "🔇 Indicador visual de mute: línea roja cruzada sobre el botón cuando está desactivado",
+      "🎚️ Sliders de volumen siempre visibles al presionar el botón de sonido",
+      "🗑️ Ya no se persiste el estado mute — siempre arranca con sonido activo",
+    ]
+  },
   // ═══ 3.7.3 — GAME ═══
   {
     version: "3.7.3",

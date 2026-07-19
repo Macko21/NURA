@@ -627,9 +627,15 @@ html,body{
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   color:var(--text2);border-radius:8px;padding:5px 8px;
   font-size:13px;font-family:inherit;cursor:pointer;
-  flex-shrink:0;white-space:nowrap;transition:all .18s;line-height:1;
+  flex-shrink:0;white-space:nowrap;transition:all .18s;line-height:1;position:relative;
 }
 .btn-sound:hover{background:rgba(255,255,255,.12);border-color:var(--gold2);color:var(--gold);transform:translateY(-1px)}
+.btn-sound.muted{color:var(--red);border-color:rgba(200,60,48,.3)}
+.btn-sound.muted::after{
+  content:'';position:absolute;top:50%;left:2px;right:2px;
+  height:2px;background:var(--red);transform:rotate(-12deg);
+  border-radius:1px;
+}
 
 /* ── Flyout de sonido ─────────────────────────────── */
 .sound-btn-wrap{position:relative;display:flex;align-items:center}
@@ -669,9 +675,16 @@ html,body{
 }
 .sound-mute-btn{
   background:none;border:none;cursor:pointer;font-size:14px;
-  padding:2px;line-height:1;transition:opacity .15s;
+  padding:2px;line-height:1;transition:all .15s;position:relative;
 }
-.sound-mute-btn.muted{opacity:.4}
+.sound-mute-btn.muted{
+  color:var(--red);opacity:.9;
+}
+.sound-mute-btn.muted::after{
+  content:'';position:absolute;top:50%;left:-1px;right:-1px;
+  height:2px;background:var(--red);transform:rotate(-15deg);
+  border-radius:1px;
+}
 .sound-pct{
   font-size:10px;color:var(--text3);min-width:28px;text-align:right;
 }

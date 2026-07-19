@@ -3401,6 +3401,16 @@ function initUI() {
     $('sound-flyout')?.classList.add('hidden');
   });
   
+  // Inicializar audio en la primera interacción del usuario
+  // (los navegadores bloquean autoplay hasta que el usuario toca la pantalla)
+  function _firstInteraction() {
+    if (typeof initAudio === 'function') initAudio();
+    document.removeEventListener('click', _firstInteraction);
+    document.removeEventListener('touchstart', _firstInteraction);
+  }
+  document.addEventListener('click', _firstInteraction, { once: true });
+  document.addEventListener('touchstart', _firstInteraction, { once: true });
+  
   // Cerrar flyout al hacer click fuera
   document.addEventListener('click', (e) => {
     const wrap = $('sound-btn-wrap');

@@ -20,8 +20,9 @@ const ac = () => AC || (AC = new (window.AudioContext||window.webkitAudioContext
 // ── Volumen y toggles ────────────────────────────────
 let _musicVolume = 0.3;     // volumen música (0-1)
 let _sfxVolume = 0.8;       // volumen efectos (0-1)
-let _musicMuted = false;
-let _sfxMuted = false;
+let _musicMuted = false;    // siempre empieza activo
+let _sfxMuted = false;      // siempre empieza activo
+let _audioInitialized = false; // primera interacción del usuario
 
 // ── Estado de la música mp3 ──────────────────────────
 let _musicPlayer = null;    // Audio element actual
@@ -33,26 +34,35 @@ const TRACKS = {
   partida: '/sounds/partida.mp3'
 };
 
-// ── Persistencia ─────────────────────────────────────
+// ── Persistencia (solo volúmenes, NO mute) ───────────
 function loadAudioPrefs() {
   try {
-    _musicMuted = localStorage.getItem('macko_music_muted') === 'true';
-    _sfxMuted = localStorage.getItem('macko_sfx_muted') === 'true';
     const mv = localStorage.getItem('macko_music_vol');
     const sv = localStorage.getItem('macko_sfx_vol');
     if (mv !== null) _musicVolume = parseFloat(mv);
     if (sv !== null) _sfxVolume = parseFloat(sv);
+    // Ignoramos mute guardado — siempre arranca activo
   } catch(e) {}
 }
 function saveAudioPrefs() {
   try {
-    localStorage.setItem('macko_music_muted', String(_musicMuted));
-    localStorage.setItem('macko_sfx_muted', String(_sfxMuted));
     localStorage.setItem('macko_music_vol', String(_musicVolume));
     localStorage.setItem('macko_sfx_vol', String(_sfxVolume));
   } catch(e) {}
 }
 loadAudioPrefs();
+
+// ── Inicializar audio en la primera interacción ──────
+function initAudio() {
+  if (_audioInitialized) return;
+  _audioInitialized = true;
+  // Iniciar AudioContext (para SFX sintetizados)
+  ensureAudioContext();
+  // Arrancar música según la pantalla actual
+  const active = document.querySelector('.screen.active');
+  startMusicForScreen(active ? active.id : 'screen-lobby');
+  _updateSoundUI();
+}
 
 // ── Getters / Setters ────────────────────────────────
 function getMusicVolume() { return _musicVolume; }
@@ -241,12 +251,13 @@ const SFX = {
 
 // ── UI del panel de sonido ───────────────────────────
 function _updateSoundUI() {
-  // Botón principal de sonido
+  // Botón principal de sonido con indicador de mute
   const btn = document.getElementById('btn-sound');
   if (btn) {
-    if (_musicMuted || _sfxMuted) btn.textContent = '🔇';
-    else btn.textContent = '🔊';
-    btn.title = 'Ajustar sonido';
+    const anyMuted = _musicMuted || _sfxMuted;
+    btn.textContent = anyMuted ? '🔇' : '🔊';
+    btn.classList.toggle('muted', anyMuted);
+    btn.title = anyMuted ? 'Sonido desactivado' : 'Ajustar sonido';
   }
   // Sliders del flyout
   const musicSlider = document.getElementById('sound-music-slider');
