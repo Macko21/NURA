@@ -1743,9 +1743,11 @@ function syncEquippedFromMatch(match) {
   if (!match || !match.players) return;
   const me = match.players.find(p => p.id === S.id);
   if (!me) return;
-  S.diceEquipped    = me.equippedDice || null;
-  S.avatarEquipped  = me.equippedAvatar || null;
-  S.specialEquipped = me.equippedSpecial || null;
+  // Solo usar datos del match si NO tenemos valores cargados desde la API
+  // (los items del match pueden estar desactualizados si se cambiaron después de unirse)
+  if (!S.diceEquipped)    S.diceEquipped    = me.equippedDice || null;
+  if (!S.avatarEquipped)  S.avatarEquipped  = me.equippedAvatar || null;
+  if (!S.specialEquipped) S.specialEquipped = me.equippedSpecial || null;
   saveEquippedCache();
   // Aplicar efectos especiales INMEDIATAMENTE (sin esperar loadEquippedItems async)
   // Item 17: Tema Oscuro Ultra
@@ -3356,8 +3358,12 @@ function initUI() {
   /* ── Music toggle ──────────────────────────────── */
   $('btn-music-toggle')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleMusic();
-    // SFX.click() lo maneja el handler global
+    // Abrir el flyout de sonido global para regular volumen
+    const flyout = $('sound-flyout');
+    if (flyout) {
+      flyout.classList.toggle('hidden');
+      updateSoundUI();
+    }
   });
   
   // ── Botón de sonido con flyout ──────────────────────
@@ -3413,9 +3419,8 @@ function initUI() {
   
   // Cerrar flyout al hacer click fuera
   document.addEventListener('click', (e) => {
-    const wrap = $('sound-btn-wrap');
     const flyout = $('sound-flyout');
-    if (flyout && !flyout.classList.contains('hidden') && wrap && !wrap.contains(e.target)) {
+    if (flyout && !flyout.classList.contains('hidden') && !flyout.contains(e.target)) {
       flyout.classList.add('hidden');
     }
   });

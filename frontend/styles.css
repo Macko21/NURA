@@ -646,6 +646,18 @@ html,body{
   backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,.5);
   animation:fadeIn .2s ease;
 }
+/* Flyout global (fuera de todas las pantallas) */
+.global-sound-flyout{
+  position:fixed;top:auto;right:14px;bottom:14px;
+  z-index:2000;
+  min-width:200px;
+  animation:slideUp .2s ease;
+}
+@keyframes slideUp{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+}
 .sound-flyout-header{
   font-size:11px;font-weight:700;color:var(--gold);
   text-transform:uppercase;letter-spacing:.5px;

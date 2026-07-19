@@ -161,15 +161,21 @@ async function _playTrack(track) {
   }
 }
 
-/** Inicia la música según la pantalla activa */
+function _getTargetTrack(screenId) {
+  if (screenId === 'screen-game') return 'partida';
+  if (screenId === 'screen-room') return 'lobby';
+  return 'principal';
+}
+
+/** Inicia la música según la pantalla activa.
+ *  Si el mismo tema ya está sonando, no lo reinicia. */
 function startMusicForScreen(screenId) {
-  if (screenId === 'screen-game') {
-    _playTrack('partida');
-  } else if (screenId === 'screen-room') {
-    _playTrack('lobby');
-  } else {
-    _playTrack('principal');
+  const target = _getTargetTrack(screenId);
+  if (_currentTrack === target) {
+    // Ya estamos reproduciendo este tema — no reiniciar
+    return;
   }
+  _playTrack(target);
 }
 
 /** Detiene toda la música */
@@ -282,13 +288,19 @@ const SFX = {
 
 // ── UI del panel de sonido ───────────────────────────
 function _updateSoundUI() {
-  // Botón principal de sonido con indicador de mute
+  const anyMuted = _musicMuted || _sfxMuted;
+  // Botón principal de sonido (pantalla de juego)
   const btn = document.getElementById('btn-sound');
   if (btn) {
-    const anyMuted = _musicMuted || _sfxMuted;
     btn.textContent = anyMuted ? '🔇' : '🔊';
     btn.classList.toggle('muted', anyMuted);
     btn.title = anyMuted ? 'Sonido desactivado' : 'Ajustar sonido';
+  }
+  // Botón de música en el topbar (lobby / salas)
+  const topbarBtn = document.getElementById('btn-music-toggle');
+  if (topbarBtn) {
+    topbarBtn.classList.toggle('muted', anyMuted);
+    topbarBtn.title = anyMuted ? '🔇 Sonido desactivado' : '🎵 Ajustar sonido';
   }
   // Sliders del flyout
   const musicSlider = document.getElementById('sound-music-slider');

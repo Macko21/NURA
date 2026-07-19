@@ -10,7 +10,7 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.5";
+const GAME_VERSION = "3.7.6";
 
 const CHANGELOG = [
   // ═══ 3.7.5 — GAME ═══
