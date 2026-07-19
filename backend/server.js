@@ -40,7 +40,8 @@ const {
   handleEntryRoll, handleRoll, handleBank,
   handleDisconnect: diceDisconnect,
   handleReconnect:  diceReconnect,
-  snapshotMatch
+  snapshotMatch,
+  setTurnCallback, removeTurnCallback
 } = require("./diceManager");
 
 const { createPlayerState, setWinner } = require("./matchState");
@@ -2449,6 +2450,10 @@ wss.on("connection", socket => {
           setTimeout(async () => {
             try {
               await startMatchForRoom(room.id);
+              // Registrar callback para que los bots jueguen automáticamente al cambiar el turno
+              setTurnCallback(room.id, (rid) => {
+                botGameHandler.scheduleBotTurnIfNeeded(rid, broadcastRoom);
+              });
               // Programar el primer turno de bot si es necesario
               setTimeout(() => {
                 botGameHandler.scheduleBotTurnIfNeeded(room.id, broadcastRoom);

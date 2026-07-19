@@ -788,26 +788,27 @@ function showScreen(id) {
 // ── Botón de música ────────────────────────────────────
 function updateMusicBtn() {
   const btn = $('btn-music-toggle');
-  if (!btn) return;
   const vol = getMusicVolume();
-  if (_isMuted || vol === 0) {
-    btn.textContent = '🔇';
-    btn.title = 'Sonido desactivado';
-  } else if (vol < 0.33) {
-    btn.textContent = '🔈';
-    btn.title = `Volumen ${Math.round(vol * 100)}%`;
-  } else if (vol < 0.66) {
-    btn.textContent = '🔉';
-    btn.title = `Volumen ${Math.round(vol * 100)}%`;
-  } else {
-    btn.textContent = '🔊';
-    btn.title = `Volumen ${Math.round(vol * 100)}%`;
+  const iconChar = _isMuted || vol === 0 ? '🔇' : vol < 0.33 ? '🔈' : vol < 0.66 ? '🔉' : '🔊';
+  const titleText = _isMuted || vol === 0 ? 'Sonido desactivado' : `Volumen ${Math.round(vol * 100)}%`;
+  
+  if (btn) {
+    btn.textContent = iconChar;
+    btn.title = titleText;
   }
+  
+  // Botón de música durante la partida
+  const gameBtn = $('btn-game-music');
+  if (gameBtn) {
+    gameBtn.textContent = iconChar;
+    gameBtn.title = titleText;
+  }
+  
   // Sincronizar slider si existe
   const slider = $('music-volume-slider');
   if (slider) slider.value = Math.round(vol * 100);
   const icon = $('music-vol-icon');
-  if (icon) icon.textContent = btn.textContent;
+  if (icon) icon.textContent = iconChar;
 }
 
 function toggleMusic() {
@@ -3389,6 +3390,10 @@ function initUI() {
     e.stopPropagation();
     toggleMusic();
     // SFX.click() lo maneja el handler global
+  });
+  
+  $('btn-game-music')?.addEventListener('click', () => {
+    toggleMusic();
   });
 
   /* ── Volume slider ─────────────────────────────── */

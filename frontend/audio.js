@@ -260,7 +260,7 @@ function startLobbyMusic() {
   _createArpeggio([261.63, 329.63, 392.00, 523.25], 'triangle', 0.12, 2.5);
 }
 
-// Iniciar música del juego — más tensión y energía
+// Iniciar música del juego — ambiente sutil y tranquilo
 function startGameMusic() {
   _clearMusicNodes();
   _musicType = 'game';
@@ -269,12 +269,13 @@ function startGameMusic() {
   const ctx = ensureAudioContext();
   if (!ctx) return;
   
-  // Drone más grave y presente
-  _createDroneNote(98.00, 'sawtooth', 0.04, 0.5, 0.35);   // G2 - pulso grave
-  _createDroneNote(196.00, 'square', 0.025, 0.3, 0.2);     // G3 - armónico
+  // Drone suave y relajante en Re mayor (D3 + A3) — tono cálido
+  _createDroneNote(146.83, 'sine', 0.04, 0.2, 0.15);  // D3 - grave suave
+  _createDroneNote(220.00, 'sine', 0.03, 0.15, 0.1);  // A3 - medio
+  _createDroneNote(293.66, 'sine', 0.015, 0.1, 0.08); // D4 - brillo tenue
   
-  // Arpegio más rápido cada 1.2s - sensación de urgencia
-  _createArpeggio([196.00, 261.63, 293.66, 392.00], 'triangle', 0.1, 1.2);
+  // Arpegio lento cada 3.5s — sin presión, relajado
+  _createArpeggio([220.00, 293.66, 369.99, 440.00], 'sine', 0.06, 3.5);
 }
 
 // Iniciar música de sala de espera — tranquila, expectante

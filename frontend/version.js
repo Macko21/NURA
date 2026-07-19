@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.0";
+const GAME_VERSION = "3.7.1";
 
 const CHANGELOG = [
+  // ═══ 3.7.1 — GAME ═══
+  {
+    version: "3.7.1",
+    date: "2026-07-18",
+    title: "🐛 Fix bots, música de partida y tutorial",
+    scope: "game",
+    files: ["backend/diceManager.js", "backend/server.js", "frontend/audio.js", "frontend/index.html", "frontend/styles.css", "frontend/app.js"],
+    changes: [
+      "🤖 Fix: los bots ahora juegan automáticamente — se agregó callback en cada cambio de turno",
+      "🎵 Fix: música de partida cambiada a un ambiente sutil y relajante (ondas senoidales suaves)",
+      "📖 Fix: tutorial corregido — dice 'Tirá los 5 dados' (antes decía 6)",
+      "🔇 Nuevo: botón de silenciar música durante la partida (al lado de Salir)",
+    ]
+  },
   // ═══ 3.7.0 — GAME ═══
   {
     version: "3.7.0",

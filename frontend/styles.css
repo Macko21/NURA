@@ -623,6 +623,14 @@ html,body{
 }
 .btn-leave-game:hover{background:rgba(200,60,48,.15);border-color:var(--red);transform:translateY(-1px)}
 
+.btn-game-music{
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  color:var(--text2);border-radius:8px;padding:5px 8px;
+  font-size:13px;font-family:inherit;cursor:pointer;
+  flex-shrink:0;white-space:nowrap;transition:all .18s;line-height:1;
+}
+.btn-game-music:hover{background:rgba(255,255,255,.12);border-color:var(--gold2);color:var(--gold);transform:translateY(-1px)}
+
 /* ══════════════════════════════════════
    GAME TABLE
    ══════════════════════════════════════ */

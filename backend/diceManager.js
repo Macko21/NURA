@@ -24,6 +24,7 @@ const matches    = new Map();
 const turnTimers = new Map();
 const autoBankTimers = new Map();
 const finishHandlers = new Map();
+const turnCallbacks = new Map(); // roomId → function(roomId): se llama después de cada cambio de turno
 
 // Lock por sala: evita que _advanceTurn corra dos veces en paralelo
 const advancing  = new Set();
@@ -168,6 +169,12 @@ function _advanceTurn(match, roomId, broadcast) {
     match.players.forEach(p => { p.turnExpired = false; });
 
     resetTurnTimer(roomId, id => _handleTimeout(id, broadcast));
+
+    // Notificar a quien corresponda que hubo un cambio de turno (ej: bots)
+    const cb = turnCallbacks.get(roomId);
+    if (typeof cb === 'function') {
+      try { cb(roomId); } catch(e) { console.error('Error en turnCallback:', e.message); }
+    }
   } finally {
     // SIEMPRE liberar el lock, incluso si broadcast lanza error
     advancing.delete(roomId);
@@ -639,8 +646,18 @@ function handleReconnect(roomId, playerId) {
   player.disconnected = false;
 }
 
+function setTurnCallback(roomId, cb) {
+  if (typeof cb === 'function') turnCallbacks.set(roomId, cb);
+  else turnCallbacks.delete(roomId);
+}
+
+function removeTurnCallback(roomId) {
+  turnCallbacks.delete(roomId);
+}
+
 module.exports = {
   createMatch, startFirstTurnTimer, getMatch, destroyMatch,
   handleEntryRoll, handleRoll, handleBank,
-  handleDisconnect, handleReconnect, snapshotMatch, rollDice
+  handleDisconnect, handleReconnect, snapshotMatch, rollDice,
+  setTurnCallback, removeTurnCallback
 };
