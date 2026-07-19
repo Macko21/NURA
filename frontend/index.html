@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.7.2"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=3.7.3"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -102,7 +102,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v3.7.2</p>
+      <p class="app-version">v3.7.3</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -192,8 +192,25 @@
     </div>
     <div class="game-user-info">
       <span id="game-coins-display" class="game-coins-display hidden">🪙 <span id="game-coins-amount">0</span></span>
-      <button id="btn-game-music" class="btn-game-music" title="🎵 Música">🎵</button>
-      <button id="btn-game-sfx" class="btn-game-sfx" title="🔊 Efectos">🔊</button>
+      <div class="sound-btn-wrap">
+        <button id="btn-sound" class="btn-sound" title="Ajustar sonido">🔊</button>
+        <div id="sound-flyout" class="sound-flyout hidden">
+          <div class="sound-flyout-header">🔊 Sonido</div>
+          <div class="sound-row">
+            <span class="sound-label">🎵 Música</span>
+            <button id="sound-music-mute" class="sound-mute-btn">🔊</button>
+            <input type="range" id="sound-music-slider" class="sound-slider" min="0" max="100" value="30">
+            <span id="sound-music-pct" class="sound-pct">30%</span>
+          </div>
+          <div class="sound-row">
+            <span class="sound-label">🔊 Efectos</span>
+            <button id="sound-sfx-mute" class="sound-mute-btn">🔊</button>
+            <input type="range" id="sound-sfx-slider" class="sound-slider" min="0" max="100" value="80">
+            <span id="sound-sfx-pct" class="sound-pct">80%</span>
+          </div>
+          <button id="sound-close" class="sound-close-btn">✕ Cerrar</button>
+        </div>
+      </div>
       <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
     </div>
   </div>
@@ -771,10 +788,10 @@
     }).catch(function(){});
   }
 })();
-></script><script src="/version.js?v=3.7.2"></script>
-  <script src="/dice-renderer.js?v=3.7.2"></script>
-  <script src="/audio.js?v=3.7.2"></script>
-  <script src="/app.js?v=3.7.2"></script>
+></script><script src="/version.js?v=3.7.3"></script>
+  <script src="/dice-renderer.js?v=3.7.3"></script>
+  <script src="/audio.js?v=3.7.3"></script>
+  <script src="/app.js?v=3.7.3"></script>
 <!-- FIN ⚠️ -->
 
 

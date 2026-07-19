@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.7.2";
+const GAME_VERSION = "3.7.3";
 
 const CHANGELOG = [
+  // ═══ 3.7.3 — GAME ═══
+  {
+    version: "3.7.3",
+    date: "2026-07-18",
+    title: "🔊 Audio con mp3 reales + panel de sonido unificado",
+    scope: "game",
+    files: ["frontend/sounds/*", "frontend/audio.js", "frontend/app.js", "frontend/index.html", "frontend/styles.css"],
+    changes: [
+      "🎵 Música real en mp3: principal.mp3 (navegación), lobby.mp3 (sala espera), partida.mp3 (juego)",
+      "💀 game-over.mp3 real cuando perdés contra bots",
+      "🔊 Botón único de sonido en la partida → al clickearlo se despliega un flyout",
+      "🎚️ Flyout con dos sliders de volumen: uno para Música y otro para Efectos",
+      "🔇 Botón mute individual para cada canal (música y efectos por separado)",
+      "🧹 Eliminados los sonidos sintetizados de música — ahora todo suena con mp3 reales"
+    ]
+  },
   // ═══ 3.7.2 — GAME ═══
   {
     version: "3.7.2",

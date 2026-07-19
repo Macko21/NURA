@@ -623,21 +623,65 @@ html,body{
 }
 .btn-leave-game:hover{background:rgba(200,60,48,.15);border-color:var(--red);transform:translateY(-1px)}
 
-.btn-game-music{
+.btn-sound{
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   color:var(--text2);border-radius:8px;padding:5px 8px;
   font-size:13px;font-family:inherit;cursor:pointer;
   flex-shrink:0;white-space:nowrap;transition:all .18s;line-height:1;
 }
-.btn-game-music:hover{background:rgba(255,255,255,.12);border-color:var(--gold2);color:var(--gold);transform:translateY(-1px)}
+.btn-sound:hover{background:rgba(255,255,255,.12);border-color:var(--gold2);color:var(--gold);transform:translateY(-1px)}
 
-.btn-game-sfx{
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
-  color:var(--text2);border-radius:8px;padding:5px 8px;
-  font-size:13px;font-family:inherit;cursor:pointer;
-  flex-shrink:0;white-space:nowrap;transition:all .18s;line-height:1;
+/* ── Flyout de sonido ─────────────────────────────── */
+.sound-btn-wrap{position:relative;display:flex;align-items:center}
+.sound-flyout{
+  position:absolute;top:100%;right:0;z-index:100;
+  background:rgba(18,18,30,.96);border:1px solid rgba(212,175,55,.15);
+  border-radius:10px;padding:12px 14px;min-width:220px;
+  backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,.5);
+  animation:fadeIn .2s ease;
 }
-.btn-game-sfx:hover{background:rgba(255,255,255,.12);border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+.sound-flyout-header{
+  font-size:11px;font-weight:700;color:var(--gold);
+  text-transform:uppercase;letter-spacing:.5px;
+  margin-bottom:10px;text-align:center;
+}
+.sound-row{
+  display:flex;align-items:center;gap:6px;
+  margin-bottom:8px;
+}
+.sound-label{
+  font-size:11px;color:var(--text2);min-width:60px;
+  white-space:nowrap;
+}
+.sound-slider{
+  flex:1;height:4px;appearance:none;background:rgba(255,255,255,.12);
+  border-radius:2px;outline:none;cursor:pointer;
+}
+.sound-slider::-webkit-slider-thumb{
+  appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--gold);border:2px solid rgba(0,0,0,.3);cursor:pointer;
+  transition:transform .15s;
+}
+.sound-slider::-webkit-slider-thumb:hover{transform:scale(1.15)}
+.sound-slider::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--gold);border:2px solid rgba(0,0,0,.3);cursor:pointer;
+}
+.sound-mute-btn{
+  background:none;border:none;cursor:pointer;font-size:14px;
+  padding:2px;line-height:1;transition:opacity .15s;
+}
+.sound-mute-btn.muted{opacity:.4}
+.sound-pct{
+  font-size:10px;color:var(--text3);min-width:28px;text-align:right;
+}
+.sound-close-btn{
+  width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+  color:var(--text3);border-radius:6px;padding:5px 10px;
+  font-size:10px;font-family:inherit;cursor:pointer;margin-top:4px;
+  transition:all .15s;
+}
+.sound-close-btn:hover{background:rgba(255,255,255,.1);color:var(--text)}
 
 /* ══════════════════════════════════════
    GAME TABLE

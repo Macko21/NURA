@@ -3360,12 +3360,54 @@ function initUI() {
     // SFX.click() lo maneja el handler global
   });
   
-  $('btn-game-music')?.addEventListener('click', () => {
-    toggleMusic();
+  // ── Botón de sonido con flyout ──────────────────────
+  $('btn-sound')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const flyout = $('sound-flyout');
+    if (flyout) {
+      flyout.classList.toggle('hidden');
+      updateSoundUI();
+    }
   });
   
-  $('btn-game-sfx')?.addEventListener('click', () => {
-    toggleSfx();
+  // Sliders del flyout
+  $('sound-music-slider')?.addEventListener('input', (e) => {
+    const vol = parseInt(e.target.value) / 100;
+    setMusicVolume(vol);
+    const pct = $('sound-music-pct');
+    if (pct) pct.textContent = Math.round(vol * 100) + '%';
+  });
+  $('sound-sfx-slider')?.addEventListener('input', (e) => {
+    const vol = parseInt(e.target.value) / 100;
+    setSfxVolume(vol);
+    const pct = $('sound-sfx-pct');
+    if (pct) pct.textContent = Math.round(vol * 100) + '%';
+  });
+  
+  // Botones mute del flyout
+  $('sound-music-mute')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMusicMute();
+    const pct = $('sound-music-pct');
+    if (pct) pct.textContent = Math.round(getMusicVolume() * 100) + '%';
+  });
+  $('sound-sfx-mute')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSfxMute();
+  });
+  
+  // Cerrar flyout
+  $('sound-close')?.addEventListener('click', () => {
+    $('sound-flyout')?.classList.add('hidden');
+  });
+  
+  // Cerrar flyout al hacer click fuera
+  document.addEventListener('click', (e) => {
+    const wrap = $('sound-btn-wrap');
+    const flyout = $('sound-flyout');
+    if (flyout && !flyout.classList.contains('hidden') && wrap && !wrap.contains(e.target)) {
+      flyout.classList.add('hidden');
+    }
   });
 
   /* ── Volume slider ─────────────────────────────── */
