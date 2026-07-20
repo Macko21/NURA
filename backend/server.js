@@ -9,6 +9,7 @@ require("dotenv").config();
 const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
+const { canonicalDiceSkinId } = require("./cosmeticResolver");
 const path      = require("path");
 const fs        = require("fs");
 const crypto    = require("crypto");
@@ -1615,6 +1616,7 @@ async function checkIfGuest(playerId) {
 /* ── Resolver ID de item avatar a su icono (emoji) ──── */
 // Cache de iconos de avatares desde la DB
 const _avatarIconCache = new Map();
+const _diceSkinIdCache = new Map();
 async function loadAvatarIconCache() {
   try {
     const res = await pool.query("SELECT id, icon FROM shop_items WHERE category = 'avatares' OR id IN (34, 35)");
@@ -1636,13 +1638,30 @@ function resolveAvatarIcon(itemId) {
   return item ? item.icon : '';
 }
 
+async function resolveDiceSkinId(itemId) {
+  if (!itemId) return '';
+  const id = String(itemId);
+  if (_diceSkinIdCache.has(id)) return _diceSkinIdCache.get(id);
+
+  let itemName = '';
+  try {
+    const res = await pool.query('SELECT name FROM shop_items WHERE id = $1', [itemId]);
+    itemName = res.rows[0]?.name || '';
+  } catch (e) {}
+
+  const fallbackItem = SHOP_CATALOG.find(item => item.id === Number(itemId));
+  const resolvedId = canonicalDiceSkinId(id, itemName || fallbackItem?.name);
+  _diceSkinIdCache.set(id, resolvedId);
+  return resolvedId;
+}
+
 /* ── Cargar items equipados a un room player ──────────── */
 async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
   try {
     const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [playerId]);
     if (plRes.rows[0]) {
       roomPlayer.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
-      roomPlayer.equippedDice = plRes.rows[0].equipped_dice || '';
+      roomPlayer.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice);
       roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
       roomPlayer.winStreak = Number(plRes.rows[0].win_streak) || 0;
       console.log(`📦 loadEquipped(${playerId}): dice=${roomPlayer.equippedDice} av=${roomPlayer.equippedAvatar} sp=${roomPlayer.equippedSpecial}`);
@@ -1819,7 +1838,7 @@ async function startMatchForRoom(roomId, triggerData) {
         const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
         if (plRes.rows[0]) {
           p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
-          p.equippedDice = plRes.rows[0].equipped_dice || null;
+          p.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice) || null;
           p.equippedSpecial = plRes.rows[0].equipped_special || null;
           p.winStreak = plRes.rows[0].win_streak || 0;
         }

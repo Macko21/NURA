@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.8.3";
+const GAME_VERSION = "3.8.4";
 
 const CHANGELOG = [
+  // ═══ 3.8.4 — PRODUCCIÓN ═══
+  {
+    version: "3.8.4",
+    date: "2026-07-20",
+    title: "🎲 Skins correctas y partidas completadas",
+    scope: "game",
+    files: ["backend/cosmeticResolver.js", "backend/server.js", "backend/playerManager.js", "backend/database.js"],
+    changes: [
+      "Las skins de dados respetan el cosmético comprado aunque existan IDs históricos en la tienda",
+      "Dados Fantasma ya no aparecen como Élite o Diamante durante la partida",
+      "Misiones diarias, semanales y logros solo cuentan partidas terminadas",
+      "Abandonos, desconexiones y eliminaciones por inactividad no suman progreso"
+    ]
+  },
   // ═══ 3.8.3 — PRODUCCIÓN ═══
   {
     version: "3.8.3",

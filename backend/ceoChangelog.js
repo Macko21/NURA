@@ -2,6 +2,30 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.8.4": {
+    title: "🎲 Normalización de skins y progreso por partidas completadas",
+    scope: "ceo",
+    files: [
+      "backend/cosmeticResolver.js",
+      "backend/database.js",
+      "backend/playerManager.js",
+      "backend/server.js",
+      "scripts/game-rules-test.js",
+      "frontend/index.html",
+      "frontend/ceo-panel.html",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "Cosméticos: los IDs históricos de PostgreSQL se traducen por nombre a la skin visual canónica.",
+      "Cosméticos: Tarzan y demás jugadores muestran la skin realmente equipada en sala y partida.",
+      "Estadísticas: solo jugadores presentes y no eliminados al finalizar incrementan partidas, puntos y victorias.",
+      "Misiones: desconectarse, abandonar o quedar eliminado por inactividad ya no suma progreso diario, semanal ni logros.",
+      "PWA: versión y caché actualizadas a 3.8.4."
+    ]
+  },
   "3.8.3": {
     title: "📱 Safe-area superior aplicada a todas las vistas móviles",
     scope: "ceo",

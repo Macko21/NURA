@@ -11,13 +11,22 @@ function getPlayerProfile(id) {
   return getPlayer(id);
 }
 
+function completedMatchParticipant(player) {
+  return !!(
+    player?.id &&
+    !player.isBot &&
+    !player.disconnected &&
+    !player.eliminated
+  );
+}
+
 async function recordMatchResults(players, winnerId) {
   const client = await pool.connect();
   const registeredPlayerIds = [];
   try {
     await client.query('BEGIN');
     const uniquePlayers = new Map(
-      (players || []).filter(player => player?.id && !player.isBot).map(player => [player.id, player])
+      (players || []).filter(completedMatchParticipant).map(player => [player.id, player])
     );
     for (const player of uniquePlayers.values()) {
       const safeScore = Math.max(0, Number(player.score) || 0);
@@ -68,5 +77,6 @@ module.exports = {
   registerFiveOnes,
   registerKick,
   registerDisconnect,
-  getTopRanking
+  getTopRanking,
+  completedMatchParticipant
 };

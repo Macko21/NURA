@@ -504,15 +504,15 @@ function xpToNextLevel(currentLevel) {
 
 // --- MISIONES ---
 const MISSIONS = [
-  { id: 'd1', type: 'daily', name: 'Jugador del dia', desc: 'Juga 3 partidas', req: 3, track: 'games_played', coins: 50, xp: 30 },
+  { id: 'd1', type: 'daily', name: 'Jugador del dia', desc: 'Completa 3 partidas', req: 3, track: 'games_played', coins: 50, xp: 30 },
   { id: 'd2', type: 'daily', name: 'Ganador incipiente', desc: 'Gana 1 partida', req: 1, track: 'games_won', coins: 80, xp: 40 },
   { id: 'd3', type: 'daily', name: 'Dados calientes', desc: 'Acumula 5000 puntos totales', req: 5000, track: 'total_score', coins: 60, xp: 35 },
   { id: 'd4', type: 'daily', name: 'Comprador frecuente', desc: 'Compra 1 item en la tienda', req: 1, track: 'shop_purchases', coins: 40, xp: 20 },
-  { id: 'w1', type: 'weekly', name: 'Vicio total', desc: 'Juga 20 partidas', req: 20, track: 'games_played', coins: 200, xp: 100 },
+  { id: 'w1', type: 'weekly', name: 'Vicio total', desc: 'Completa 20 partidas', req: 20, track: 'games_played', coins: 200, xp: 100 },
   { id: 'w2', type: 'weekly', name: 'Racha de triunfos', desc: 'Gana 5 partidas en la semana', req: 5, track: 'games_won', coins: 300, xp: 150 },
   { id: 'w3', type: 'weekly', name: 'Imparable', desc: 'Acumula 30000 puntos totales', req: 30000, track: 'total_score', coins: 250, xp: 120 },
   { id: 'a1', type: 'achievement', name: 'Primera victoria', desc: 'Gana tu primera partida', req: 1, track: 'games_won', coins: 100, xp: 50 },
-  { id: 'a2', type: 'achievement', name: 'Veterano', desc: 'Juga 100 partidas', req: 100, track: 'games_played', coins: 500, xp: 200 },
+  { id: 'a2', type: 'achievement', name: 'Veterano', desc: 'Completa 100 partidas', req: 100, track: 'games_played', coins: 500, xp: 200 },
   { id: 'a3', type: 'achievement', name: 'Imparable', desc: 'Gana 3 partidas seguidas', req: 3, track: 'win_streak', coins: 300, xp: 150 },
   { id: 'a4', type: 'achievement', name: 'Leyenda del juego', desc: 'Gana 50 partidas', req: 50, track: 'games_won', coins: 2000, xp: 500 },
   { id: 'a6', type: 'achievement', name: 'Coleccionista', desc: 'Compra 10 items en la tienda', req: 10, track: 'shop_purchases', coins: 800, xp: 300 },

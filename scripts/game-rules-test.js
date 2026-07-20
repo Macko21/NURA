@@ -21,7 +21,8 @@ const { DICE_SKINS, SHOP_DICE_PREVIEW } = require("../frontend/dice-renderer");
 const { SKIN_SOUND } = require("../frontend/audio");
 const { createPlayerState } = require("../backend/matchState");
 const { pool } = require("../backend/database");
-const { recordMatchResults } = require("../backend/playerManager");
+const { recordMatchResults, completedMatchParticipant } = require("../backend/playerManager");
+const { canonicalDiceSkinId } = require("../backend/cosmeticResolver");
 
 let passed = 0;
 
@@ -111,6 +112,13 @@ async function run() {
     assert.deepEqual(numericKeys(DICE_SKINS), expectedIds);
     assert.deepEqual(numericKeys(SHOP_DICE_PREVIEW), expectedIds);
     assert.deepEqual(numericKeys(SKIN_SOUND), expectedIds);
+  });
+
+  check("IDs historicos de tienda conservan la skin visual correcta", () => {
+    assert.equal(canonicalDiceSkinId("4", "Dados Fantasma"), "5");
+    assert.equal(canonicalDiceSkinId("5", "Dados Hielo"), "6");
+    assert.equal(canonicalDiceSkinId("10", "Dados Arcoíris"), "22");
+    assert.equal(canonicalDiceSkinId("32", "Dados Diamante"), "32");
   });
 
   check("la dificultad elegida de los bots llega al estado de partida", () => {
@@ -248,6 +256,8 @@ async function run() {
       const registered = await recordMatchResults([
         { id: 'registered', score: 10000 },
         { id: 'guest', score: 2500 },
+        { id: 'disconnected', score: 3000, disconnected: true },
+        { id: 'eliminated', score: 1500, eliminated: true },
         { id: 'bot-1', score: 4000, isBot: true }
       ], 'registered');
       assert.deepEqual(registered, ['registered']);
@@ -256,8 +266,11 @@ async function run() {
         ['guest', 2500, false]
       ]);
       assert.deepEqual(transactionLog, ['BEGIN', 'COMMIT', 'RELEASE']);
+      assert.equal(completedMatchParticipant({ id: 'finished' }), true);
+      assert.equal(completedMatchParticipant({ id: 'left', disconnected: true }), false);
+      assert.equal(completedMatchParticipant({ id: 'timed-out', eliminated: true }), false);
       passed++;
-      console.log('  OK ranking registra victorias autenticadas y excluye bots');
+      console.log('  OK misiones y ranking cuentan solo participantes que completaron la partida');
     } finally {
       pool.connect = originalConnect;
     }
