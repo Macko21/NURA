@@ -23,6 +23,13 @@ const { createPlayerState } = require("../backend/matchState");
 const { pool } = require("../backend/database");
 const { recordMatchResults, completedMatchParticipant } = require("../backend/playerManager");
 const { canonicalDiceSkinId } = require("../backend/cosmeticResolver");
+const {
+  PUBLIC_TOURNAMENT_RETENTION_MS,
+  validateTournamentInput,
+  isTournamentRegistrationOpen,
+  nextScheduledOccurrence,
+  nextScheduledName
+} = require("../backend/tournamentRules");
 
 let passed = 0;
 
@@ -63,6 +70,29 @@ function sleep(ms) {
 }
 
 async function run() {
+  check('torneos finalizados permanecen visibles exactamente 24 horas', () => {
+    assert.equal(PUBLIC_TOURNAMENT_RETENTION_MS, 86400000);
+  });
+  check('inscripción de torneo respeta estado y fecha de cierre', () => {
+    const now = 1_000_000;
+    assert.equal(isTournamentRegistrationOpen({ status: 'registration', registration_until: now + 1 }, now), true);
+    assert.equal(isTournamentRegistrationOpen({ status: 'registration', registration_until: now }, now), false);
+    assert.equal(isTournamentRegistrationOpen({ status: 'active', registration_until: now + 1 }, now), false);
+  });
+  check('creación de torneo valida fechas, cupos y costo', () => {
+    const now = 1_000_000;
+    const valid = validateTournamentInput({ name: 'Copa Macko', maxPlayers: 16, fee: 500, startTime: now + 10_000, registrationUntil: now + 5_000 }, now);
+    assert.equal(valid.maxPlayers, 16);
+    assert.throws(() => validateTournamentInput({ name: 'No', maxPlayers: 2, startTime: now + 10_000 }, now));
+    assert.throws(() => validateTournamentInput({ name: 'Copa', maxPlayers: 16, startTime: now + 10_000, registrationUntil: now + 20_000 }, now));
+  });
+  check('recurrencia salta fechas vencidas y elige próxima futura', () => {
+    const hour = 60 * 60 * 1000;
+    assert.equal(nextScheduledOccurrence(0, '1h', 3 * hour + 10), 4 * hour);
+    assert.equal(nextScheduledOccurrence(0, 'invalid', 0), null);
+    assert.equal(nextScheduledName('Copa 10.000'), 'Copa 10.000 #2');
+    assert.equal(nextScheduledName('Copa 10.000 #2'), 'Copa 10.000 #3');
+  });
   console.log("\nReglas de Los 10.000");
 
   check("1 suelto vale 100 y 5 suelto vale 50", () => {

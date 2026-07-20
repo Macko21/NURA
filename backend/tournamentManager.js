@@ -23,6 +23,7 @@ const {
   removePushSubscription,
 } = require("./database");
 const { isPushReady, sendPushNotification } = require("./pushManager");
+const { nextScheduledOccurrence, nextScheduledName } = require("./tournamentRules");
 
 // Torneos activos en memoria: tournamentId → { status, matches, roomIds, etc }
 const activeTournaments = new Map();
@@ -207,6 +208,7 @@ async function completeMatch(
       // Si el torneo terminó, notificar campeón
       if (bracket.tournament.status === "completed") {
         notifyChampion(tournamentId, winnerId, bracket, clients, sendFn);
+        activeTournaments.delete(tournamentId);
       }
     }
     setTimeout(() => checkPendingMatches(), 250);
@@ -298,13 +300,26 @@ function cleanupTournament(tournamentId) {
   activeTournaments.delete(tournamentId);
   // Limpiar match rooms asociados
   const toDelete = [];
+  const roomIds = [];
   for (const [key, val] of matchRooms) {
-    if (val?.tournamentId === tournamentId || key.startsWith(`${tournamentId}:`)) {
+    if (val?.tournamentId === tournamentId || String(key).startsWith(`${tournamentId}:`)) {
       toDelete.push(key);
+      if (val?.tournamentId === tournamentId) roomIds.push(key);
     }
   }
   for (const key of toDelete) {
     matchRooms.delete(key);
+  }
+  const { rooms } = require("./roomManager");
+  for (const roomId of roomIds) {
+    const room = rooms.get(roomId);
+    if (room) {
+      for (const player of room.players || []) {
+        const socket = _wsClients?.get(player.id);
+        if (socket?.roomId === roomId) socket.roomId = null;
+      }
+      rooms.delete(roomId);
+    }
   }
 }
 
@@ -315,6 +330,10 @@ function stopTournamentManager() {
   if (_checkInterval) {
     clearInterval(_checkInterval);
     _checkInterval = null;
+  }
+  if (_autoCheckInterval) {
+    clearInterval(_autoCheckInterval);
+    _autoCheckInterval = null;
   }
 }
 
@@ -419,9 +438,8 @@ async function checkAndAutoStartTournaments() {
     // Buscar torneos en registration con registration_until vencido
     const res = await pool.query(`
       SELECT * FROM tournaments 
-      WHERE status = 'registration' 
-        AND registration_until IS NOT NULL 
-        AND registration_until < $1
+      WHERE status = 'registration'
+        AND start_time <= $1
     `, [now]);
     
     for (const t of res.rows) {
@@ -478,7 +496,6 @@ async function checkAndAutoStartTournaments() {
  */
 async function checkAndNotifyUpcomingTournaments() {
   try {
-    if (!isPushReady()) return;
     const { pool } = require("./database");
     const now = Date.now();
     
@@ -547,53 +564,33 @@ async function checkAndCreateScheduledTournaments() {
       SELECT DISTINCT schedule_interval FROM tournaments 
       WHERE is_scheduled = TRUE AND status = 'registration'
     `);
-    const existingIntervals = existingScheduled.rows.map(r => r.schedule_interval).filter(Boolean);
+    const existingIntervals = new Set(existingScheduled.rows.map(r => r.schedule_interval).filter(Boolean));
     
     const res = await pool.query(`
-      SELECT * FROM tournaments 
+      SELECT DISTINCT ON (schedule_interval) * FROM tournaments
       WHERE is_scheduled = TRUE 
         AND schedule_interval IS NOT NULL 
         AND status IN ('completed', 'cancelled')
-        ORDER BY created_at DESC
+      ORDER BY schedule_interval, created_at DESC
     `);
     
     for (const parent of res.rows) {
       // Si ya hay un torneo en registration con este schedule_interval, no crear otro
-      if (existingIntervals.includes(parent.schedule_interval)) continue;
+      if (existingIntervals.has(parent.schedule_interval)) continue;
       try {
-        // Calcular próximo start_time según el intervalo
-        let intervalMs = 0;
-        switch (parent.schedule_interval) {
-          case '1h': intervalMs = 60 * 60 * 1000; break;
-          case '2h': intervalMs = 2 * 60 * 60 * 1000; break;
-          case '4h': intervalMs = 4 * 60 * 60 * 1000; break;
-          case '8h': intervalMs = 8 * 60 * 60 * 1000; break;
-          case '12h': intervalMs = 12 * 60 * 60 * 1000; break;
-          case 'daily': intervalMs = 24 * 60 * 60 * 1000; break;
-          case 'weekly': intervalMs = 7 * 24 * 60 * 60 * 1000; break;
-          default: continue; // intervalo no reconocido
-        }
+        const nextStart = nextScheduledOccurrence(parent.start_time, parent.schedule_interval, now);
+        if (!nextStart) continue;
+        const registrationLead = Math.max(0, Number(parent.start_time) - Number(parent.registration_until || parent.start_time));
+        const nextRegUntil = nextStart - registrationLead;
         
-        const nextStart = parent.start_time + intervalMs;
-        const nextRegUntil = parent.registration_until 
-          ? parent.registration_until + intervalMs 
-          : nextStart - 3600000; // 1h antes del start
-        
-        const nextName = parent.name.replace(
-          /#\d+|\d+/g,
-          (m) => {
-            if (m.startsWith('#')) return '#' + (parseInt(m.slice(1)) + 1);
-            const num = parseInt(m);
-            return isNaN(num) ? m : String(num + 1);
-          }
-        ) || `${parent.name} #${Math.floor(Math.random() * 1000)}`;
+        const nextName = nextScheduledName(parent.name);
         
         const newTourney = await createTournament(
           nextName,
           parent.description || '',
           parent.max_players,
           parent.fee || 0,
-          (() => { try { return JSON.parse(parent.prizes || '[]'); } catch(e) { return []; } })(),
+          Array.isArray(parent.prizes) ? parent.prizes : (() => { try { return JSON.parse(parent.prizes || '[]'); } catch(e) { return []; } })(),
           nextStart,
           nextRegUntil,
           'system'
@@ -603,6 +600,7 @@ async function checkAndCreateScheduledTournaments() {
         await pool.query(`
           UPDATE tournaments SET is_scheduled = TRUE, schedule_interval = $1 WHERE id = $2
         `, [parent.schedule_interval, newTourney.id]);
+        existingIntervals.add(parent.schedule_interval);
         
         console.log(`✅ Auto-creado torneo #${newTourney.id} (${nextName}) - programado ${parent.schedule_interval}`);
       } catch (e) {

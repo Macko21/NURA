@@ -2418,43 +2418,46 @@ function renderTournaments(tournaments) {
   const list = $('tournament-list');
   if (!list) return;
   if (!tournaments.length) {
-    list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--text3);font-size:13px">No hay torneos activos ahora</p>';
+    list.innerHTML = '<div class="tournament-empty">🏆<strong>No hay torneos ahora</strong><span>El próximo aparecerá acá cuando abra la inscripción.</span></div>';
     return;
   }
-  list.innerHTML = tournaments.map(t => {
-    const statusIcon = t.status === 'active' ? '⚔️' : t.status === 'registration' ? '📝' : t.status === 'completed' ? '✅' : '❌';
+  const now = Date.now();
+  const active = tournaments.filter(t => t.status === 'registration' || t.status === 'active');
+  const recent = tournaments.filter(t => t.status === 'completed' || t.status === 'cancelled');
+  const renderCard = t => {
+    const statusLabels = { registration: 'Inscripción', active: 'En juego', completed: 'Finalizado', cancelled: 'Cancelado' };
+    const statusIcon = t.status === 'active' ? '⚔️' : t.status === 'registration' ? '📝' : t.status === 'completed' ? '🏆' : '✕';
     const feeText = parseInt(t.fee) > 0 ? `Fee: ${formatNum(parseInt(t.fee))} 🪙` : 'Gratis';
     const prizeText = parseInt(t.prize_pool) > 0 ? `Premios: ${formatNum(parseInt(t.prize_pool))} 🪙` : '';
     const startTime = t.start_time ? new Date(Number(t.start_time)) : null;
     const startTimeStr = startTime && !isNaN(startTime.getTime()) ? startTime.toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
-    const isReg = t.is_registered;
-    return `<div class="tournament-card" style="
-      background:var(--bg-card2);border:1px solid var(--border2);border-radius:10px;
-      padding:14px;margin-bottom:8px;cursor:pointer;
-      transition:border-color .2s
-    " data-tournament-id="${esc(t.id)}" onclick="showTournamentBracket(this.dataset.tournamentId)">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div>
-          <div style="font-size:14px;font-weight:600;color:var(--text)">${statusIcon} ${esc(t.name)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(t.description || '')}</div>
-          ${startTimeStr ? `<div style="font-size:10px;color:var(--gold);margin-top:3px">🕐 Empieza: ${startTimeStr}</div>` : ''}
-        </div>
-        <div style="text-align:right;font-size:12px;color:var(--text2);white-space:nowrap">
-          <div>${parseInt(t.registered_count || 0)}/${t.max_players}</div>
-          <div style="font-size:10px;color:var(--gold)">${feeText}</div>
-          ${prizeText ? `<div style="font-size:10px;color:var(--gold)">${prizeText}</div>` : ''}
-        </div>
+    const count = parseInt(t.registered_count || 0);
+    const maxPlayers = parseInt(t.max_players || 0);
+    const registrationCloses = Number(t.registration_until || t.start_time);
+    const canRegister = t.status === 'registration' && registrationCloses > now && count < maxPlayers;
+    const isRegistered = !!t.is_registered;
+    const endedAt = Number(t.completed_at || t.cancelled_at || 0);
+    const endedText = endedAt ? new Date(endedAt).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+    return `<article class="tournament-card ${esc(t.status)}" data-tournament-id="${esc(t.id)}" onclick="showTournamentBracket(this.dataset.tournamentId)">
+      <div class="tc-header">
+        <div class="tc-name">${statusIcon} ${esc(t.name)}</div>
+        <span class="tc-status ${esc(t.status)}">${statusLabels[t.status] || esc(t.status)}</span>
       </div>
-      <div style="margin-top:6px;display:flex;gap:6px;font-size:11px">
-        <span style="color:var(--text3);margin-right:auto">Ronda ${t.current_round || 0}/${t.rounds || '?'}</span>
-        <button class="btn-ghost-sm" style="padding:2px 8px;font-size:10px;width:auto;color:var(--text2);border-color:rgba(255,255,255,.08)" 
-          data-tournament-id="${esc(t.id)}" onclick="event.stopPropagation();showTournamentParticipantsModal(this.dataset.tournamentId)">👥 Ver participantes</button>
-        ${t.status === 'registration' && !isReg ? `<button class="btn btn-gold" data-tournament-id="${esc(t.id)}" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();registerTournament(this.dataset.tournamentId)">Inscribirme</button>` : ''}
-        ${t.status === 'registration' && isReg ? `<span class="btn btn-gold" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto;opacity:.7;cursor:default">✅ Inscripto</span>` : ''}
-        ${t.status === 'active' ? `<button class="btn btn-ghost" data-tournament-id="${esc(t.id)}" style="padding:4px 12px;font-size:11px;width:auto;margin-left:auto" onclick="event.stopPropagation();showTournamentBracket(this.dataset.tournamentId)">Ver bracket</button>` : ''}
+      ${t.description ? `<p class="tc-desc">${esc(t.description)}</p>` : ''}
+      <div class="tc-details">
+        <span>👥 ${count}/${maxPlayers}</span><span>${feeText}</span>${prizeText ? `<span>${prizeText}</span>` : ''}
+        ${t.status === 'active' ? `<span>Ronda ${t.current_round || 1}/${t.rounds || '?'}</span>` : ''}
       </div>
-    </div>`;
-  }).join('');
+      <div class="tc-time">${endedText ? `Terminó: ${endedText}` : startTimeStr ? `Empieza: ${startTimeStr}` : ''}${t.status === 'registration' && !canRegister && count >= maxPlayers ? ' · Cupos completos' : ''}</div>
+      <div class="tc-actions">
+        <button class="btn btn-ghost" data-tournament-id="${esc(t.id)}" onclick="event.stopPropagation();showTournamentParticipantsModal(this.dataset.tournamentId)">👥 Participantes</button>
+        ${canRegister && !isRegistered ? `<button class="btn btn-gold" data-tournament-id="${esc(t.id)}" onclick="event.stopPropagation();registerTournament(this.dataset.tournamentId)">Inscribirme</button>` : ''}
+        ${canRegister && isRegistered ? `<button class="btn btn-ghost tc-unregister" data-tournament-id="${esc(t.id)}" onclick="event.stopPropagation();unregisterTournament(this.dataset.tournamentId)">Salir</button><span class="tc-registered">✓ Inscripto</span>` : ''}
+        ${t.status !== 'registration' ? `<button class="btn btn-ghost" data-tournament-id="${esc(t.id)}" onclick="event.stopPropagation();showTournamentBracket(this.dataset.tournamentId)">Ver bracket</button>` : ''}
+      </div>
+    </article>`;
+  };
+  list.innerHTML = `${active.length ? `<div class="tournament-section-title">Disponibles</div>${active.map(renderCard).join('')}` : ''}${recent.length ? `<div class="tournament-section-title recent">Resultados recientes · visibles 24 h</div>${recent.map(renderCard).join('')}` : ''}`;
 }
 
 async function registerTournament(tournamentId) {
@@ -2573,6 +2576,7 @@ async function showTournamentBracket(tournamentId) {
     
     // ── Mostrar participantes en el bracket ──
     const bracketEl = $('tournament-bracket');
+    $('tb-participants')?.remove();
     const pSection = document.createElement('div');
     pSection.id = 'tb-participants';
     pSection.style.cssText = 'margin:8px 0 12px 0;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:8px;border:1px solid rgba(255,255,255,.04);';
@@ -2603,17 +2607,17 @@ async function showTournamentBracket(tournamentId) {
     }
     
     bracketEl.innerHTML = rounds.map(round => {
-      return `<div class="bracket-round" style="margin-bottom:14px">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border2);padding-bottom:4px;margin-bottom:6px">Ronda ${round.round}</div>
+      return `<div class="tb-round">
+        <div class="tb-round-title">Ronda ${round.round}</div>
         ${(round.matches || []).map(m => {
           const isCompleted = m.status === 'completed';
           const isBye = !m.player1_id || !m.player2_id;
-          return `<div style="display:flex;gap:8px;padding:8px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:4px;font-size:12px;border-left:3px solid ${isCompleted ? 'var(--green)' : (isBye ? 'var(--text3)' : 'var(--gold)')}">
-            <div style="flex:1">
-              <div style="color:${m.winner_id === m.player1_id ? 'var(--green)' : 'var(--text2)'};font-weight:${m.winner_id === m.player1_id ? '600' : '400'}">${esc(m.player1_name || 'BYE')} ${m.player1_score > 0 ? '<span style="color:var(--gold)">(' + m.player1_score + ')</span>' : ''}</div>
-              <div style="color:${m.winner_id === m.player2_id ? 'var(--green)' : 'var(--text2)'};font-weight:${m.winner_id === m.player2_id ? '600' : '400'}">${esc(m.player2_name || 'BYE')} ${m.player2_score > 0 ? '<span style="color:var(--gold)">(' + m.player2_score + ')</span>' : ''}</div>
+          return `<div class="tb-match ${isCompleted ? 'completed' : 'live'}">
+            <div class="tb-match-pair">
+              <div class="tb-player ${m.winner_id === m.player1_id ? 'winner' : isCompleted ? 'loser' : ''}"><span>${esc(m.player1_name || 'BYE')}</span><span class="tb-player-score">${isCompleted ? Number(m.player1_score || 0) : ''}</span></div>
+              <div class="tb-player ${m.winner_id === m.player2_id ? 'winner' : isCompleted ? 'loser' : ''}"><span>${esc(m.player2_name || 'BYE')}</span><span class="tb-player-score">${isCompleted ? Number(m.player2_score || 0) : ''}</span></div>
             </div>
-            ${isCompleted ? '<span style="color:var(--green);font-size:10px">✅</span>' : (isBye ? '<span style="color:var(--text3);font-size:10px">—</span>' : '<span style="color:var(--gold);font-size:10px">⏳</span>')}
+            <div class="tb-match-room">${isCompleted ? '✓ Finalizado' : (isBye ? 'Pase libre' : m.room_code ? `Sala ${esc(m.room_code)}` : 'Esperando')}</div>
           </div>`;
         }).join('')}
       </div>`;

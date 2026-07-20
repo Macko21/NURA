@@ -1586,14 +1586,19 @@ $('ceo-refresh-tournaments').onclick = loadTournamentsList;
 
 // ── Create Tournament ──────────────────────────────────
 $('ceo-tournament-create-btn').onclick = () => {
-  // Set default start date to tomorrow
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const toLocalInput = date => {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  };
+  const start = new Date(Date.now() + 86400000);
+  start.setHours(20, 0, 0, 0);
+  const registrationEnd = new Date(start.getTime() - 15 * 60000);
   $('ceo-tournament-f-name').value = '';
   $('ceo-tournament-f-desc').value = '';
   $('ceo-tournament-f-players').value = '16';
   $('ceo-tournament-f-fee').value = '0';
-  $('ceo-tournament-f-start').value = tomorrow;
-  $('ceo-tournament-f-reg').value = tomorrow;
+  $('ceo-tournament-f-start').value = toLocalInput(start);
+  $('ceo-tournament-f-reg').value = toLocalInput(registrationEnd);
   if ($('ceo-tournament-f-schedule')) $('ceo-tournament-f-schedule').value = '';
   $('ceo-tournament-form-error').classList.add('hidden');
   $('ceo-tournament-modal-title').textContent = '🏆 Nuevo torneo';
@@ -1615,6 +1620,13 @@ $('ceo-tournament-save').onclick = async () => {
   
   if (!name || !startTime) {
     errEl.textContent = 'Nombre y fecha de inicio requeridos';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const startsAt = new Date(startTime).getTime();
+  const registrationEndsAt = regUntil ? new Date(regUntil).getTime() : startsAt;
+  if (startsAt <= Date.now() || registrationEndsAt <= Date.now() || registrationEndsAt > startsAt) {
+    errEl.textContent = 'Las fechas deben ser futuras y la inscripción debe cerrar antes del inicio';
     errEl.classList.remove('hidden');
     return;
   }
@@ -1660,7 +1672,7 @@ async function ceoStartTournament(id) {
 
 async function ceoCancelTournament(id, name) {
   name = decodeURIComponent(name);
-  confirmModal('❌ Cancelar torneo', `¿Cancelar "${esc(name)}"? Se perderán todas las inscripciones.`, async (ok) => {
+  confirmModal('❌ Cancelar torneo', `¿Cancelar "${esc(name)}"? Se devolverá el costo de inscripción a cada jugador.`, async (ok) => {
     if (!ok) return;
     try {
       const res = await apiFetch(API + '/tournaments/' + id + '/cancel', {

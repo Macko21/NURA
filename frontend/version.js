@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.8.4";
+const GAME_VERSION = "3.8.5";
 
 const CHANGELOG = [
+  // ═══ 3.8.5 — PRODUCCIÓN ═══
+  {
+    version: "3.8.5",
+    date: "2026-07-20",
+    title: "🏆 Torneos más claros y confiables",
+    scope: "game",
+    files: [],
+    changes: [
+      "Los resultados recientes permanecen visibles durante 24 horas y luego salen de la lista de torneos",
+      "Las inscripciones, horarios y torneos recurrentes ahora funcionan de forma más confiable",
+      "La lista de torneos y el bracket se ven mejor y son más fáciles de usar desde el celular"
+    ]
+  },
   // ═══ 3.8.4 — PRODUCCIÓN ═══
   {
     version: "3.8.4",

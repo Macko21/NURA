@@ -10,6 +10,11 @@
 
 
 const { Pool } = require("pg");
+const {
+  PUBLIC_TOURNAMENT_RETENTION_MS,
+  validateTournamentInput,
+  isTournamentRegistrationOpen,
+} = require("./tournamentRules");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -120,6 +125,8 @@ async function initializeDatabase() {
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS weekly_baseline_set BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS is_scheduled BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS schedule_interval TEXT DEFAULT NULL`,
+      `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS completed_at BIGINT DEFAULT NULL`,
+      `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS cancelled_at BIGINT DEFAULT NULL`,
     ];
     // Migración para tabla missions_reset (timestamps de reseteo)
     try {
@@ -367,6 +374,23 @@ async function initializeDatabase() {
     for (const sql of migraciones) {
       try { await pool.query(sql); } catch(e) {}
     }
+    try {
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_tournaments_public_status ON tournaments(status, completed_at, cancelled_at)`);
+      await pool.query(`
+        UPDATE tournaments t
+        SET completed_at = COALESCE(
+          (SELECT MAX(tm.played_at) FROM tournament_matches tm WHERE tm.tournament_id = t.id),
+          t.start_time,
+          t.created_at
+        )
+        WHERE t.status = 'completed' AND t.completed_at IS NULL
+      `);
+      await pool.query(`
+        UPDATE tournaments
+        SET cancelled_at = created_at
+        WHERE status = 'cancelled' AND cancelled_at IS NULL
+      `);
+    } catch(e) { console.error('Error migrating tournament lifecycle:', e.message); }
     // Seed de items del shop desde el catálogo estático (solo la primera vez)
     await seedShopItemsFromCatalog();
     console.log("✅ PostgreSQL conectado y esquemas creados");
@@ -2008,14 +2032,15 @@ async function cleanupPortalChats() {
 
 async function createTournament(name, description, maxPlayers, fee, prizes, startTime, registrationUntil, createdBy) {
   const now = Date.now();
+  const normalized = validateTournamentInput({ name, description, maxPlayers, fee, startTime, registrationUntil }, now);
   // Calcular rondas necesarias para single elimination
-  const rounds = Math.ceil(Math.log2(maxPlayers));
+  const rounds = Math.ceil(Math.log2(normalized.maxPlayers));
   try {
     const res = await pool.query(`
       INSERT INTO tournaments (name, description, max_players, min_players, fee, prize_pool, prizes, rounds, start_time, registration_until, created_at, created_by)
       VALUES ($1, $2, $3, 4, $4, 0, $5, $6, $7, $8, $9, $10)
       RETURNING *
-    `, [name, description || '', parseInt(maxPlayers), parseInt(fee) || 0, JSON.stringify(prizes || []), rounds, startTime, registrationUntil || null, now, createdBy || 'system']);
+    `, [normalized.name, normalized.description, normalized.maxPlayers, normalized.fee, JSON.stringify(prizes || []), rounds, normalized.startTime, normalized.registrationUntil, now, createdBy || 'system']);
     return res.rows[0];
   } catch(e) { throw e; }
 }
@@ -2066,6 +2091,7 @@ async function registerForTournament(tournamentId, playerId, playerName) {
     const tourney = tourneyRes.rows[0];
     if (!tourney) throw new Error('Torneo no encontrado');
     if (tourney.status !== 'registration') throw new Error('El torneo no está en período de registro');
+    if (!isTournamentRegistrationOpen(tourney)) throw new Error('La inscripción ya cerró');
 
     const existing = await client.query(
       `SELECT id FROM tournament_participants WHERE tournament_id = $1 AND player_id = $2`,
@@ -2110,6 +2136,29 @@ async function registerForTournament(tournamentId, playerId, playerName) {
   }
 }
 
+async function getPublicTournaments(limit = 20, now = Date.now()) {
+  try {
+    const cutoff = now - PUBLIC_TOURNAMENT_RETENTION_MS;
+    const res = await pool.query(`
+      SELECT t.*,
+        (SELECT COUNT(*) FROM tournament_participants tp WHERE tp.tournament_id = t.id) as registered_count
+      FROM tournaments t
+      WHERE t.status IN ('registration', 'active')
+         OR (t.status = 'completed' AND t.completed_at >= $1)
+         OR (t.status = 'cancelled' AND t.cancelled_at >= $1)
+      ORDER BY
+        CASE t.status WHEN 'active' THEN 0 WHEN 'registration' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END,
+        CASE WHEN t.status IN ('registration', 'active') THEN t.start_time END ASC,
+        COALESCE(t.completed_at, t.cancelled_at, t.created_at) DESC
+      LIMIT $2
+    `, [cutoff, limit]);
+    return res.rows;
+  } catch(e) {
+    console.error('Error loading public tournaments:', e.message);
+    return [];
+  }
+}
+
 async function unregisterFromTournament(tournamentId, playerId) {
   const client = await pool.connect();
   try {
@@ -2118,6 +2167,7 @@ async function unregisterFromTournament(tournamentId, playerId) {
     const tourney = tourneyRes.rows[0];
     if (!tourney) throw new Error('Torneo no encontrado');
     if (tourney.status !== 'registration') throw new Error('El torneo ya comenzó, no podés cancelar');
+    if (!isTournamentRegistrationOpen(tourney)) throw new Error('La inscripción ya cerró');
 
     const removed = await client.query(
       `DELETE FROM tournament_participants WHERE tournament_id = $1 AND player_id = $2 RETURNING id`,
@@ -2344,7 +2394,7 @@ async function advanceTournamentMatch(tournamentId, matchId, winnerId, p1Score, 
       const loserId = match.player1_id === winnerId ? match.player2_id : match.player1_id;
       if (loserId) {
         await client.query(`
-          UPDATE tournament_participants SET eliminated_round = $1 WHERE tournament_id = $2 AND player_id = $3
+          UPDATE tournament_participants SET eliminated_round = $1, status = 'eliminated' WHERE tournament_id = $2 AND player_id = $3
         `, [match.round, tournamentId, loserId]);
       }
     }
@@ -2360,7 +2410,7 @@ async function advanceTournamentMatch(tournamentId, matchId, winnerId, p1Score, 
       
       // Asignar posiciones finales
       await client.query(`
-        UPDATE tournament_participants SET final_position = 1 WHERE tournament_id = $1 AND player_id = $2
+        UPDATE tournament_participants SET final_position = 1, status = 'champion' WHERE tournament_id = $1 AND player_id = $2
       `, [tournamentId, championId]);
       
       // Segundo puesto
@@ -2369,13 +2419,13 @@ async function advanceTournamentMatch(tournamentId, matchId, winnerId, p1Score, 
         : finalMatch.rows[0].player1_id;
       if (secondPlace) {
         await client.query(`
-          UPDATE tournament_participants SET final_position = 2 WHERE tournament_id = $1 AND player_id = $2
+          UPDATE tournament_participants SET final_position = 2, status = 'runner_up' WHERE tournament_id = $1 AND player_id = $2
         `, [tournamentId, secondPlace]);
       }
       
       await client.query(`
-        UPDATE tournaments SET status = 'completed' WHERE id = $1
-      `, [tournamentId]);
+        UPDATE tournaments SET status = 'completed', completed_at = COALESCE(completed_at, $2) WHERE id = $1
+      `, [tournamentId, Date.now()]);
 
       const prize = await client.query(`SELECT name, prize_pool FROM tournaments WHERE id = $1 FOR UPDATE`, [tournamentId]);
       const prizePool = Math.max(0, Number(prize.rows[0]?.prize_pool) || 0);
@@ -2450,7 +2500,7 @@ async function cancelTournament(tournamentId) {
         );
       }
     }
-    await client.query(`UPDATE tournaments SET status = 'cancelled' WHERE id = $1`, [tournamentId]);
+    await client.query(`UPDATE tournaments SET status = 'cancelled', cancelled_at = COALESCE(cancelled_at, $2) WHERE id = $1`, [tournamentId, Date.now()]);
     await client.query('COMMIT');
     return { success: true, refundedPlayers: participants.rows.length, refundEach: refund };
   } catch(e) {
@@ -2535,6 +2585,7 @@ module.exports = {
   // Torneos
   createTournament,
   getTournaments,
+  getPublicTournaments,
   getActiveTournaments,
   getTournamentById,
   registerForTournament,

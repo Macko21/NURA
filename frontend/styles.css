@@ -1871,8 +1871,13 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .tournament-card.registration{border-color:rgba(42,154,108,.3)}
 .tournament-card.registration::before{background:linear-gradient(90deg,var(--green),var(--green-lt),var(--green))}
 .tournament-card.active{box-shadow:0 0 20px rgba(212,175,55,.12)}
-.tournament-card.completed{opacity:.7}
+.tournament-card.completed{opacity:.88}
 .tournament-card.cancelled{opacity:.4}
+.tournament-section-title{margin:4px 2px 0;color:var(--gold);font:600 10px 'Sora',sans-serif;text-transform:uppercase;letter-spacing:1.1px}
+.tournament-section-title.recent{margin-top:10px;color:var(--text3)}
+.tournament-empty{display:flex;min-height:150px;align-items:center;justify-content:center;flex-direction:column;gap:7px;text-align:center;color:var(--gold);font-size:28px}
+.tournament-empty strong{color:var(--text);font-size:14px}
+.tournament-empty span{max-width:280px;color:var(--text3);font-size:11px;line-height:1.5}
 .tc-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tc-name{font-family:'Cinzel',serif;font-size:15px;color:var(--text);font-weight:600}
 .tc-status{font-size:10px;font-weight:600;padding:2px 10px;border-radius:4px;white-space:nowrap}
@@ -1883,8 +1888,12 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .tc-details{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text2)}
 .tc-details span{display:flex;align-items:center;gap:4px}
 .tc-desc{font-size:11px;color:var(--text3);line-height:1.4}
+.tc-time{font-size:10px;color:var(--gold);line-height:1.4}
 .tc-actions{display:flex;gap:8px;margin-top:4px}
 .tc-actions .btn{width:auto;padding:7px 16px;font-size:11px}
+.tc-actions .btn-gold{margin-left:auto}
+.tc-actions .tc-unregister{color:var(--red);border-color:rgba(200,60,48,.28)}
+.tc-registered{display:inline-flex;align-items:center;padding:0 3px;color:var(--green-lt);font-size:10px;white-space:nowrap}
 
 /* ── Tournament Bracket ── */
 .tournament-bracket{display:flex;gap:16px;overflow-x:auto;padding:8px 0;min-height:200px;align-items:stretch}
@@ -1906,6 +1915,20 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .tb-player.bye{color:var(--text3);font-style:italic;opacity:.5}
 .tb-player-score{margin-left:auto;font-family:'Cinzel',serif;font-size:12px;color:var(--gold);font-weight:700}
 .tb-match-room{font-size:9px;color:var(--text3);text-align:center;padding:2px 0}
+
+@media(max-width:600px){
+  #modal-tournament .modal-box{width:calc(100% - 20px) !important;max-height:calc(100dvh - 24px) !important;padding:20px 12px !important}
+  .tournament-card{padding:13px 12px}
+  .tc-header{align-items:flex-start}
+  .tc-name{font-size:13px;line-height:1.35}
+  .tc-details{gap:7px 12px}
+  .tc-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .tc-actions .btn{width:100%;margin:0;padding:8px 7px}
+  .tc-registered{justify-content:center}
+  .tournament-bracket{gap:10px;scroll-snap-type:x proximity;padding-bottom:14px}
+  .tb-round{min-width:min(78vw,240px);scroll-snap-align:start}
+  .tb-match{min-height:72px}
+}
 
 /* ══════════════════════════════════════
    MISC

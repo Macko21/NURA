@@ -576,10 +576,8 @@ app.get("/api/games/active", requireAuth, async (req, res) => {
 // ── TORNEOS ────────────────────────────────────────────────────
 app.get("/api/tournaments", requireAuth, async (req, res) => {
   try {
-    const tournaments = await getActiveTournamentsData();
-    // También incluir torneos completados recientes (últimos 5)
-    const { getTournaments } = require("./database");
-    const allTourneys = await getTournaments(10);
+    const { getPublicTournaments } = require("./database");
+    const allTourneys = await getPublicTournaments(20);
     
     // Agregar is_registered para cada torneo según el jugador actual
     const playerId = req.user.playerId || req.user.username;
@@ -593,7 +591,8 @@ app.get("/api/tournaments", requireAuth, async (req, res) => {
       is_registered: registeredIds.has(String(t.id))
     }));
     
-    res.json({ tournaments: tourneysWithReg, brackets: tournaments });
+    res.set('Cache-Control', 'no-store');
+    res.json({ tournaments: tourneysWithReg });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -606,7 +605,7 @@ app.get("/api/tournaments/next", requireAuth, async (req, res) => {
     const all = await getActiveTournaments();
     const now = Date.now();
     const upcoming = all
-      .filter(t => t.status === 'registration' && t.start_time > now)
+      .filter(t => t.status === 'registration' && t.start_time > now && Number(t.registration_until || t.start_time) > now)
       .sort((a, b) => parseInt(a.start_time) - parseInt(b.start_time));
     const next = upcoming[0] || null;
     res.json({ next, upcoming: upcoming.slice(0, 5) });
@@ -712,9 +711,13 @@ app.get("/ceo-panel/api/tournaments", requireCeoAuth, requireCeoRole('editor'), 
 app.post("/ceo-panel/api/tournaments/create", requireCeoAuth, requireCeoRole('admin'), async (req, res) => {
   try {
     const { createTournament } = require("./database");
+    const { SCHEDULE_INTERVALS_MS } = require("./tournamentRules");
     const { name, description, maxPlayers, fee, prizes, startTime, registrationUntil, isScheduled, scheduleInterval } = req.body;
     if (!name || !maxPlayers || !startTime) {
       return res.status(400).json({ error: 'Nombre, maxPlayers y startTime requeridos' });
+    }
+    if (isScheduled && !SCHEDULE_INTERVALS_MS[scheduleInterval]) {
+      return res.status(400).json({ error: 'Frecuencia de torneo no válida' });
     }
     const tourney = await createTournament(
       name, description, maxPlayers, fee || 0, prizes || [],
@@ -734,7 +737,7 @@ app.post("/ceo-panel/api/tournaments/create", requireCeoAuth, requireCeoRole('ad
     logAudit(req.admin.username, 'tournament_create', String(tourney.id), `${name} (${maxPlayers} players, fee: ${fee || 0})${isScheduled ? ' scheduled:'+scheduleInterval : ''}`).catch(e => {});
     res.json({ tournament: tourney });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -2278,9 +2281,9 @@ wss.on("connection", socket => {
 
       /* ── TOURNAMENT: REGISTER ───────────────────────── */
       if (type === "TOURNAMENT_REGISTER") {
-        const { tournamentId, playerId, playerName } = data;
+        const { tournamentId } = data;
         try {
-          await registerTournamentPlayer(tournamentId, playerId, playerName);
+          await registerTournamentPlayer(tournamentId, socket.playerId, socket.playerName || socket.username || socket.playerId);
           send(socket, "TOURNAMENT_REGISTERED", { tournamentId });
         } catch (err) {
           send(socket, "ERROR", { message: err.message });

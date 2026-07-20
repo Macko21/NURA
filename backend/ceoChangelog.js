@@ -2,6 +2,38 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.8.5": {
+    title: "🏆 Ciclo de vida, seguridad y UX integral de torneos",
+    scope: "ceo",
+    files: [
+      "backend/database.js",
+      "backend/server.js",
+      "backend/tournamentManager.js",
+      "backend/tournamentRules.js",
+      "frontend/app.js",
+      "frontend/ceo-panel.html",
+      "frontend/ceo-panel.js",
+      "frontend/styles.css",
+      "scripts/game-rules-test.js",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "Retención pública: completed_at/cancelled_at registran el cierre real; finalizados y cancelados se ocultan de la lista pública después de 24 horas sin borrar historial ni bracket.",
+      "Migración: torneos históricos reciben fechas de cierre compatibles y un índice optimiza el filtro público por estado y antigüedad.",
+      "Inscripción: registro y baja validan estado, plazo, cupo, jugador y saldo dentro de una transacción bloqueada.",
+      "Seguridad: el registro por WebSocket toma identidad autenticada del socket e ignora IDs y nombres enviados por el cliente.",
+      "Programación: el auto-inicio respeta start_time; recurrencias saltan fechas vencidas, evitan duplicados por intervalo y preservan correctamente premios y anticipación del cierre.",
+      "Bracket: estados de eliminado, finalista y campeón quedan persistidos; la final registra completed_at y mantiene premio idempotente.",
+      "Recursos: cancelar un torneo limpia salas y referencias activas; detener el manager cancela ambos intervalos internos.",
+      "Notificaciones: avisos WebSocket de torneos próximos funcionan incluso cuando las notificaciones push no están configuradas.",
+      "Interfaz: cards separan disponibles y resultados recientes, muestran cupos/estado/horario, permiten salir antes del cierre y mejoran bracket horizontal en mobile.",
+      "CEO: creación usa fecha y hora, valida cronología y explica correctamente el reintegro al cancelar.",
+      "Pruebas: 19 reglas y 31 smoke tests aprobados; versión PWA y caché actualizadas a 3.8.5."
+    ]
+  },
   "3.8.4": {
     title: "🎲 Normalización de skins y progreso por partidas completadas",
     scope: "ceo",
