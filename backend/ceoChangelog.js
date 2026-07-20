@@ -2,6 +2,25 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.8.3": {
+    title: "📱 Safe-area superior aplicada a todas las vistas móviles",
+    scope: "ceo",
+    files: [
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/ceo-panel.html",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "iOS: Portal, sala de espera y partida suman safe-area-inset-top a sus encabezados.",
+      "Interfaz: reloj, conectividad y batería dejan de tapar títulos, códigos de sala y controles.",
+      "Responsive: el cambio solo aplica hasta 600 px y no altera la vista de escritorio.",
+      "PWA: versión y caché actualizadas a 3.8.3 para forzar la descarga del CSS corregido."
+    ]
+  },
   "3.8.2": {
     title: "🔊 Audio por canales, push estable y ranking verificado",
     scope: "ceo",

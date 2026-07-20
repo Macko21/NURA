@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.8.2";
+const GAME_VERSION = "3.8.3";
 
 const CHANGELOG = [
+  // ═══ 3.8.3 — PRODUCCIÓN ═══
+  {
+    version: "3.8.3",
+    date: "2026-07-20",
+    title: "📱 Encabezados corregidos en iPhone",
+    scope: "game",
+    files: ["frontend/styles.css", "frontend/index.html", "frontend/sw.js", "frontend/version.js"],
+    changes: [
+      "Portal, sala de espera y partida respetan el área segura superior de iOS",
+      "El reloj, la señal y la batería ya no se superponen con títulos, códigos ni controles",
+      "La corrección queda limitada a pantallas móviles y conserva la vista de escritorio"
+    ]
+  },
   // ═══ 3.8.2 — PRODUCCIÓN ═══
   {
     version: "3.8.2",

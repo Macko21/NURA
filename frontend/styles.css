@@ -2231,7 +2231,7 @@ input[type=number]{-moz-appearance:textfield}
   #screen-lobby .user-top-bar{
     position:sticky;top:0;width:100%;flex-shrink:0;
     margin-bottom:16px;
-    padding-top:calc(7px + env(safe-area-inset-top));
+    padding-top:calc(7px + env(safe-area-inset-top, 0px));
     background:linear-gradient(180deg,rgba(10,10,18,.98) 72%,rgba(10,10,18,.7));
   }
   #screen-lobby .lobby-content{flex-shrink:0;margin:0 auto;padding-top:0}
@@ -2241,6 +2241,17 @@ input[type=number]{-moz-appearance:textfield}
   #screen-room .room-header-actions{gap:4px;flex-shrink:0}
   #screen-room .code-badge{font-size:14px;letter-spacing:3px}
   #screen-room .btn-icon-sm{font-size:14px;padding:3px}
+
+  /* iOS con viewport-fit=cover dibuja debajo de la barra de estado. */
+  .screen > .top-bar{
+    padding-top:calc(12px + env(safe-area-inset-top, 0px));
+  }
+  #screen-room > .top-bar{
+    padding-top:calc(10px + env(safe-area-inset-top, 0px));
+  }
+  #screen-game > .game-topbar{
+    padding-top:calc(8px + env(safe-area-inset-top, 0px));
+  }
 }
 
 .sound-vol-icon {
