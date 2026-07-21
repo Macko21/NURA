@@ -610,6 +610,10 @@ const SHOP_CATALOG = [
   { id: 20, category: 'dados',     name: 'Dados Esmeralda',  icon: '💚', price: 1800, desc: 'Suerte verde' },
   { id: 21, category: 'dados',     name: 'Dados Zombie',     icon: '🧟', price: 2200, desc: 'Apocalipsis en tus manos' },
   { id: 22, category: 'dados',     name: 'Dados Arcoíris',   icon: '🌈', price: 2800, desc: 'Todos los colores del éxito' },
+  { id: 37, category: 'dados',     name: 'Dados Océano',     icon: '🌊', price: 2600, desc: 'Profundidad azul y espuma luminosa' },
+  { id: 38, category: 'dados',     name: 'Dados Sakura',     icon: '🌸', price: 3200, desc: 'Pétalos rosados en cada tirada' },
+  { id: 39, category: 'dados',     name: 'Dados Tóxicos',    icon: '☢️', price: 3600, desc: 'Energía radioactiva de alto contraste' },
+  { id: 40, category: 'dados',     name: 'Dados Vaporwave',  icon: '🕹️', price: 4200, desc: 'Neón retro de otra dimensión' },
   
   // ── AVATARES ──
   { id: 7,  category: 'avatares',  name: 'Pirata',        icon: '🏴‍☠️', price: 400,  desc: 'Izá la bandera' },
@@ -625,6 +629,10 @@ const SHOP_CATALOG = [
   { id: 25, category: 'avatares',  name: 'Ángel',         icon: '😇', price: 2200, desc: 'Protección divina' },
   { id: 26, category: 'avatares',  name: 'Diablo',        icon: '😈', price: 1400, desc: 'Fuego infernal' },
   { id: 27, category: 'avatares',  name: 'Alien',         icon: '👽', price: 3000, desc: 'De otro mundo' },
+  { id: 41, category: 'avatares',  name: 'Astronauta',    icon: '🧑‍🚀', price: 1800, desc: 'Listo para una partida orbital' },
+  { id: 42, category: 'avatares',  name: 'Vampiro',       icon: '🧛', price: 2400, desc: 'Elegancia inmortal' },
+  { id: 43, category: 'avatares',  name: 'Ajolote',       icon: '🦎', price: 2100, desc: 'Raro, simpático e inolvidable' },
+  { id: 44, category: 'avatares',  name: 'Agente',        icon: '🕵️', price: 2800, desc: 'Nadie conoce su próxima jugada' },
   
   // ── ESPECIALES ──
   { id: 3,  category: 'especiales',name: 'Emotes VIP',         icon: '😎', price: 800,  desc: 'Emojis exclusivos en chat' },
@@ -635,6 +643,10 @@ const SHOP_CATALOG = [
   { id: 29, category: 'especiales',name: 'Dado Mag. Animado',  icon: '🪄', price: 3500, desc: 'Animación especial al tirar' },
   { id: 30, category: 'especiales',name: 'Racha Visible',      icon: '📢', price: 1200, desc: 'Todos ven tu racha de victorias' },
   { id: 31, category: 'especiales',name: '+50% Monedas x 1d',  icon: '⏫', price: 2500, desc: 'Ganás 50% más monedas por 24h' },
+  { id: 45, category: 'especiales',name: 'Estela Cósmica',      icon: '☄️', price: 3200, desc: 'Partículas cósmicas alrededor de tu avatar' },
+  { id: 46, category: 'especiales',name: 'Aura Real',           icon: '👑', price: 3800, desc: 'Tu avatar irradia una corona dorada' },
+  { id: 47, category: 'especiales',name: 'Confeti Arcoíris',    icon: '🎊', price: 4200, desc: 'Celebración multicolor exclusiva al ganar' },
+  { id: 48, category: 'especiales',name: 'Entrada Relámpago',   icon: '⚡', price: 4500, desc: 'Pulso eléctrico cuando aparecen tus dados' },
   
   // ── ULTRA RAROS (premium) ──
   { id: 32, category: 'ultra',     name: 'Dados Diamante',    icon: '💠', price: 5000, desc: 'Brillo eterno en cada tiro' },
@@ -642,13 +654,16 @@ const SHOP_CATALOG = [
   { id: 34, category: 'ultra',     name: 'Avatar Unicornio',  icon: '🦄', price: 6000, desc: 'Magia y rareza suprema' },
   { id: 35, category: 'ultra',     name: 'Avatar Fénix',      icon: '🔥', price: 8000, desc: 'Renacé de las cenizas' },
   { id: 36, category: 'ultra',     name: 'Efecto Láser',      icon: '💥', price: 10000, desc: 'Explosión láser al ganar' },
+  { id: 49, category: 'ultra',     name: 'Dados Prisma',      icon: '🔮', price: 12000, desc: 'Ultra: refracción mística en cada cara' },
+  { id: 50, category: 'ultra',     name: 'Avatar Kraken',     icon: '🐙', price: 12000, desc: 'Ultra: criatura de las profundidades' },
+  { id: 51, category: 'ultra',     name: 'Efecto Eclipse',    icon: '🌘', price: 14000, desc: 'Ultra: la victoria oscurece la arena' },
 ];
 
 async function getShopCatalog() {
   try {
     const dbItems = await pool.query(`SELECT * FROM shop_items WHERE enabled = TRUE ORDER BY category, price ASC`);
     if (dbItems.rows.length > 0) {
-      return dbItems.rows.map(item => ({
+      const normalized = dbItems.rows.map(item => ({
         id: item.id,
         category: item.category,
         name: item.name,
@@ -657,6 +672,8 @@ async function getShopCatalog() {
         desc: item.description,
         priceDisplay: item.price.toLocaleString('es-AR')
       }));
+      const present = new Set(normalized.map(item => Number(item.id)));
+      return normalized.concat(SHOP_CATALOG.filter(item => !present.has(item.id)).map(item => ({ ...item, priceDisplay: item.price.toLocaleString('es-AR') })));
     }
   } catch(e) {}
   // Fallback: solo si la tabla shop_items no existe aún
@@ -765,6 +782,7 @@ async function buyShopItem(userId, itemId) {
   // Buscar el ítem en la DB o en el catálogo hardcodeado
   const item = await getShopItemById(itemId);
   if (!item) throw new Error("Ítem no válido");
+  if (item.category === 'ultra') throw new Error("Los Ultra salen en el cofre diario o se compran en un pack premium");
   const cost = item.price;
 
   try {
@@ -1858,8 +1876,6 @@ async function deleteShopItemDB(id) {
 
 async function seedShopItemsFromCatalog() {
   try {
-    const existing = await pool.query(`SELECT COUNT(*) as count FROM shop_items`);
-    if (parseInt(existing.rows[0].count) > 0) return; // Ya hay datos
     const now = Date.now();
     for (const item of SHOP_CATALOG) {
       // Insertar con ID explícito para que coincida con el catálogo hardcodeado

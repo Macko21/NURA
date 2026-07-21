@@ -21,12 +21,8 @@ if (process.env.STRIPE_SECRET_KEY) {
 }
 
 // Paquetes de monedas disponibles para compra con dinero real
-const COIN_PACKS = {
-  "small":  { coins: 500,  price: 299,  name: "Bolsa de Monedas" },
-  "medium": { coins: 1500, price: 799,  name: "Cofre de Monedas" },
-  "large":  { coins: 4000, price: 1599, name: "Tesoro Real" },
-  "mega":   { coins: 10000, price: 3499, name: "Fortuna de Macko" }
-};
+const { COMMERCE_PACKS, getCommercePack, listCommercePacks, grantCommercePack } = require("./commerceCatalog");
+const COIN_PACKS = COMMERCE_PACKS;
 
 /**
  * Crea un PaymentIntent de Stripe para comprar un paquete de monedas.
@@ -35,13 +31,13 @@ async function createCoinPurchase(priceId, userId) {
   if (!stripe) throw new Error("Stripe no está configurado. Usá Mercado Pago.");
 
   try {
-    const pack = COIN_PACKS[priceId];
+    const pack = getCommercePack(priceId);
     if (!pack) throw new Error("Paquete no válido");
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: pack.price, // en centavos
+      amount: pack.usdCents,
       currency: "usd",
-      description: `${pack.name} - ${pack.coins} monedas`,
+      description: `${pack.name} - contenido digital fijo`,
       metadata: {
         packId: priceId,
         coins: pack.coins.toString(),
@@ -51,7 +47,7 @@ async function createCoinPurchase(priceId, userId) {
 
     return {
       clientSecret: paymentIntent.client_secret,
-      amount: pack.price,
+      amount: pack.usdCents,
       coins: pack.coins,
       name: pack.name
     };
@@ -88,8 +84,8 @@ async function handleStripeWebhook(rawBody, signature, pool) {
       return { received: true };
     }
 
-    const pack = COIN_PACKS[packId];
-    if (!pack || paymentIntent.amount_received !== pack.price || paymentIntent.currency !== "usd") {
+    const pack = getCommercePack(packId);
+    if (!pack || paymentIntent.amount_received !== pack.usdCents || paymentIntent.currency !== "usd") {
       throw new Error("El pago de Stripe no coincide con el paquete comprado");
     }
 
@@ -106,19 +102,9 @@ async function handleStripeWebhook(rawBody, signature, pool) {
         await client.query("COMMIT");
         return { received: true, duplicate: true };
       }
-      const playerResult = await client.query(
-        "SELECT id FROM players WHERE user_id = $1 FOR UPDATE",
-        [userId]
-      );
-      if (!playerResult.rows.length) throw new Error(`Usuario ${userId} sin jugador`);
-      const playerId = playerResult.rows[0].id;
-      await client.query("UPDATE players SET coins = coins + $1 WHERE id = $2", [pack.coins, playerId]);
-      await client.query(
-        `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-        [playerId, pack.coins, `Compra Stripe: ${packId}`, Date.now()]
-      );
+      const delivery = await grantCommercePack(client, userId, packId, "Stripe");
       await client.query("COMMIT");
-      console.log(`✅ ${pack.coins} monedas entregadas a jugador ${playerId}`);
+      console.log(`✅ Pack ${packId} entregado a jugador ${delivery.playerId}`);
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -133,16 +119,7 @@ async function handleStripeWebhook(rawBody, signature, pool) {
 /**
  * Devuelve los paquetes disponibles (sin el precio en centavos para el frontend).
  */
-function getCoinPacks() {
-  const packs = {};
-  for (const [id, pack] of Object.entries(COIN_PACKS)) {
-    packs[id] = {
-      ...pack,
-      priceDisplay: `$${(pack.price / 100).toFixed(2)}`
-    };
-  }
-  return packs;
-}
+function getCoinPacks(catalog = []) { return listCommercePacks(catalog, "USD"); }
 
 module.exports = {
   createCoinPurchase,

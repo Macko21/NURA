@@ -47,6 +47,11 @@ const DICE_SKINS = {
   '22': { bg: ['#FF6B9D','#FFD700'], dot:'#3a1a4e', sh:'#CC5599', name:'Arcoíris',   icon:'🌈' },
   '32': { bg: ['#B9F2FF','#7FE0F8'], dot:'#003344', sh:'#40C0E0', name:'Diamante',   icon:'💠' },
   '33': { bg: ['#1A0533','#4A1A7A'], dot:'#fff',    sh:'#2A0055', name:'Galácticos', icon:'🌌' },
+  '37': { bg: ['#39D6E8','#126DB5'], dot:'#fff',    sh:'#0A4C86', name:'Océano',     icon:'🌊' },
+  '38': { bg: ['#FFD2E4','#EF80B2'], dot:'#542039', sh:'#C95689', name:'Sakura',     icon:'🌸' },
+  '39': { bg: ['#C8FF28','#4E8F00'], dot:'#102000', sh:'#315F00', name:'Tóxicos',    icon:'☢️' },
+  '40': { bg: ['#FF4FD8','#4A35D8'], dot:'#fff',    sh:'#2DE2E6', name:'Vaporwave',  icon:'🕹️' },
+  '49': { bg: ['#F5ECFF','#56D9FF','#D762FF'], dot:'#28134A', sh:'#8DEBFF', name:'Prisma', icon:'🔮' },
 };
 
 // Preview de dados para la tienda: valores de dados emblemáticos para cada skin
@@ -64,6 +69,11 @@ const SHOP_DICE_PREVIEW = {
   '22': { val: 5, label: 'Arcoíris total' },
   '32': { val: 3, label: 'Brillo puro' },
   '33': { val: 6, label: 'Nebulosa cósmica' },
+  '37': { val: 5, label: 'Marea de suerte' },
+  '38': { val: 3, label: 'Flor triple' },
+  '39': { val: 6, label: 'Carga tóxica' },
+  '40': { val: 5, label: 'Retro bonus' },
+  '49': { val: 1, label: 'Prisma Ultra' },
 };
 
 function makeDieSVG(value, state='normal', skinId=null, dotColor=null) {

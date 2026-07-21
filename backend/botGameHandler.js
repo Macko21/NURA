@@ -10,6 +10,8 @@
 const botManager = require("./botManager");
 const { getMatch, handleEntryRoll, handleRoll, handleBank } = require("./diceManager");
 const { addPlayer, setReady } = require("./roomManager");
+const { SHOP_CATALOG } = require("./database");
+const scheduledRooms = new Map();
 
 /**
  * Agrega bots a una sala existente y los marca como listos.
@@ -31,7 +33,7 @@ function addBotsToRoom(room, botCount, difficulty) {
         botPlayer.botDifficulty = difficulty;
         botPlayer.connected = true;
         // Cosméticos aleatorios de la tienda para propaganda
-        const cosmetics = botManager.getRandomCosmetics();
+        const cosmetics = botManager.getRandomCosmetics(SHOP_CATALOG);
         botPlayer.equippedDice = cosmetics.equippedDice;
         botPlayer.equippedAvatar = cosmetics.equippedAvatar;
         botPlayer.equippedSpecial = cosmetics.equippedSpecial;
@@ -56,9 +58,11 @@ function scheduleBotTurnIfNeeded(roomId, broadcastRoom) {
   const difficulty = current.botDifficulty || 'normal';
   const thinkDelay = botManager.getBotDelay(difficulty);
 
-  setTimeout(() => {
+  clearTimeout(scheduledRooms.get(roomId));
+  scheduledRooms.set(roomId, setTimeout(() => {
+    scheduledRooms.delete(roomId);
     processBotTurn(roomId, broadcastRoom);
-  }, thinkDelay);
+  }, thinkDelay));
 }
 
 /**
@@ -84,7 +88,8 @@ function processBotTurn(roomId, broadcastRoom) {
 
   // Decidir si plantarse o seguir
   const difficulty = current.botDifficulty || 'normal';
-  if (botManager.shouldBank(current, difficulty)) {
+  const leaderScore = Math.max(...match.players.filter(p => !p.eliminated).map(p => Number(p.score || 0)));
+  if (botManager.shouldBank(current, difficulty, { leaderScore })) {
     const result = handleBank(roomId, current.id, broadcastRoom);
     if (result && result.ok) {
       // Bank exitoso, el turno avanzó. Ver si el próximo es bot.
@@ -112,7 +117,7 @@ function processBotTurn(roomId, broadcastRoom) {
             // Turno avanzó a humano u otro bot
             _scheduleNextBotCheck(roomId, broadcastRoom, 600);
           }
-        }, 400);
+        }, botManager.getBotPresentationDelay(event));
       } else if (event === 'ROLL_RESULT_AUTOBANK') {
         // Auto-bank se ejecutará, verificar después
         _scheduleNextBotCheck(roomId, broadcastRoom, 2000);
@@ -131,7 +136,9 @@ function processBotTurn(roomId, broadcastRoom) {
  * Programa la verificación del próximo turno de bot después de un delay.
  */
 function _scheduleNextBotCheck(roomId, broadcastRoom, delayMs) {
-  setTimeout(() => {
+  clearTimeout(scheduledRooms.get(roomId));
+  scheduledRooms.set(roomId, setTimeout(() => {
+    scheduledRooms.delete(roomId);
     const match = getMatch(roomId);
     if (!match || match.status !== "playing") return;
     const p = match.players[match.currentPlayerIndex];
@@ -139,7 +146,7 @@ function _scheduleNextBotCheck(roomId, broadcastRoom, delayMs) {
       processBotTurn(roomId, broadcastRoom);
     }
     // Si es humano, no hacemos nada
-  }, delayMs);
+  }, Math.max(1500, delayMs)));
 }
 
 /**
@@ -165,7 +172,7 @@ function _botEntry(roomId, botId, broadcastRoom) {
         // Turno avanzó a otro jugador
         _scheduleNextBotCheck(roomId, broadcastRoom, 600);
       }
-    }, 600);
+    }, botManager.getBotPresentationDelay('ROLL_RESULT'));
     return;
   }
 
@@ -178,7 +185,7 @@ function _botEntry(roomId, botId, broadcastRoom) {
       if (p && p.isBot && !p.entered) {
         _botEntry(roomId, botId, broadcastRoom);
       }
-    }, 800);
+    }, botManager.getBotPresentationDelay('ROLL_RESULT'));
     return;
   }
 

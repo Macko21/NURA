@@ -711,14 +711,21 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
   position:relative;
   background:rgba(0,0,0,.4);
   border:1px solid rgba(255,255,255,.04);
-  border-radius:18px;padding:8px 12px;
-  width:min(100%,660px);min-width:280px;min-height:0;
+  border-radius:16px;padding:4px 7px;
+  width:min(100%,620px);min-width:280px;min-height:0;
   display:flex;align-items:center;justify-content:center;
   box-shadow:inset 0 2px 12px rgba(0,0,0,.6), 0 8px 32px rgba(0,0,0,.3);
 }
+.sc-av.bot-avatar{font-size:24px}
+.sc-av.special-45{box-shadow:0 0 0 2px #55d8ff,0 0 18px #805dff;animation:avatarAura 2.2s ease-in-out infinite}
+.sc-av.special-46{box-shadow:0 0 0 2px #f2c84b,0 0 20px rgba(242,200,75,.75)}
+.sc-av.special-48{box-shadow:0 0 0 2px #73e8ff,0 0 16px #4e87ff;animation:avatarPulse 1.25s steps(2,end) infinite}
+.sc-av.special-51{box-shadow:0 0 0 2px #bb75ff,0 0 22px #3b1670}
+@keyframes avatarAura{50%{filter:brightness(1.3);transform:translateY(-2px)}}
+@keyframes avatarPulse{50%{filter:brightness(1.5)}}
 .dice-tray.is-empty{display:none}
 .dice-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
-.dice-row.dice-row-3d{display:block;width:min(100%,640px);min-width:280px;height:clamp(128px,17vw,166px);overflow:visible}
+.dice-row.dice-row-3d{display:block;width:min(100%,606px);min-width:280px;height:clamp(126px,16vw,158px);overflow:visible}
 .dice-3d-canvas{display:block;width:100% !important;height:100% !important;filter:drop-shadow(0 8px 14px rgba(0,0,0,.32));touch-action:none}
 
 .die{
@@ -1440,6 +1447,12 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .coin-pack-amount{font-family:'Cinzel',serif;font-size:24px;color:var(--gold);font-weight:700}
 .coin-pack-label{font-size:12px;color:var(--text2)}
 .coin-pack-price{font-size:18px;font-weight:700;color:var(--text);margin-top:4px}
+.coin-pack-contents{font-size:11px;line-height:1.55;color:var(--text2);text-align:center;min-height:34px}
+.pack-badge{position:absolute;top:7px;right:7px;padding:3px 7px;border-radius:999px;background:var(--gold);color:#15120a;font-size:9px;font-weight:800}
+.shop-premium-note{font-size:11px;line-height:1.35;text-align:center;color:var(--gold)}
+.victory-eclipse::after{content:'';position:fixed;inset:0;z-index:9998;pointer-events:none;background:radial-gradient(circle at center,transparent 12%,rgba(18,3,40,.82) 48%,rgba(0,0,0,.94) 100%);animation:eclipseIn 2.6s ease both}
+@keyframes eclipseIn{0%,100%{opacity:0}20%,75%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.sc-av.special-45,.sc-av.special-48{animation:none}}
 
 .btn-buy{
   padding:7px 14px;font-size:12px;border-radius:var(--r-sm);

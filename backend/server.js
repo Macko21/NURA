@@ -1517,7 +1517,7 @@ function buildReportHtml(report) {
 
 // Ruta para obtener paquetes de monedas (protegida)
 app.get("/api/shop/packs", requireAuth, (req, res) => {
-  res.json({ packs: getCoinPacks() });
+  res.json({ packs: getCoinPacks(SHOP_CATALOG) });
 });
 
 // Ruta para crear intención de pago Stripe (protegida)
@@ -1556,7 +1556,7 @@ app.post("/api/mercadopago/create-preference", requireAuth, async (req, res) => 
 
 // Ruta para obtener paquetes MP
 app.get("/api/mercadopago/packs", requireAuth, (req, res) => {
-  res.json({ packs: getMPCoinPacks() });
+  res.json({ packs: getMPCoinPacks(SHOP_CATALOG) });
 });
 
 // Webhook IPN de Mercado Pago

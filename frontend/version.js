@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.9.2";
+const GAME_VERSION = "4.0.0";
 
 const CHANGELOG = [
+  {
+    version: "4.0.0",
+    date: "2026-07-20",
+    title: "🎲 Dados vivos, bots mejores y tienda ampliada",
+    scope: "game",
+    files: [],
+    changes: [
+      "Los dados se ven más claros, grandes y cercanos, conservando el ícono de cada skin",
+      "Los bots dejan ver sus tiradas, usan cosméticos variados y el nivel difícil juega con mejor estrategia",
+      "Llegaron nuevas skins, avatares, efectos, sonidos y packs de contenido fijo",
+      "Los artículos Ultra siguen disponibles en el cofre diario y ahora también tienen packs premium directos"
+    ]
+  },
   // ═══ 3.9.2 — PRODUCCIÓN ═══
   {
     version: "3.9.2",

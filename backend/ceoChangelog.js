@@ -2,6 +2,20 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.0.0": {
+    title: "🎲 Renovación de cosméticos, bots y monetización determinística",
+    scope: "ceo",
+    files: ["backend/botManager.js", "backend/botGameHandler.js", "backend/commerceCatalog.js", "backend/database.js", "backend/paymentManager.js", "backend/paymentManagerMP.js", "backend/server.js", "frontend/app.js", "frontend/audio.js", "frontend/dice-renderer.js", "frontend/dice-renderer-3d.mjs", "frontend/styles.css"],
+    changes: [
+      "Renderer 3D: geometría +10%, cámara más cercana, exposición 1.52, emisión base 0.38, iconos al 58% con opacidad 0.76 y bandeja compacta.",
+      "Catálogo: se agregaron 4 dados, 4 avatares, 4 efectos y 3 Ultra; el seed ahora inserta IDs faltantes aunque la tabla ya tenga datos.",
+      "Bots: avatares resueltos a emoji, cosméticos derivados del catálogo completo, espera visible de 1.85–3.6 s, temporizadores deduplicados y estrategia difícil adaptativa por riesgo/desventaja.",
+      "Audio: firmas tonales nuevas para Océano, Sakura, Tóxico, Vaporwave y Prisma, aplicadas también al impacto 3D.",
+      "Comercio: catálogo unificado para Stripe/Mercado Pago con monedas, bundles y Ultra determinísticos; entrega idempotente de propiedad y monedas.",
+      "Economía: Ultra deja de venderse por monedas; se mantiene como drop gratuito del cofre diario o compra premium directa, sin loot box paga.",
+      "QA: sintaxis completa, 22 pruebas de reglas y 34 smoke tests aprobados."
+    ]
+  },
   "3.9.2": {
     title: "🎨 Paridad visual exacta entre skins 2D y dados 3D",
     scope: "ceo",

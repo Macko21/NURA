@@ -21,6 +21,9 @@ const { DICE_SKINS, SHOP_DICE_PREVIEW } = require("../frontend/dice-renderer");
 const { SKIN_SOUND } = require("../frontend/audio");
 const { createPlayerState } = require("../backend/matchState");
 const { pool } = require("../backend/database");
+const { SHOP_CATALOG } = require("../backend/database");
+const { shouldBank, getBotDelay, getRandomCosmetics } = require("../backend/botManager");
+const { getCommercePack } = require("../backend/commerceCatalog");
 const { recordMatchResults, completedMatchParticipant } = require("../backend/playerManager");
 const { canonicalDiceSkinId } = require("../backend/cosmeticResolver");
 const { resolveCeoSessionSecret } = require("../backend/ceoAuth");
@@ -147,7 +150,7 @@ async function run() {
   });
 
   check("todas las skins de dados del catalogo usan sus IDs reales", () => {
-    const expectedIds = [1, 2, 4, 5, 6, 18, 19, 20, 21, 22, 32, 33];
+    const expectedIds = [1, 2, 4, 5, 6, 18, 19, 20, 21, 22, 32, 33, 37, 38, 39, 40, 49];
     const numericKeys = value => Object.keys(value).map(Number).sort((a, b) => a - b);
     assert.deepEqual(numericKeys(DICE_SKINS), expectedIds);
     assert.deepEqual(numericKeys(SHOP_DICE_PREVIEW), expectedIds);
@@ -165,6 +168,20 @@ async function run() {
     const bot = createPlayerState({ id: "bot-1", name: "Bot", isBot: true, botDifficulty: "hard" });
     assert.equal(bot.isBot, true);
     assert.equal(bot.botDifficulty, "hard");
+  });
+
+  check("bots muestran avatares reales, toda la tienda y tiempos visibles", () => {
+    for (let i = 0; i < 100; i++) assert.ok(getBotDelay('hard') >= 1850);
+    const cosmetics = getRandomCosmetics(SHOP_CATALOG);
+    assert.equal(typeof cosmetics.equippedAvatar, 'string');
+    assert.ok(cosmetics.equippedAvatar.length > 1);
+    assert.ok(SHOP_CATALOG.some(item => item.id === cosmetics.equippedDice));
+  });
+
+  check("bot dificil adapta riesgo y packs premium tienen contenido fijo", () => {
+    assert.equal(shouldBank({ entered:true, score:6000, turnPoints:700, remainingDice:4 }, 'hard', { leaderScore:6000 }), true);
+    assert.equal(shouldBank({ entered:true, score:2000, turnPoints:700, remainingDice:4 }, 'hard', { leaderScore:6000 }), false);
+    assert.deepEqual(getCommercePack('ultra_mythic').itemIds, [49, 50, 51]);
   });
 
   check("entrar exige 1000 y consume exactamente 1000", () => {

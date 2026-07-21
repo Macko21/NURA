@@ -9,6 +9,7 @@
  */
 
 const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
+const { COMMERCE_PACKS, getCommercePack, listCommercePacks, grantCommercePack } = require("./commerceCatalog");
 
 // Mercado Pago es opcional. Solo inicializar si hay token configurado.
 let mpClient = null;
@@ -31,12 +32,7 @@ if (process.env.MP_ACCESS_TOKEN) {
 }
 
 // Paquetes de monedas disponibles (precios en ARS)
-const COIN_PACKS = {
-  "small":  { coins: 500,  price: 500,   name: "Bolsa de Monedas" },
-  "medium": { coins: 1500, price: 1200,  name: "Cofre de Monedas" },
-  "large":  { coins: 4000, price: 2800,  name: "Tesoro Real" },
-  "mega":   { coins: 10000,price: 5500,  name: "Fortuna de Macko" }
-};
+const COIN_PACKS = COMMERCE_PACKS;
 
 /**
  * Crea una preferencia de pago en Mercado Pago (Checkout Pro).
@@ -46,18 +42,18 @@ async function createCheckoutPreference(packId, userId, userEmail) {
   if (!mpClient) throw new Error("Mercado Pago no está configurado");
 
   try {
-    const pack = COIN_PACKS[packId];
+    const pack = getCommercePack(packId);
     if (!pack) throw new Error("Paquete no válido");
 
     const preferenceData = {
       body: {
         items: [{
           id: packId,
-          title: `${pack.name} - ${pack.coins} monedas`,
-          description: `${pack.coins} monedas para Los 10.000 de Macko`,
+          title: pack.name,
+          description: "Contenido digital fijo para Los 10.000 de Macko",
           quantity: 1,
           currency_id: "ARS",
-          unit_price: pack.price
+          unit_price: pack.arsPrice
         }],
         payer: {
           email: userEmail
@@ -86,7 +82,7 @@ async function createCheckoutPreference(packId, userId, userEmail) {
       preferenceId: prefBody.id,
       coins: pack.coins,
       name: pack.name,
-      price: pack.price
+      price: pack.arsPrice
     };
   } catch (err) {
     console.error("Error creating MP preference:", err);
@@ -121,8 +117,8 @@ async function handleMPWebhook(paymentId, topic, pool) {
         return { received: true };
       }
 
-      const pack = COIN_PACKS[packId];
-      if (!pack || Number(paymentData.transaction_amount) !== pack.price || paymentData.currency_id !== "ARS") {
+      const pack = getCommercePack(packId);
+      if (!pack || Number(paymentData.transaction_amount) !== pack.arsPrice || paymentData.currency_id !== "ARS") {
         throw new Error("El pago de Mercado Pago no coincide con el paquete comprado");
       }
 
@@ -139,19 +135,9 @@ async function handleMPWebhook(paymentId, topic, pool) {
           await client.query("COMMIT");
           return { received: true, duplicate: true };
         }
-        const playerResult = await client.query(
-          "SELECT id FROM players WHERE user_id = $1 FOR UPDATE",
-          [userId]
-        );
-        if (!playerResult.rows.length) throw new Error(`Usuario ${userId} sin jugador`);
-        const playerId = playerResult.rows[0].id;
-        await client.query("UPDATE players SET coins = coins + $1 WHERE id = $2", [pack.coins, playerId]);
-        await client.query(
-          `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-          [playerId, pack.coins, `Compra Mercado Pago: ${packId}`, Date.now()]
-        );
+        const delivery = await grantCommercePack(client, userId, packId, "Mercado Pago");
         await client.query("COMMIT");
-        console.log(`✅ MP: ${pack.coins} monedas → jugador ${playerId}`);
+        console.log(`✅ MP: pack ${packId} → jugador ${delivery.playerId}`);
       } catch (err) {
         await client.query("ROLLBACK");
         throw err;
@@ -170,16 +156,7 @@ async function handleMPWebhook(paymentId, topic, pool) {
 /**
  * Devuelve los paquetes disponibles para el frontend.
  */
-function getCoinPacks() {
-  const packs = {};
-  for (const [id, pack] of Object.entries(COIN_PACKS)) {
-    packs[id] = {
-      ...pack,
-      priceDisplay: `$${pack.price.toLocaleString("es-AR")}`
-    };
-  }
-  return packs;
-}
+function getCoinPacks(catalog = []) { return listCommercePacks(catalog, "ARS"); }
 
 module.exports = {
   createCheckoutPreference,

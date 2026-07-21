@@ -1914,7 +1914,7 @@ function renderSB(match) {
       }
     }
     chip.innerHTML = `
-      <span class="sc-av${hasCustomAvatar ? ' icon' : ''}">${avContent}</span>
+      <span class="sc-av${hasCustomAvatar ? ' icon' : ''} special-${esc(String(p.equippedSpecial || 'none'))}${p.isBot ? ' bot-avatar' : ''}">${avContent}</span>
       ${yoTag}
       <span class="sc-nm">${esc(p.name)}</span>
       <span class="sc-sc">${p.score}</span>
@@ -3042,6 +3042,12 @@ function showWin(playerName, desc, dice, skinId, specialId) {
     setTimeout(() => launchConfetti(), 2000);
   }
   if (String(specialId || '') === '36') launchLaserVictory();
+  if (String(specialId || '') === '47') {
+    setTimeout(() => launchConfetti(), 500);
+    setTimeout(() => launchConfetti(), 1200);
+  }
+  if (String(specialId || '') === '51') document.body.classList.add('victory-eclipse');
+  if (String(specialId || '') === '51') setTimeout(() => document.body.classList.remove('victory-eclipse'), 2600);
 }
 
 function launchLaserVictory() {
@@ -4645,7 +4651,7 @@ async function loadUltraItems() {
         <span class="shop-item-price" style="font-size:12px;color:var(--gold2);font-weight:600">💰 ${esc(item.priceDisplay)}</span>
         ${owned
           ? `<button class="btn btn-ghost btn-equip-shop" data-id="${esc(item.id)}" data-cat="${esc(category)}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>`
-          : '<span class="ultra-badge">🎁 Solo Cofre</span>'}
+          : '<span class="ultra-badge">🎁 Cofre diario · 💳 pack premium</span>'}
       `;
       grid.appendChild(div);
     });
@@ -4680,7 +4686,8 @@ async function loadShopCatalog() {
     const categories = {
       dados: { label: '🎲 Skins de Dados', icon: '🎲', id: 'dados' },
       avatares: { label: '👤 Avatares', icon: '👤', id: 'avatares' },
-      especiales: { label: '✨ Especiales', icon: '✨', id: 'especiales' }
+      especiales: { label: '✨ Especiales', icon: '✨', id: 'especiales' },
+      ultra: { label: '💠 Ultra · cofre diario o pack premium', icon: '💠', id: 'ultra' }
     };
     
     for (const [catKey, catInfo] of Object.entries(categories)) {
@@ -4698,10 +4705,11 @@ async function loadShopCatalog() {
       const grid = section.querySelector('.shop-grid');
       catItems.forEach(item => {
         const isOwned = ownedSet.has(item.id);
-        const cat = item.category === 'avatares' ? 'avatar' : item.category === 'dados' ? 'dice' : 'special';
+        const cat = item.category === 'avatares' || (item.category === 'ultra' && /^Avatar/i.test(item.name)) ? 'avatar'
+          : item.category === 'dados' || (item.category === 'ultra' && /^Dados/i.test(item.name)) ? 'dice' : 'special';
         const isEquipped = equipped && equipped[cat] === String(item.id);
         const div = document.createElement('div');
-        div.className = 'shop-item' + (isOwned ? ' owned' : '');
+        div.className = 'shop-item' + (isOwned ? ' owned' : '') + (item.category === 'ultra' ? ' ultra-teaser' : '');
       div.dataset.category = cat;
       div.dataset.id = String(item.id);
         if (isOwned) {
@@ -4716,7 +4724,9 @@ async function loadShopCatalog() {
             <div class="shop-item-preview">${esc(item.icon)}</div>
             <h3>${esc(item.name)}</h3>
             <p class="shop-item-desc">${esc(item.desc)}</p>
-            <button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>
+            ${item.category === 'ultra'
+              ? '<span class="shop-premium-note">🎁 Cofre diario · 💳 pack premium</span>'
+              : `<button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>`}
           `;
         }
         grid.appendChild(div);
@@ -4810,12 +4820,14 @@ async function loadCoinPacks() {
     grid.innerHTML = '';
     for (const [id, pack] of Object.entries(packs)) {
       const div = document.createElement('div');
-      div.className = 'coin-pack' + (id === 'large' || id === 'mega' ? ' premium' : '');
-      const icon = id === 'mega' ? '👑' : id === 'large' ? '💰' : id === 'medium' ? '🪙' : '💎';
+      div.className = 'coin-pack' + (pack.badge ? ' premium' : '');
+      const icon = pack.icon || '💎';
+      const contents = [pack.coins ? `🪙 ${pack.coins.toLocaleString()}` : '', ...(pack.items || []).map(item => `${item.icon} ${item.name}`)].filter(Boolean);
       div.innerHTML = `
         <div class="coin-pack-icon">${icon}</div>
-        <div class="coin-pack-amount">${pack.coins.toLocaleString()}</div>
+        ${pack.badge ? `<span class="pack-badge">${esc(pack.badge)}</span>` : ''}
         <div class="coin-pack-label">${esc(pack.name)}</div>
+        <div class="coin-pack-contents">${contents.map(esc).join('<br>')}</div>
         <div class="coin-pack-price">${esc(pack.priceDisplay)}</div>
         <button class="btn btn-gold btn-buy-coins" data-pack="${esc(id)}" style="margin-top:4px">Comprar</button>
       `;

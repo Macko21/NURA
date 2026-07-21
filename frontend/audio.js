@@ -386,6 +386,11 @@ const SKIN_SOUND = {
   '22': { freq: 770, wave: 'triangle' },
   '32': { freq: 1200, wave: 'sine' },
   '33': { freq: 200, wave: 'triangle' },
+  '37': { freq: 360, wave: 'sine', notes: [1, 1.2, .8] },
+  '38': { freq: 620, wave: 'sine', notes: [1, 1.5, 2] },
+  '39': { freq: 115, wave: 'sawtooth', notes: [1, .72, 1.35] },
+  '40': { freq: 260, wave: 'square', notes: [1, 1.5, 2] },
+  '49': { freq: 940, wave: 'sine', notes: [1, 1.26, 1.68, 2] },
 };
 
 function getActiveSkinAudio() {
@@ -430,6 +435,10 @@ function playSkinImpact(skinId) {
   if (!s) { SFX.roll(); return; }
   tone(Math.max(70, s.freq * .48), s.wave, .08, .22);
   tone(Math.max(55, s.freq * .32), 'sine', .11, .18, .035);
+  const signature = s.notes || [1, 1.22];
+  signature.slice(0, 3).forEach((ratio, index) =>
+    tone(Math.max(80, s.freq * ratio), index === 0 ? s.wave : 'sine', .045, .09, .055 + index * .035)
+  );
 }
 
 if (typeof window !== 'undefined') window.playSkinImpact = playSkinImpact;

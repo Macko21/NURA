@@ -23,11 +23,16 @@ const SKINS_3D = {
   '21':{ colors:['#6B8E23','#4A6E10'], pip:'#d0d0a0', edge:'#2A4E00', roughness:.68, metalness:0, emissive:'#557d18', effect:'zombie', particle:'#8cbd36', icon:'🧟' },
   '22':{ colors:['#FF6B9D','#FFD700'], pip:'#3a1a4e', edge:'#CC5599', roughness:.28, metalness:.22, emissive:'#b53786', effect:'rainbow', particle:'#ff83ca', icon:'🌈' },
   '32':{ colors:['#B9F2FF','#7FE0F8'], pip:'#003344', edge:'#40C0E0', roughness:.04, metalness:.35, emissive:'#55cbea', opacity:.94, effect:'diamond', particle:'#e8ffff', icon:'💠' },
-  '33':{ colors:['#1A0533','#4A1A7A'], pip:'#ffffff', edge:'#2A0055', roughness:.35, metalness:.3, emissive:'#5317a6', effect:'galaxy', particle:'#b888ff', icon:'🌌' }
+  '33':{ colors:['#1A0533','#4A1A7A'], pip:'#ffffff', edge:'#2A0055', roughness:.35, metalness:.3, emissive:'#5317a6', effect:'galaxy', particle:'#b888ff', icon:'🌌' },
+  '37':{ colors:['#39D6E8','#126DB5'], pip:'#ffffff', edge:'#0A4C86', roughness:.2, metalness:.2, emissive:'#149bc4', effect:'ocean', particle:'#8ff5ff', icon:'🌊' },
+  '38':{ colors:['#FFD2E4','#EF80B2'], pip:'#542039', edge:'#C95689', roughness:.34, metalness:.08, emissive:'#e36da7', effect:'sakura', particle:'#ffd4e9', icon:'🌸' },
+  '39':{ colors:['#C8FF28','#4E8F00'], pip:'#102000', edge:'#315F00', roughness:.3, metalness:.18, emissive:'#75c900', effect:'toxic', particle:'#c9ff45', icon:'☢️' },
+  '40':{ colors:['#FF4FD8','#4A35D8'], pip:'#ffffff', edge:'#2DE2E6', roughness:.23, metalness:.35, emissive:'#9e32d0', effect:'vapor', particle:'#5ffaff', icon:'🕹️' },
+  '49':{ colors:['#F5ECFF','#56D9FF','#D762FF'], pip:'#28134A', edge:'#8DEBFF', roughness:.08, metalness:.5, emissive:'#a350e0', effect:'prism', particle:'#ffffff', icon:'🔮' }
 };
 
 const textureCache = new Map();
-const geometry = new RoundedBoxGeometry(1.22, 1.22, 1.22, 5, .13);
+const geometry = new RoundedBoxGeometry(1.34, 1.34, 1.34, 5, .14);
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function configuredQuality() {
@@ -90,10 +95,10 @@ function drawMotif(ctx, skin, size) {
 function drawSkinIcon(ctx, skin, size) {
   if (!skin.icon) return;
   ctx.save();
-  ctx.globalAlpha = .58;
+  ctx.globalAlpha = .76;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `${Math.round(size*.48)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.font = `${Math.round(size*.58)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
   ctx.shadowColor = 'rgba(0,0,0,.35)';
   ctx.shadowBlur = size*.055;
   ctx.fillText(skin.icon,size*.5,size*.515);
@@ -147,7 +152,7 @@ function materialsFor(skinId, state, quality) {
       metalness: skin.metalness,
       emissive: new THREE.Color(emissive),
       emissiveMap: faceMap,
-      emissiveIntensity: dead ? 0 : hot || scoring ? .34 : .2,
+      emissiveIntensity: dead ? .12 : hot || scoring ? .48 : .38,
       transparent: !!skin.opacity || dead,
       opacity: dead ? .42 : (skin.opacity || 1),
       transmission: quality === 'high' && ['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0,
@@ -171,7 +176,7 @@ function makeStage(container, quality, preview=false) {
   const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:quality === 'high', powerPreference:'high-performance' });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.52;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -181,8 +186,8 @@ function makeStage(container, quality, preview=false) {
   const height = preview ? 210 : Math.max(112, Math.min(150, width*.36));
   renderer.setSize(width,height,false);
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(preview ? 28 : 24,width/height,.1,50);
-  camera.position.set(0, preview ? 4.4 : 3.35, preview ? 6.6 : 5.85);
+  const camera = new THREE.PerspectiveCamera(preview ? 26 : 21,width/height,.1,50);
+  camera.position.set(0, preview ? 4.15 : 3.05, preview ? 6.1 : 5.35);
   camera.lookAt(0,preview ? .25 : .62,0);
   scene.add(new THREE.HemisphereLight(0xffffff,0x272238,quality === 'high' ? 3.2 : 3.5));
   const key = new THREE.DirectionalLight(0xfff1c4,quality === 'high' ? 4.2 : 3.2);
@@ -228,11 +233,11 @@ function disposeStage(stage) {
 
 let gameStage=null, requestId=0;
 
-function renderGameDice({container,dice,states,skinId}) {
+function renderGameDice({container,dice,states,skinId,specialId}) {
   if (!container || !Array.isArray(dice) || !dice.length || resolvedQuality()==='off' || !supportsWebGL()) return false;
   requestId+=1;const currentRequest=requestId;disposeStage(gameStage);
   const quality=resolvedQuality();gameStage=makeStage(container,quality,false);container.classList.add('dice-row-3d');
-  const stage=gameStage, spacing=Math.min(1.55,6.4/dice.length), total=(dice.length-1)*spacing;
+  const stage=gameStage, spacing=Math.min(1.48,6.15/dice.length), total=(dice.length-1)*spacing;
   const starts=[],targets=[];
   dice.forEach((value,index)=>{
     const state=states[index]||'normal',skin=skinFor(skinId);
@@ -243,7 +248,8 @@ function renderGameDice({container,dice,states,skinId}) {
     const ring=new THREE.Mesh(new THREE.RingGeometry(.66,.76,36),new THREE.MeshBasicMaterial({color:state==='hot'?0xffc928:state==='scoring'?0x3de77d:new THREE.Color(skin.edge),transparent:true,opacity:state==='dead'?.08:.24,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
     ring.rotation.x=-Math.PI/2;ring.position.set(targetX,.035,0);stage.scene.add(ring);stage.scene.add(mesh);stage.objects.push(mesh);
   });
-  const particles=addParticles(stage,skinId,quality==='high'?12:5),start=performance.now(),duration=reducedMotion()?60:390,linger=quality==='high'?180:100;
+  const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));
+  const particles=addParticles(stage,skinId,quality==='high'?(effectBoost?30:18):(effectBoost?12:8)),start=performance.now(),duration=reducedMotion()?60:460,linger=quality==='high'?420:260;
   let impacted=false;
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
