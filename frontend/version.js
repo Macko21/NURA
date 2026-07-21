@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.8.5";
+const GAME_VERSION = "3.9.0";
 
 const CHANGELOG = [
+  // ═══ 3.9.0 — PRODUCCIÓN ═══
+  {
+    version: "3.9.0",
+    date: "2026-07-20",
+    title: "✨ Dados y skins con nueva vida",
+    scope: "game",
+    files: [],
+    changes: [
+      "Los dados ahora tienen volumen, iluminación, rebotes y materiales propios para cada skin compatible",
+      "Fuego, hielo, diamante, láser, galaxia, zombie, neón, esmeralda y arcoíris suman efectos visuales distintivos",
+      "La tienda permite ver las skins animadas antes de elegirlas",
+      "La calidad se adapta al dispositivo y siempre conserva una versión 2D rápida y accesible"
+    ]
+  },
   // ═══ 3.8.5 — PRODUCCIÓN ═══
   {
     version: "3.8.5",

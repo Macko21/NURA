@@ -714,6 +714,8 @@ html,body{
   box-shadow:inset 0 2px 12px rgba(0,0,0,.6), 0 8px 32px rgba(0,0,0,.3);
 }
 .dice-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
+.dice-row.dice-row-3d{display:block;width:min(100%,520px);min-width:280px;height:clamp(112px,18vw,150px);overflow:visible}
+.dice-3d-canvas{display:block;width:100% !important;height:100% !important;filter:drop-shadow(0 10px 18px rgba(0,0,0,.38));touch-action:none}
 
 .die{
   width:62px;height:62px;
@@ -1929,6 +1931,15 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
   .tb-round{min-width:min(78vw,240px);scroll-snap-align:start}
   .tb-match{min-height:72px}
 }
+.dice-3d-shop-stage{
+  position:relative;width:100%;height:210px;margin:4px 0 14px;
+  border:1px solid rgba(212,175,55,.2);border-radius:14px;overflow:hidden;
+  background:radial-gradient(circle at 50% 38%,rgba(84,68,135,.22),rgba(3,3,10,.66) 70%);
+  display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px;
+}
+.dice-3d-preview-canvas{display:block;width:100% !important;height:100% !important}
+.dice-3d-shop-stage.is-fallback{height:auto;min-height:42px}
+.dice-states-title{margin-top:4px;color:var(--text2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;text-align:center}
 
 /* ══════════════════════════════════════
    MISC
@@ -2239,6 +2250,16 @@ input[type=number]{-moz-appearance:textfield}
 .sound-panel-title{margin-bottom:10px;color:var(--text);font:700 13px 'Sora',sans-serif}
 .sound-channel{padding:10px 0;border-top:1px solid var(--border2)}
 .sound-channel-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;color:var(--gold);font:700 12px 'Sora',sans-serif}
+.dice-quality-select{
+  width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;
+  background:var(--bg-input);color:var(--text);font:600 11px 'Sora',sans-serif;outline:none;
+}
+.dice-quality-select:focus{border-color:var(--gold)}
+.dice-quality-status{margin:6px 0 0;color:var(--text3);font-size:9px;line-height:1.4}
+
+@media(prefers-reduced-motion:reduce){
+  .die,.skin-particle,.dice-preview-container .die{animation-duration:.01ms !important;animation-iteration-count:1 !important}
+}
 .sound-volume-row{display:flex;align-items:center;gap:8px}
 .sound-volume-row output{width:36px;text-align:right;color:var(--text2);font-size:10px;font-variant-numeric:tabular-nums}
 .sound-mute-toggle{

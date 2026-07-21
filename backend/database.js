@@ -1708,7 +1708,7 @@ function getServerInfo(startTime) {
       NODE_ENV: process.env.NODE_ENV || 'development',
       PORT: process.env.PORT || 3000,
       HAS_DATABASE_URL: !!process.env.DATABASE_URL,
-      HAS_CEO_SECRET: !!process.env.CEO_SECRET,
+      HAS_CEO_SECRET: !!(process.env.CEO_SECRET || process.env.JWT_SECRET),
       HAS_STRIPE_KEY: !!process.env.STRIPE_SECRET_KEY,
       HAS_MP_ACCESS_TOKEN: !!process.env.MP_ACCESS_TOKEN
     }

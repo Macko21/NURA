@@ -23,6 +23,7 @@ const { createPlayerState } = require("../backend/matchState");
 const { pool } = require("../backend/database");
 const { recordMatchResults, completedMatchParticipant } = require("../backend/playerManager");
 const { canonicalDiceSkinId } = require("../backend/cosmeticResolver");
+const { resolveCeoSessionSecret } = require("../backend/ceoAuth");
 const {
   PUBLIC_TOURNAMENT_RETENTION_MS,
   validateTournamentInput,
@@ -70,6 +71,15 @@ function sleep(ms) {
 }
 
 async function run() {
+  check('panel CEO conserva acceso con clave aislada derivada de JWT_SECRET', () => {
+    const jwtSecret = 'test-jwt-secret-with-more-than-thirty-two-bytes';
+    const first = resolveCeoSessionSecret({ JWT_SECRET: jwtSecret, CEO_SECRET: '' });
+    const second = resolveCeoSessionSecret({ JWT_SECRET: jwtSecret });
+    assert.equal(first.source, 'JWT_SECRET_DERIVED');
+    assert.equal(first.secret, second.secret);
+    assert.notEqual(first.secret, jwtSecret);
+    assert.equal(resolveCeoSessionSecret({ CEO_SECRET: 'x'.repeat(40), JWT_SECRET: jwtSecret }).source, 'CEO_SECRET');
+  });
   check('torneos finalizados permanecen visibles exactamente 24 horas', () => {
     assert.equal(PUBLIC_TOURNAMENT_RETENTION_MS, 86400000);
   });

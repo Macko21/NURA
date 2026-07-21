@@ -15,6 +15,24 @@ const DOT_POSITIONS = {
   6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
 };
 
+let _dice3DPromise = null;
+let _diceRenderRequest = 0;
+let _lastDiceView = null;
+
+function loadDice3D() {
+  if (window.MackoDice3D) return Promise.resolve(window.MackoDice3D);
+  if (!_dice3DPromise) {
+    const version = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : 'current';
+    _dice3DPromise = import(`/dice-renderer-3d.mjs?v=${encodeURIComponent(version)}`)
+      .then(() => window.MackoDice3D)
+      .catch(err => {
+        console.warn('Dados 3D no disponibles; usando renderer 2D:', err.message);
+        return null;
+      });
+  }
+  return _dice3DPromise;
+}
+
 // Mapa de skins de dados: ID del item → colores
 const DICE_SKINS = {
   '1':  { bg: ['#F8F4EE','#E8E0D0'], dot:'#1a1a2e', sh:'#C4BAA2', name:'Neón',       icon:'🎲' },
@@ -153,6 +171,10 @@ function scoringIndices(dice) {
 
 function showDice(dice, mode) {
   const row = document.getElementById('dice-row');
+  if (!row) return;
+  _lastDiceView = { dice:[...dice], mode };
+  const renderRequest = ++_diceRenderRequest;
+  row.classList.remove('dice-row-3d');
   row.innerHTML = '';
 
   let activeSkinId = null;
@@ -181,11 +203,13 @@ function showDice(dice, mode) {
     }
   }
 
+  const diceStates = [];
   dice.forEach((val, i) => {
     let state = 'normal';
     if (mode === 'all')    state = 'hot';
     if (mode === 'dead')   state = 'dead';
     if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
+    diceStates.push(state);
     const die = makeDie(val, state, activeSkinId);
     die.style.animationDelay = (i * 55) + 'ms';
     if (activeSpecialId === '29' && mode !== 'dead') {
@@ -193,15 +217,62 @@ function showDice(dice, mode) {
     }
     row.appendChild(die);
   });
+  loadDice3D().then(renderer3D => {
+    if (!renderer3D || renderRequest !== _diceRenderRequest || !row.isConnected) return;
+    try {
+      renderer3D.renderDice({ container: row, dice, states: diceStates, skinId: activeSkinId, specialId: activeSpecialId });
+      syncDiceQualityUI();
+    } catch (err) {
+      console.warn('Fallback a dados 2D:', err.message);
+    }
+  });
   if (activeSkinId && SKIN_PARTICLES[activeSkinId] && mode !== 'dead') {
-    setTimeout(() => spawnSkinParticles(activeSkinId, row), 400);
+    setTimeout(() => {
+      if (!row.classList.contains('dice-row-3d') && renderRequest === _diceRenderRequest) spawnSkinParticles(activeSkinId, row);
+    }, 400);
   }
 }
 
 function clearDice() {
+  _diceRenderRequest++;
+  _lastDiceView = null;
+  window.MackoDice3D?.clear();
   const el = document.getElementById('dice-row');
-  if (el) el.innerHTML = '';
+  if (el) { el.classList.remove('dice-row-3d'); el.innerHTML = ''; }
   setMsg('', '');
+}
+
+function syncDiceQualityUI() {
+  const select = document.getElementById('dice-quality-select');
+  const status = document.getElementById('dice-quality-status');
+  const renderer3D = window.MackoDice3D;
+  if (!select || !status) return;
+  if (!renderer3D) {
+    status.textContent = 'Renderer 2D activo';
+    return;
+  }
+  select.value = renderer3D.getQuality();
+  const resolved = renderer3D.getResolvedQuality();
+  const labels = { high:'3D alta activa', low:'3D ahorro activo', off:'2D clásica activa' };
+  status.textContent = renderer3D.isSupported() ? labels[resolved] : '2D clásica · WebGL no disponible';
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  window.addEventListener('macko-dice-3d-ready', syncDiceQualityUI);
+  window.addEventListener('macko-dice-quality', () => {
+    syncDiceQualityUI();
+    if (_lastDiceView) setTimeout(() => showDice(_lastDiceView.dice, _lastDiceView.mode), 0);
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    const select = document.getElementById('dice-quality-select');
+    if (select) {
+      select.value = localStorage.getItem('macko_dice_quality') || 'auto';
+      select.addEventListener('change', () => loadDice3D().then(renderer3D => renderer3D?.setQuality(select.value)));
+    }
+    const warmRenderer = () => loadDice3D().then(syncDiceQualityUI);
+    if ('requestIdleCallback' in window) window.requestIdleCallback(warmRenderer, { timeout: 4000 });
+    else setTimeout(warmRenderer, 1200);
+  });
 }
 
 function setMsg(text, type) {

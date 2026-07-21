@@ -3025,6 +3025,15 @@ function showWin(playerName, desc, dice, skinId, specialId) {
     wr.appendChild(dieEl);
   });
   $('modal-win').classList.remove('hidden');
+  if (typeof loadDice3D === 'function') {
+    loadDice3D().then(renderer3D => renderer3D?.renderDice({
+      container: wr,
+      dice: displayDice,
+      states: displayDice.map(() => 'hot'),
+      skinId: winnerSkin,
+      specialId
+    }));
+  }
   launchConfetti();
   // Efecto Victoria: si el jugador local tiene item 16 equipado, confetti extra
   if (String(specialId || '') === '16') {
@@ -5248,7 +5257,12 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
     if (old) old.remove();
     const overlay = document.createElement('div');
     overlay.className = 'shop-preview-overlay';
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    let dispose3DPreview = null;
+    const closePreview = () => {
+      try { dispose3DPreview?.(); } catch(e) {}
+      overlay.remove();
+    };
+    overlay.onclick = (e) => { if (e.target === overlay) closePreview(); };
     const box = document.createElement('div');
     box.className = 'shop-preview-box';
     let bodyHtml = '';
@@ -5262,9 +5276,20 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
       bodyHtml = '<div class="special-preview-icon">' + esc(itemIcon) + '</div><div class="special-preview-desc">' + esc(itemName) + '</div>' + (effect ? '<div class="special-preview-effect">✨ ' + esc(effect.desc) + '</div>' : '');
     }
     box.innerHTML = '<div class="shop-preview-header"><h2>' + esc(itemName) + '</h2><button class="shop-preview-close">✕</button></div>' + bodyHtml;
-    box.querySelector('.shop-preview-close').onclick = () => overlay.remove();
+    box.querySelector('.shop-preview-close').onclick = closePreview;
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+    if (category === 'dados' || category === 'dice') {
+      const stage = box.querySelector('.dice-3d-shop-stage');
+      const previewVal = Number(stage?.dataset.value || 5);
+      if (stage && typeof loadDice3D === 'function') {
+        loadDice3D().then(renderer3D => {
+          if (!renderer3D || !stage.isConnected) return;
+          dispose3DPreview = renderer3D.createPreview(stage, String(itemId), previewVal);
+          stage.classList.toggle('is-fallback', !dispose3DPreview);
+        });
+      }
+    }
   } catch(e) {
     toast('⚠ Error al mostrar preview: ' + e.message);
   }
@@ -5288,7 +5313,7 @@ function buildDicePreviewHTML(skinId, itemName, itemIcon) {
       dieEl.style.cssText = 'margin:0 auto;width:52px;height:52px';
       return '<div class="dice-state-card">' + dieEl.outerHTML + '<div class="dice-state-label"><span class="dice-state-icon">' + s.icon + '</span>' + esc(s.label) + '</div></div>';
     }).join('');
-    return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en cada estado del juego</p><div class="dice-states-grid">' + diceHtml + '</div>';
+    return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en el juego</p><div class="dice-3d-shop-stage" data-value="' + previewVal + '"><span>Preparando preview 3D…</span></div><div class="dice-states-title">Estados durante la partida</div><div class="dice-states-grid">' + diceHtml + '</div>';
   } catch(e) {
     return '<p style="text-align:center;color:var(--red);padding:20px">Error al generar preview: ' + esc(e.message) + '</p>';
   }

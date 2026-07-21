@@ -10,6 +10,7 @@ const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, get
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const { canonicalDiceSkinId } = require("./cosmeticResolver");
+const { resolveCeoSessionSecret } = require("./ceoAuth");
 const path      = require("path");
 const fs        = require("fs");
 const crypto    = require("crypto");
@@ -66,12 +67,12 @@ const {
 /* ── Express ─────────────────────────────────────────────── */
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const RAW_CEO_SECRET = process.env.CEO_SECRET;
-const CEO_SECRET = RAW_CEO_SECRET && Buffer.byteLength(RAW_CEO_SECRET, 'utf8') >= 32
-  ? RAW_CEO_SECRET
-  : null;
-if (RAW_CEO_SECRET && !CEO_SECRET) {
-  console.error('❌ CEO_SECRET debe tener al menos 32 bytes; el panel CEO queda deshabilitado');
+const CEO_AUTH = resolveCeoSessionSecret();
+const CEO_SECRET = CEO_AUTH.secret;
+if (CEO_AUTH.source === 'JWT_SECRET_DERIVED') {
+  console.warn('⚠ CEO_SECRET ausente o corto; sesiones CEO usan una clave aislada derivada de JWT_SECRET');
+} else if (!CEO_SECRET) {
+  console.error('❌ No existe una clave segura para las sesiones del panel CEO');
 }
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -167,7 +168,20 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 // IMPORTANTÍSIMO: Para que Express pueda leer el req.body del login/registro
 app.use(express.json()); 
 app.use(express.static(path.join(__dirname, "../frontend")));
-
+app.get('/vendor/three.module.js', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.sendFile(path.join(__dirname, '../node_modules/three/build/three.module.min.js'));
+});
+app.get('/vendor/three.core.min.js', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.sendFile(path.join(__dirname, '../node_modules/three/build/three.core.min.js'));
+});
+app.get('/vendor/RoundedBoxGeometry.js', (req, res) => {
+  const addonPath = path.join(__dirname, '../node_modules/three/examples/jsm/geometries/RoundedBoxGeometry.js');
+  const source = fs.readFileSync(addonPath, 'utf8').replace("from 'three';", "from '/vendor/three.module.js';");
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type('application/javascript').send(source);
+});
 // Aplicar rate limiters a rutas sensibles
 app.use("/api/login", authLimiter);
 app.use("/api/register", authLimiter);

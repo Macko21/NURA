@@ -148,6 +148,17 @@ async function runTests() {
   }
 
   try {
+    let res = await fetchUrl('/dice-renderer-3d.mjs');
+    assert('GET /dice-renderer-3d.mjs', res.status === 200, `Status ${res.status}`);
+    res = await fetchUrl('/vendor/three.module.js');
+    assert('GET Three.js local', res.status === 200, `Status ${res.status}`);
+    res = await fetchUrl('/vendor/three.core.min.js');
+    assert('GET Three.js core local', res.status === 200, `Status ${res.status}`);
+  } catch (e) {
+    assert('GET renderer 3D', false, e.message);
+  }
+
+  try {
     let res = await fetchUrl('/audio.js');
     assert('GET /audio.js', res.status === 200, `Status ${res.status}`);
   } catch (e) {
@@ -228,15 +239,14 @@ async function runTests() {
 
   try {
     let res = await postUrl('/ceo-panel/api/login', { username: 'admin', password: 'invalid-smoke-test-password' });
-    // 503 es correcto cuando el panel no fue configurado en este entorno.
-    assert('POST /ceo-panel/api/login', [200, 401, 503].includes(res.status), `Status ${res.status}`);
+    assert('POST /ceo-panel/api/login', [200, 401].includes(res.status), `Status ${res.status}`);
   } catch (e) {
     assert('POST /ceo-panel/api/login', false, e.message);
   }
 
   try {
     let res = await fetchUrl('/ceo-panel/api/stats');
-    assert('GET /ceo-panel/api/stats (sin auth)', res.status === 401 || res.status === 503, `Status ${res.status}`);
+    assert('GET /ceo-panel/api/stats (sin auth)', res.status === 401, `Status ${res.status}`);
   } catch (e) {
     assert('GET /ceo-panel/api/stats', false, e.message);
   }

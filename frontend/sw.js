@@ -11,7 +11,7 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '3.8.5';
+const GAME_VERSION = '3.9.0';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [
@@ -27,6 +27,11 @@ const ASSETS = [
   `/audio.js?v=${GAME_VERSION}`,
   '/dice-renderer.js',
   `/dice-renderer.js?v=${GAME_VERSION}`,
+  '/dice-renderer-3d.mjs',
+  `/dice-renderer-3d.mjs?v=${GAME_VERSION}`,
+  '/vendor/three.module.js',
+  '/vendor/three.core.min.js',
+  '/vendor/RoundedBoxGeometry.js',
   '/manifest.json',
   '/ceo-panel.html',
   '/ceo-panel.js',
@@ -215,7 +220,7 @@ self.addEventListener('fetch', event => {
   }
 
   // Para JS: network first — siempre buscar la última versión del servidor
-  if (url.pathname.endsWith('.js')) {
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.mjs')) {
     event.respondWith(
       fetch(event.request).then(response => {
         // Cachear la nueva versión

@@ -2,6 +2,41 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.9.0": {
+    title: "✨ Render híbrido 3D de dados y recuperación segura del panel CEO",
+    scope: "ceo",
+    files: [
+      "backend/ceoAuth.js",
+      "backend/database.js",
+      "backend/server.js",
+      "frontend/app.js",
+      "frontend/audio.js",
+      "frontend/dice-renderer.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/index.html",
+      "frontend/styles.css",
+      "frontend/sw.js",
+      "scripts/game-rules-test.js",
+      "scripts/smoke-test.js",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "Motor gráfico: Three.js 0.185.1 se integra como capa progresiva sobre el renderer SVG existente; WebGL incompatible, calidad desactivada o error de carga vuelven automáticamente a 2D.",
+      "Física visual: dados redondeados reciben orientación determinista por valor, caída, giro, rebote, sombras, iluminación física y partículas aceleradas por GPU.",
+      "Materiales: presets propios para base, fuego, hielo, diamante, láser, galaxia, zombie, neón/élite/esmeralda y arcoíris, con texturas de caras generadas localmente.",
+      "Estados: tirada normal, puntuación, dado caliente y dado perdido modifican brillo, escala, partículas y sonido de impacto sin alterar reglas del servidor.",
+      "Tienda: la vista previa grande rota en 3D y conserva debajo las tarjetas 2D de estados; cerrar el modal libera escena, materiales, texturas y animación.",
+      "Rendimiento: selector Automática/3D alta/3D ahorro/2D clásica persistente; automática evalúa memoria, CPU y viewport, limita pixel ratio y reduce partículas.",
+      "Accesibilidad: prefers-reduced-motion reduce giros, rebotes y transiciones; el renderer mantiene contenido y controles fuera del canvas.",
+      "Audio: cada familia de skin agrega impacto sincronizado con la animación y vibración compatible, respetando volumen y mute de efectos.",
+      "Distribución: Three.js y RoundedBoxGeometry se sirven desde dependencias locales, incluido el chunk three.core.min.js, y quedan precacheados para PWA.",
+      "Dependencias: body-parser y brace-expansion transitivos se actualizaron a revisiones seguras; npm audit informa 0 vulnerabilidades.",
+      "Panel CEO: si CEO_SECRET falta o es corto, la sesión administrativa deriva una clave aislada y estable desde JWT_SECRET mediante HMAC-SHA256; las credenciales CEO ya guardadas siguen siendo las únicas válidas y el panel deja de responder 'no configurado'.",
+      "Seguridad CEO: CEO_SECRET válido continúa teniendo prioridad; la derivación usa separación de dominio y nunca expone ni modifica usuario, hash o contraseña administrativa.",
+      "Pruebas: reglas cubren la clave administrativa derivada; smoke verifica renderer, ambos módulos locales de Three.js y que un login CEO inválido responda 401 en vez de 503."
+    ]
+  },
   "3.8.5": {
     title: "🏆 Ciclo de vida, seguridad y UX integral de torneos",
     scope: "ceo",

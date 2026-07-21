@@ -397,6 +397,10 @@ function getActiveSkinAudio() {
   return SKIN_SOUND[skinId] || null;
 }
 
+function getSkinAudioById(skinId) {
+  return SKIN_SOUND[String(skinId || '')] || null;
+}
+
 function playSkinRoll() {
   const s = getActiveSkinAudio();
   if (!s) { SFX.roll(); return; }
@@ -419,6 +423,16 @@ function playSkinHot() {
     tone(f, 'sine', .18, .38, i * .08)
   );
 }
+
+function playSkinImpact(skinId) {
+  if (_sfxMuted) return;
+  const s = getSkinAudioById(skinId) || getActiveSkinAudio();
+  if (!s) { SFX.roll(); return; }
+  tone(Math.max(70, s.freq * .48), s.wave, .08, .22);
+  tone(Math.max(55, s.freq * .32), 'sine', .11, .18, .035);
+}
+
+if (typeof window !== 'undefined') window.playSkinImpact = playSkinImpact;
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { SKIN_SOUND };
