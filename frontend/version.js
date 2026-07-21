@@ -10,9 +10,28 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.0.0";
+const GAME_VERSION = "4.1.0";
 
 const CHANGELOG = [
+  {
+    version: "4.1.0",
+    date: "2026-07-21",
+    title: "✨ Dados brillantes, efectos vivos y badge arreglado",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "styles.css", "app.js", "server.js"],
+    changes: [
+      "Dados 3D más brillantes y separados entre sí",
+      "Anillo feo debajo de los dados reemplazado por bordes luminosos en dados que suman puntos",
+      "Insignia Perfecto ahora solo se desbloquea si ganás con cinco 1s",
+      "Estela Cósmica: anillos orbitales animados alrededor del avatar",
+      "Aura Real: resplandor dorado pulsante con corona flotante",
+      "Confeti Arcoíris: borde arcoíris giratorio + lluvia de confeti multicolor al ganar",
+      "Entrada Relámpago: anillo eléctrico pulsante alrededor del avatar",
+      "Efecto Eclipse: vignette oscuro + brillo púrpura al ganar",
+      "Efecto Láser mejorado: más rayos, colores arcoíris, brillo más intenso",
+      "Sonido de dados: eliminado el doble sonido al aterrizar"
+    ]
+  },
   {
     version: "4.0.0",
     date: "2026-07-20",
