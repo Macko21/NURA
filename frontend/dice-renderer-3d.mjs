@@ -12,18 +12,18 @@ const PIPS = {
 
 const SKINS_3D = {
   default:{ colors:['#f8f4ee','#d8cfbd'], pip:'#171724', edge:'#a99f8c', roughness:.58, metalness:.03, effect:'classic', particle:'#ffffff' },
-  '1': { colors:['#fff7d6','#56f4ff'], pip:'#10142a', edge:'#37d9ff', roughness:.3, metalness:.15, emissive:'#1fc7d4', effect:'neon', particle:'#a8fbff' },
-  '2': { colors:['#ffb12b','#c61b08'], pip:'#fff6d5', edge:'#ff4b10', roughness:.42, metalness:.08, emissive:'#ff2700', effect:'fire', particle:'#ff7a18' },
-  '4': { colors:['#dff5ff','#5d9fe4'], pip:'#10284f', edge:'#93d9ff', roughness:.16, metalness:.55, emissive:'#2678c7', effect:'elite', particle:'#bdeaff' },
-  '5': { colors:['#d9ffff','#42d7e8'], pip:'#083b4b', edge:'#a7ffff', roughness:.1, metalness:.05, emissive:'#28dcea', opacity:.68, effect:'ghost', particle:'#c9ffff' },
-  '6': { colors:['#f4ffff','#76c9ef'], pip:'#153953', edge:'#d4f8ff', roughness:.22, metalness:.12, emissive:'#4aa8dc', effect:'ice', particle:'#e9ffff' },
-  '18':{ colors:['#ff4040','#620000'], pip:'#ffffff', edge:'#ff1515', roughness:.32, metalness:.4, emissive:'#ff0000', effect:'laser', particle:'#ff2525' },
-  '19':{ colors:['#fff1a0','#bd7600'], pip:'#4a2500', edge:'#ffd84c', roughness:.2, metalness:.88, emissive:'#b97a00', effect:'gold', particle:'#ffe277' },
-  '20':{ colors:['#a6ffd0','#087f4a'], pip:'#f2fff8', edge:'#39e895', roughness:.24, metalness:.5, emissive:'#0e9d61', effect:'emerald', particle:'#70ffc0' },
-  '21':{ colors:['#a9b94d','#314c0c'], pip:'#e1e7b0', edge:'#647c20', roughness:.82, metalness:0, emissive:'#294a08', effect:'zombie', particle:'#8cbd36' },
-  '22':{ colors:['#ff5f91','#ffd43b','#45d9ff'], pip:'#28113b', edge:'#fff2a1', roughness:.28, metalness:.22, emissive:'#b53786', effect:'rainbow', particle:'#ff83ca' },
-  '32':{ colors:['#f8ffff','#76dbff'], pip:'#06354d', edge:'#d8fbff', roughness:.04, metalness:.35, emissive:'#55cbea', opacity:.9, effect:'diamond', particle:'#e8ffff' },
-  '33':{ colors:['#29104f','#071026'], pip:'#f8edff', edge:'#8c55e8', roughness:.35, metalness:.3, emissive:'#5317a6', effect:'galaxy', particle:'#b888ff' }
+  '1': { colors:['#F8F4EE','#E8E0D0'], pip:'#1a1a2e', edge:'#C4BAA2', roughness:.3, metalness:.15, emissive:'#1fc7d4', effect:'neon', particle:'#a8fbff', icon:'🎲' },
+  '2': { colors:['#FF6B35','#E05020'], pip:'#ffffff', edge:'#B03010', roughness:.42, metalness:.08, emissive:'#ff2700', effect:'fire', particle:'#ff7a18', icon:'🔥' },
+  '4': { colors:['#B8D8F8','#88B8E8'], pip:'#1a2a4e', edge:'#6898C8', roughness:.16, metalness:.55, emissive:'#2678c7', effect:'elite', particle:'#bdeaff', icon:'💎' },
+  '5': { colors:['#70E8FF','#10C0E0'], pip:'#003A4A', edge:'#0090B0', roughness:.1, metalness:.05, emissive:'#28dcea', opacity:.82, effect:'ghost', particle:'#c9ffff', icon:'👻' },
+  '6': { colors:['#C8E8F8','#A8D0E8'], pip:'#1a3a4e', edge:'#78B0C8', roughness:.22, metalness:.12, emissive:'#4aa8dc', effect:'ice', particle:'#e9ffff', icon:'❄️' },
+  '18':{ colors:['#FF2222','#CC0000'], pip:'#ffffff', edge:'#880000', roughness:.32, metalness:.4, emissive:'#ff0000', effect:'laser', particle:'#ff2525', icon:'🔴' },
+  '19':{ colors:['#FFD700','#DAA520'], pip:'#5a3a00', edge:'#B8860B', roughness:.2, metalness:.88, emissive:'#b97a00', effect:'gold', particle:'#ffe277', icon:'🏅' },
+  '20':{ colors:['#50C878','#2EA85E'], pip:'#ffffff', edge:'#1A7840', roughness:.24, metalness:.5, emissive:'#0e9d61', effect:'emerald', particle:'#70ffc0', icon:'💚' },
+  '21':{ colors:['#6B8E23','#4A6E10'], pip:'#d0d0a0', edge:'#2A4E00', roughness:.68, metalness:0, emissive:'#557d18', effect:'zombie', particle:'#8cbd36', icon:'🧟' },
+  '22':{ colors:['#FF6B9D','#FFD700'], pip:'#3a1a4e', edge:'#CC5599', roughness:.28, metalness:.22, emissive:'#b53786', effect:'rainbow', particle:'#ff83ca', icon:'🌈' },
+  '32':{ colors:['#B9F2FF','#7FE0F8'], pip:'#003344', edge:'#40C0E0', roughness:.04, metalness:.35, emissive:'#55cbea', opacity:.94, effect:'diamond', particle:'#e8ffff', icon:'💠' },
+  '33':{ colors:['#1A0533','#4A1A7A'], pip:'#ffffff', edge:'#2A0055', roughness:.35, metalness:.3, emissive:'#5317a6', effect:'galaxy', particle:'#b888ff', icon:'🌌' }
 };
 
 const textureCache = new Map();
@@ -66,7 +66,7 @@ function roundedRect(ctx, x, y, width, height, radius) {
 
 function drawMotif(ctx, skin, size) {
   ctx.save();
-  ctx.globalAlpha = .22;
+  ctx.globalAlpha = .1;
   if (skin.effect === 'fire') {
     ctx.strokeStyle = '#ffe46b'; ctx.lineWidth = 5;
     for (let i=0;i<5;i++) { ctx.beginPath(); ctx.moveTo(i*31, size); ctx.quadraticCurveTo(i*31+22, size*.55, i*31+10, 0); ctx.stroke(); }
@@ -87,6 +87,19 @@ function drawMotif(ctx, skin, size) {
   ctx.restore();
 }
 
+function drawSkinIcon(ctx, skin, size) {
+  if (!skin.icon) return;
+  ctx.save();
+  ctx.globalAlpha = .58;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(size*.48)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.shadowColor = 'rgba(0,0,0,.35)';
+  ctx.shadowBlur = size*.055;
+  ctx.fillText(skin.icon,size*.5,size*.515);
+  ctx.restore();
+}
+
 function faceTexture(value, skinId, quality) {
   const key = `${skinId || 'default'}:${value}:${quality}`;
   if (textureCache.has(key)) return textureCache.get(key);
@@ -102,6 +115,7 @@ function faceTexture(value, skinId, quality) {
   ctx.fillStyle = gradient;
   roundedRect(ctx, 0, 0, size, size, size*.09);
   drawMotif(ctx, skin, size);
+  drawSkinIcon(ctx, skin, size);
   const scale = size / 128;
   for (const [x,y] of PIPS[value]) {
     ctx.save();
@@ -124,14 +138,16 @@ function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
   return FACE_VALUES.map(value => {
     const hot = state === 'hot', scoring = state === 'scoring', dead = state === 'dead';
-    const emissive = hot ? '#d89100' : scoring ? '#158b38' : (skin.emissive || '#000000');
+    const faceMap = faceTexture(value, skinId, quality);
+    const emissive = hot ? '#d89100' : scoring ? '#158b38' : '#ffffff';
     return new THREE.MeshPhysicalMaterial({
-      map: faceTexture(value, skinId, quality),
+      map: faceMap,
       color: dead ? '#777777' : '#ffffff',
       roughness: skin.roughness,
       metalness: skin.metalness,
       emissive: new THREE.Color(emissive),
-      emissiveIntensity: dead ? 0 : hot || scoring ? .5 : skin.emissive ? .22 : 0,
+      emissiveMap: faceMap,
+      emissiveIntensity: dead ? 0 : hot || scoring ? .34 : .2,
       transparent: !!skin.opacity || dead,
       opacity: dead ? .42 : (skin.opacity || 1),
       transmission: quality === 'high' && ['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0,
@@ -154,8 +170,8 @@ function targetQuaternion(value) {
 function makeStage(container, quality, preview=false) {
   const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:quality === 'high', powerPreference:'high-performance' });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.25;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -168,7 +184,7 @@ function makeStage(container, quality, preview=false) {
   const camera = new THREE.PerspectiveCamera(preview ? 28 : 24,width/height,.1,50);
   camera.position.set(0, preview ? 4.4 : 3.35, preview ? 6.6 : 5.85);
   camera.lookAt(0,preview ? .25 : .62,0);
-  scene.add(new THREE.HemisphereLight(0xeaf8ff,0x130f20,quality === 'high' ? 2.2 : 2.7));
+  scene.add(new THREE.HemisphereLight(0xffffff,0x272238,quality === 'high' ? 3.2 : 3.5));
   const key = new THREE.DirectionalLight(0xfff1c4,quality === 'high' ? 4.2 : 3.2);
   key.position.set(-3,6,4); key.castShadow = quality === 'high'; scene.add(key);
   const rim = new THREE.PointLight(0x58bfff,quality === 'high' ? 14 : 8,12); rim.position.set(4,2,-2); scene.add(rim);
@@ -227,13 +243,13 @@ function renderGameDice({container,dice,states,skinId}) {
     const ring=new THREE.Mesh(new THREE.RingGeometry(.66,.76,36),new THREE.MeshBasicMaterial({color:state==='hot'?0xffc928:state==='scoring'?0x3de77d:new THREE.Color(skin.edge),transparent:true,opacity:state==='dead'?.08:.24,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
     ring.rotation.x=-Math.PI/2;ring.position.set(targetX,.035,0);stage.scene.add(ring);stage.scene.add(mesh);stage.objects.push(mesh);
   });
-  const particles=addParticles(stage,skinId,quality==='high'?22:10),start=performance.now(),duration=reducedMotion()?80:820,linger=quality==='high'?900:420;
+  const particles=addParticles(stage,skinId,quality==='high'?12:5),start=performance.now(),duration=reducedMotion()?60:390,linger=quality==='high'?180:100;
   let impacted=false;
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
     stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
-    if(!impacted&&t>.76){impacted=true;window.playSkinImpact?.(String(skinId||''));if(!reducedMotion()&&navigator.vibrate)navigator.vibrate(18);}
+    if(!impacted&&t>.62){impacted=true;window.playSkinImpact?.(String(skinId||''));if(!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
     stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?7:4.5)*(1+.08*Math.sin(now*.006));stage.renderer.render(stage.scene,stage.camera);
     if(elapsed<duration+linger)stage.frame=requestAnimationFrame(animate);

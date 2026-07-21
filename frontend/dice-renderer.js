@@ -172,6 +172,7 @@ function scoringIndices(dice) {
 function showDice(dice, mode) {
   const row = document.getElementById('dice-row');
   if (!row) return;
+  row.closest('.dice-tray')?.classList.remove('is-empty');
   _lastDiceView = { dice:[...dice], mode };
   const renderRequest = ++_diceRenderRequest;
   row.classList.remove('dice-row-3d');
@@ -238,7 +239,7 @@ function clearDice() {
   _lastDiceView = null;
   window.MackoDice3D?.clear();
   const el = document.getElementById('dice-row');
-  if (el) { el.classList.remove('dice-row-3d'); el.innerHTML = ''; }
+  if (el) { el.classList.remove('dice-row-3d'); el.innerHTML = ''; el.closest('.dice-tray')?.classList.add('is-empty'); }
   setMsg('', '');
 }
 

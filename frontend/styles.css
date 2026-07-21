@@ -716,6 +716,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
   display:flex;align-items:center;justify-content:center;
   box-shadow:inset 0 2px 12px rgba(0,0,0,.6), 0 8px 32px rgba(0,0,0,.3);
 }
+.dice-tray.is-empty{display:none}
 .dice-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
 .dice-row.dice-row-3d{display:block;width:min(100%,640px);min-width:280px;height:clamp(128px,17vw,166px);overflow:visible}
 .dice-3d-canvas{display:block;width:100% !important;height:100% !important;filter:drop-shadow(0 8px 14px rgba(0,0,0,.32));touch-action:none}

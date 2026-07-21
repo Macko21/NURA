@@ -3865,7 +3865,6 @@ function initUI() {
   /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
   $('btn-roll').onclick = () => {
     wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
-    clearDice();
     setMsg('','');
     playSkinRoll();
   };

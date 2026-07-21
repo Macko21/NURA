@@ -2,6 +2,31 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.9.2": {
+    title: "🎨 Paridad visual exacta entre skins 2D y dados 3D",
+    scope: "ceo",
+    files: [
+      "frontend/app.js",
+      "frontend/dice-renderer.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "frontend/ceo-panel.html",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "Skins: las 12 variantes 3D usan exactamente la paleta, color de puntos e ícono del catálogo/renderer 2D: Neón, Fuego, Élite, Fantasma, Hielo, Láser, Dorados, Esmeralda, Zombie, Arcoíris, Diamante y Galácticos.",
+      "Texturas: el ícono emoji de tienda se dibuja centrado en cada cara debajo de los puntos, con la misma proporción y opacidad visual del dado 2D.",
+      "Legibilidad: NeutralToneMapping, exposición ajustada y mapa emisivo de la propia textura conservan degradados vivos sin perder sombras ni volumen.",
+      "Animación: caída reducida de 820 ms a 390 ms, impacto adelantado, vibración acortada, partículas reducidas a 12/5 y cola visual limitada a 180/100 ms.",
+      "Latencia: al pedir otra tirada se conserva el resultado anterior hasta recibir el nuevo; se elimina el destello de tablero vacío causado por clearDice inmediato.",
+      "Estado inicial: el contenedor de dados vacío se oculta y aparece recién con el primer resultado válido.",
+      "QA visual: skin Zombie verificada con cinco valores y estados normal, puntuando y caliente; ícono, puntos, color y volumen permanecen visibles."
+    ]
+  },
   "3.9.1": {
     title: "🎲 Legibilidad de dados y layout estable de partida",
     scope: "ceo",

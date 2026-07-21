@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.9.1";
+const GAME_VERSION = "3.9.2";
 
 const CHANGELOG = [
+  // ═══ 3.9.2 — PRODUCCIÓN ═══
+  {
+    version: "3.9.2",
+    date: "2026-07-20",
+    title: "🎨 Tus skins 2D, ahora en 3D",
+    scope: "game",
+    files: [],
+    changes: [
+      "Cada dado 3D conserva los mismos colores, degradados e íconos de la skin comprada en la tienda",
+      "Los puntos y símbolos tienen más luz y contraste para reconocer cada resultado al instante",
+      "La caída y los efectos terminan mucho más rápido",
+      "El tablero ya no queda como una barra negra mientras espera el resultado de la tirada"
+    ]
+  },
   // ═══ 3.9.1 — PRODUCCIÓN ═══
   {
     version: "3.9.1",
