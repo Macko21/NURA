@@ -67,6 +67,7 @@ const {
 /* ── Express ─────────────────────────────────────────────── */
 const app  = express();
 const PORT = process.env.PORT || 3000;
+const NATIVE_APP_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost']);
 const CEO_AUTH = resolveCeoSessionSecret();
 const CEO_SECRET = CEO_AUTH.secret;
 if (CEO_AUTH.source === 'JWT_SECRET_DERIVED') {
@@ -76,6 +77,17 @@ if (CEO_AUTH.source === 'JWT_SECRET_DERIVED') {
 }
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && NATIVE_APP_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+  }
+  next();
+});
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -1581,6 +1593,7 @@ const wss    = new WebSocket.Server({
   verifyClient: ({ req }) => {
     const origin = req.headers.origin;
     if (!origin) return true;
+    if (NATIVE_APP_ORIGINS.has(origin)) return true;
     try { return new URL(origin).host === req.headers.host; }
     catch (_) { return false; }
   }
@@ -1779,7 +1792,7 @@ async function onMatchWon(match, roomId) {
       if (!registeredIdSet.has(p.id)) continue;
       try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
       if (p.straights > 0) await registerStraight(p.id);
-      if (p.fiveOnes > 0) await registerFiveOnes(p.id);
+      if (p.fiveOnes > 0 && p.id === winner.id) await registerFiveOnes(p.id);
     }
     if (isBotGame) console.log(`🤖 Partida contra bots registrada. Ganador: ${winner.name || winner.id}`);
   } catch (e) {

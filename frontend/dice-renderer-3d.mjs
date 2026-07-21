@@ -237,7 +237,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   if (!container || !Array.isArray(dice) || !dice.length || resolvedQuality()==='off' || !supportsWebGL()) return false;
   requestId+=1;const currentRequest=requestId;disposeStage(gameStage);
   const quality=resolvedQuality();gameStage=makeStage(container,quality,false);container.classList.add('dice-row-3d');
-  const stage=gameStage, spacing=Math.min(1.48,6.15/dice.length), total=(dice.length-1)*spacing;
+  const stage=gameStage, spacing=Math.min(1.8,7.5/dice.length), total=(dice.length-1)*spacing;
   const starts=[],targets=[];
   dice.forEach((value,index)=>{
     const state=states[index]||'normal',skin=skinFor(skinId);

@@ -28,6 +28,7 @@ const S = {
   diceEquipped: null,   // ID del skin de dados equipado
   specialEquipped: null  // ID del item especial equipado
 };
+const IS_NATIVE_APP = window.MACKO_NATIVE === true;
 
 function getInitial(name) {
   const match = String(name || '').trim().match(/[\p{L}\p{N}]/u);
@@ -261,7 +262,7 @@ let _deferredInstall = null; // evento beforeinstallprompt
 
 /* ── Service Worker + PWA ────────────────────────────── */
 let _swRegistration = null;
-if ('serviceWorker' in navigator) {
+if (!IS_NATIVE_APP && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       console.log('SW registrado:', reg.scope);
@@ -283,7 +284,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-if ('serviceWorker' in navigator) {
+if (!IS_NATIVE_APP && 'serviceWorker' in navigator) {
   // Escuchar mensajes del Service Worker (push recibidos, actualizaciones, etc.)
   navigator.serviceWorker.addEventListener('message', event => {
     const msg = event.data;
@@ -352,6 +353,7 @@ if ('serviceWorker' in navigator) {
 let _pushSubscribed = localStorage.getItem('macko_push') === 'subscribed';
 
 async function getServiceWorkerRegistration() {
+  if (IS_NATIVE_APP) return null;
   if (_swRegistration) return _swRegistration;
   if (!('serviceWorker' in navigator)) return null;
   try {
@@ -743,16 +745,42 @@ function launchConfetti() {
   const area = $('confetti-area');
   if (!area) return;
   area.innerHTML = '';
-  const colors = ['#D4AF37','#f5d060','#52c87a','#e05555','#5580e0','#ffffff'];
-  for (let i = 0; i < 60; i++) {
+  const colors = ['#D4AF37','#f5d060','#52c87a','#e05555','#5580e0','#ffffff','#ff6bd6','#40f0ff'];
+  for (let i = 0; i < 80; i++) {
     const p = document.createElement('div');
     p.className = 'confetti-piece';
+    const size = 6 + Math.random() * 8;
     p.style.cssText = `
       left:${Math.random()*100}%;
+      width:${size}px;height:${size * (.6 + Math.random()*.8)}px;
       background:${colors[Math.floor(Math.random()*colors.length)]};
-      animation-duration:${1.2 + Math.random()*1.5}s;
-      animation-delay:${Math.random()*.8}s;
+      animation-duration:${1 + Math.random()*1.8}s;
+      animation-delay:${Math.random()*.6}s;
       transform:rotate(${Math.random()*360}deg);
+      border-radius:${Math.random() > .5 ? '50%' : '2px'};
+      filter:drop-shadow(0 0 ${3 + Math.random()*5}px currentColor);
+    `;
+    area.appendChild(p);
+  }
+}
+function launchRainbowConfetti() {
+  const area = $('confetti-area');
+  if (!area) return;
+  area.innerHTML = '';
+  const rainbow = ['#ff0000','#ff8800','#ffff00','#00ff00','#0088ff','#8800ff','#ff00ff'];
+  for (let i = 0; i < 140; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    const size = 8 + Math.random() * 12;
+    p.style.cssText = `
+      left:${Math.random()*100}%;
+      width:${size}px;height:${size * (.5 + Math.random())}px;
+      background:${rainbow[i % rainbow.length]};
+      animation-duration:${.8 + Math.random()*2}s;
+      animation-delay:${Math.random()*.5}s;
+      transform:rotate(${Math.random()*360}deg);
+      border-radius:${Math.random() > .4 ? '50%' : '2px'};
+      filter:drop-shadow(0 0 ${4 + Math.random()*8}px ${rainbow[i % rainbow.length]});
     `;
     area.appendChild(p);
   }
@@ -1053,12 +1081,10 @@ function connect(cb) {
   _wsIdentified = false;
 
 // Protocolo dinámico (si es http pasa a ws, si es https pasa a wss)
+  const nativeWsUrl = window.MACKO_WS_URL;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  
-  // location.host toma automáticamente el dominio y puerto (ej: '10mildemacko.onrender.com' o 'localhost:3000')
-  const host = window.location.host; 
-
-  const ws = new WebSocket(`${protocol}//${host}`);
+  const host = window.location.host;
+  const ws = new WebSocket(nativeWsUrl || `${protocol}//${host}`);
   S.ws = ws;
 
   S.ws.onopen = () => {
@@ -3038,29 +3064,34 @@ function showWin(playerName, desc, dice, skinId, specialId) {
   launchConfetti();
   // Efecto Victoria: si el jugador local tiene item 16 equipado, confetti extra
   if (String(specialId || '') === '16') {
-    setTimeout(() => launchConfetti(), 1000);
-    setTimeout(() => launchConfetti(), 2000);
+    setTimeout(() => launchConfetti(), 800);
+    setTimeout(() => launchConfetti(), 1600);
+    setTimeout(() => launchConfetti(), 2400);
   }
   if (String(specialId || '') === '36') launchLaserVictory();
   if (String(specialId || '') === '47') {
-    setTimeout(() => launchConfetti(), 500);
-    setTimeout(() => launchConfetti(), 1200);
+    launchRainbowConfetti();
+    setTimeout(() => launchRainbowConfetti(), 700);
+    setTimeout(() => launchRainbowConfetti(), 1400);
   }
-  if (String(specialId || '') === '51') document.body.classList.add('victory-eclipse');
-  if (String(specialId || '') === '51') setTimeout(() => document.body.classList.remove('victory-eclipse'), 2600);
+  if (String(specialId || '') === '51') {
+    document.body.classList.add('victory-eclipse');
+    setTimeout(() => document.body.classList.remove('victory-eclipse'), 3200);
+  }
 }
 
 function launchLaserVictory() {
   const layer = document.createElement('div');
   layer.className = 'victory-laser-layer';
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 18; i++) {
     const beam = document.createElement('span');
-    beam.style.setProperty('--angle', `${i * 30}deg`);
-    beam.style.setProperty('--delay', `${(i % 4) * 0.08}s`);
+    beam.style.setProperty('--angle', `${i * 20}deg`);
+    beam.style.setProperty('--delay', `${(i % 5) * 0.06}s`);
+    beam.style.height = `${3 + Math.random() * 4}px`;
     layer.appendChild(beam);
   }
   document.body.appendChild(layer);
-  setTimeout(() => layer.remove(), 2300);
+  setTimeout(() => layer.remove(), 2500);
 }
 
 /* ── Init UI ─────────────────────────────────────────── */
@@ -4829,7 +4860,7 @@ async function loadCoinPacks() {
         <div class="coin-pack-label">${esc(pack.name)}</div>
         <div class="coin-pack-contents">${contents.map(esc).join('<br>')}</div>
         <div class="coin-pack-price">${esc(pack.priceDisplay)}</div>
-        <button class="btn btn-gold btn-buy-coins" data-pack="${esc(id)}" style="margin-top:4px">Comprar</button>
+        <button class="btn btn-gold btn-buy-coins" data-pack="${esc(id)}" style="margin-top:4px" ${IS_NATIVE_APP ? 'disabled' : ''}>${IS_NATIVE_APP ? 'Próximamente en la tienda móvil' : 'Comprar'}</button>
       `;
       grid.appendChild(div);
     }
@@ -4853,8 +4884,9 @@ async function loadCoinPacks() {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
           
-          // Redirigir al checkout de Mercado Pago
-          window.location.href = data.redirectUrl;
+          // En app nativa el checkout se abre seguro fuera del WebView.
+          if (IS_NATIVE_APP && window.openMackoExternalUrl) await window.openMackoExternalUrl(data.redirectUrl);
+          else window.location.href = data.redirectUrl;
         } catch (err) {
           toast('⚠ ' + err.message);
           e.target.textContent = 'Comprar';
@@ -4866,6 +4898,12 @@ async function loadCoinPacks() {
     console.error("Error cargando paquetes:", err);
   }
 }
+
+window.addEventListener('macko-native-resume', () => {
+  if (!IS_NATIVE_APP || !isLogged()) return;
+  loadUserBalance();
+  if (!S.ws || S.ws.readyState >= WebSocket.CLOSING) connect();
+});
 
 /* ════════════════════════════════════════════════════════
    REGLAS Y TUTORIAL
