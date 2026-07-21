@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "3.9.0";
+const GAME_VERSION = "3.9.1";
 
 const CHANGELOG = [
+  // ═══ 3.9.1 — PRODUCCIÓN ═══
+  {
+    version: "3.9.1",
+    date: "2026-07-20",
+    title: "🎲 Partida más clara y cómoda",
+    scope: "game",
+    files: [],
+    changes: [
+      "Los dados se ven más grandes y cercanos, con valores claros y efectos más suaves",
+      "En teléfonos vuelve automáticamente la vista 2D clásica para destacar las skins compradas",
+      "Tirar y Plantarse permanecen visibles aunque aparezcan mensajes o crezca el chat",
+      "La partida aprovecha mejor la altura disponible y evita superposiciones con el aviso de instalación"
+    ]
+  },
   // ═══ 3.9.0 — PRODUCCIÓN ═══
   {
     version: "3.9.0",

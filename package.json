@@ -1,6 +1,6 @@
 {
   "name": "los10000-macko",
-  "version": "3.9.0",
+  "version": "3.9.1",
   "description": "Juego de dados familiar - Los 10.000 de Macko",
   "main": "backend/server.js",
   "scripts": {

@@ -811,6 +811,7 @@ function preparePlayerIdentity() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  document.body.classList.toggle('game-active', id === 'screen-game');
   // Gestión de música de fondo según la pantalla
   // principal = lobby, auth, join, ranking, profile, portal
   // lobby = sala de espera (screen-room)

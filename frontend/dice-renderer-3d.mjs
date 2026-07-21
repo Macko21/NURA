@@ -38,9 +38,11 @@ function configuredQuality() {
 function resolvedQuality() {
   const configured = configuredQuality();
   if (configured !== 'auto') return configured;
+  // En teléfonos priorizamos la lectura inmediata de skins y valores con el renderer 2D clásico.
+  if (innerWidth <= 480) return 'off';
   const memory = Number(navigator.deviceMemory || 4);
   const cores = Number(navigator.hardwareConcurrency || 4);
-  return memory <= 4 || cores <= 4 || innerWidth <= 480 ? 'low' : 'high';
+  return memory <= 4 || cores <= 4 ? 'low' : 'high';
 }
 
 function supportsWebGL() {
@@ -163,16 +165,27 @@ function makeStage(container, quality, preview=false) {
   const height = preview ? 210 : Math.max(112, Math.min(150, width*.36));
   renderer.setSize(width,height,false);
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(preview ? 28 : 32,width/height,.1,50);
-  camera.position.set(0, preview ? 4.4 : 4.7, preview ? 6.6 : 7.8);
-  camera.lookAt(0,.25,0);
+  const camera = new THREE.PerspectiveCamera(preview ? 28 : 24,width/height,.1,50);
+  camera.position.set(0, preview ? 4.4 : 3.35, preview ? 6.6 : 5.85);
+  camera.lookAt(0,preview ? .25 : .62,0);
   scene.add(new THREE.HemisphereLight(0xeaf8ff,0x130f20,quality === 'high' ? 2.2 : 2.7));
   const key = new THREE.DirectionalLight(0xfff1c4,quality === 'high' ? 4.2 : 3.2);
   key.position.set(-3,6,4); key.castShadow = quality === 'high'; scene.add(key);
   const rim = new THREE.PointLight(0x58bfff,quality === 'high' ? 14 : 8,12); rim.position.set(4,2,-2); scene.add(rim);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.36 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=.02;ground.receiveShadow=true;scene.add(ground);
-  return {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false};
+  const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,resizeObserver:null};
+  if (typeof ResizeObserver !== 'undefined') {
+    stage.resizeObserver = new ResizeObserver(() => {
+      if (stage.disposed) return;
+      const nextWidth = Math.max(180, container.clientWidth || width);
+      const nextHeight = preview ? 210 : Math.max(112, container.clientHeight || Math.min(166,nextWidth*.3));
+      if (nextWidth === stage.width && nextHeight === stage.height) return;
+      stage.width=nextWidth;stage.height=nextHeight;camera.aspect=nextWidth/nextHeight;camera.updateProjectionMatrix();renderer.setSize(nextWidth,nextHeight,false);
+    });
+    stage.resizeObserver.observe(container);
+  }
+  return stage;
 }
 
 function addParticles(stage, skinId, count) {
@@ -180,18 +193,19 @@ function addParticles(stage, skinId, count) {
   const positions = new Float32Array(count*3), colors = new Float32Array(count*3), velocities=[];
   const base = new THREE.Color(skin.particle || '#ffffff');
   for(let i=0;i<count;i++){
-    positions[i*3]=(Math.random()-.5)*5;positions[i*3+1]=.2+Math.random()*1.6;positions[i*3+2]=(Math.random()-.5)*1.6;
+    positions[i*3]=(Math.random()-.5)*5.8;positions[i*3+1]=1.55+Math.random()*1.05;positions[i*3+2]=-.8-Math.random()*.7;
     const color=base.clone().offsetHSL((Math.random()-.5)*.08,0,(Math.random()-.5)*.2);colors.set([color.r,color.g,color.b],i*3);
-    velocities.push(new THREE.Vector3((Math.random()-.5)*.008,.006+Math.random()*.014,(Math.random()-.5)*.005));
+    velocities.push(new THREE.Vector3((Math.random()-.5)*.005,.003+Math.random()*.008,(Math.random()-.5)*.003));
   }
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
-  const mat=new THREE.PointsMaterial({size:.065,vertexColors:true,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false});
+  const mat=new THREE.PointsMaterial({size:.04,vertexColors:true,transparent:true,opacity:.48,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:true});
   const points=new THREE.Points(geo,mat);points.userData.velocities=velocities;stage.scene.add(points);return points;
 }
 
 function disposeStage(stage) {
   if (!stage || stage.disposed) return;
   stage.disposed=true;cancelAnimationFrame(stage.frame);
+  stage.resizeObserver?.disconnect();
   stage.scene.traverse(object=>{if(object.geometry&&object.geometry!==geometry)object.geometry.dispose?.();if(object.material){const list=Array.isArray(object.material)?object.material:[object.material];list.forEach(m=>m.dispose?.());}});
   stage.renderer.dispose();stage.renderer.forceContextLoss?.();stage.renderer.domElement.remove();
 }
@@ -213,7 +227,7 @@ function renderGameDice({container,dice,states,skinId}) {
     const ring=new THREE.Mesh(new THREE.RingGeometry(.66,.76,36),new THREE.MeshBasicMaterial({color:state==='hot'?0xffc928:state==='scoring'?0x3de77d:new THREE.Color(skin.edge),transparent:true,opacity:state==='dead'?.08:.24,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
     ring.rotation.x=-Math.PI/2;ring.position.set(targetX,.035,0);stage.scene.add(ring);stage.scene.add(mesh);stage.objects.push(mesh);
   });
-  const particles=addParticles(stage,skinId,quality==='high'?55:26),start=performance.now(),duration=reducedMotion()?80:980,linger=quality==='high'?1600:700;
+  const particles=addParticles(stage,skinId,quality==='high'?22:10),start=performance.now(),duration=reducedMotion()?80:820,linger=quality==='high'?900:420;
   let impacted=false;
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
@@ -221,7 +235,7 @@ function renderGameDice({container,dice,states,skinId}) {
     stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
     if(!impacted&&t>.76){impacted=true;window.playSkinImpact?.(String(skinId||''));if(!reducedMotion()&&navigator.vibrate)navigator.vibrate(18);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
-    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?12:7)*(1+.16*Math.sin(now*.006));stage.renderer.render(stage.scene,stage.camera);
+    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?7:4.5)*(1+.08*Math.sin(now*.006));stage.renderer.render(stage.scene,stage.camera);
     if(elapsed<duration+linger)stage.frame=requestAnimationFrame(animate);
   };
   stage.frame=requestAnimationFrame(animate);return true;
@@ -230,7 +244,7 @@ function renderGameDice({container,dice,states,skinId}) {
 function createPreview(container,skinId,value=5) {
   if(!container||resolvedQuality()==='off'||!supportsWebGL())return null;
   const quality=resolvedQuality(),stage=makeStage(container,quality,true),mesh=new THREE.Mesh(geometry,materialsFor(skinId,'normal',quality));
-  const spinner=new THREE.Group();mesh.castShadow=quality==='high';mesh.position.y=.72;mesh.quaternion.copy(targetQuaternion(value));spinner.add(mesh);stage.scene.add(spinner);stage.objects.push(mesh);const particles=addParticles(stage,skinId,quality==='high'?38:18);const start=performance.now();
+  const spinner=new THREE.Group();mesh.castShadow=quality==='high';mesh.position.y=.72;mesh.quaternion.copy(targetQuaternion(value));spinner.add(mesh);stage.scene.add(spinner);stage.objects.push(mesh);const particles=addParticles(stage,skinId,quality==='high'?20:9);const start=performance.now();
   const animate=now=>{if(stage.disposed||!container.isConnected){if(!container.isConnected)disposeStage(stage);return;}const elapsed=(now-start)*.001;spinner.rotation.y=elapsed*.65;spinner.rotation.z=Math.sin(elapsed*.7)*.06;particles.rotation.y=elapsed*.12;stage.rim.color.set(skinFor(skinId).edge);stage.renderer.render(stage.scene,stage.camera);stage.frame=requestAnimationFrame(animate);};
   stage.frame=requestAnimationFrame(animate);return()=>disposeStage(stage);
 }

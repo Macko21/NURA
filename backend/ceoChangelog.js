@@ -2,6 +2,31 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "3.9.1": {
+    title: "🎲 Legibilidad de dados y layout estable de partida",
+    scope: "ceo",
+    files: [
+      "frontend/app.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "frontend/ceo-panel.html",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "Responsive: calidad automática elige renderer 2D clásico hasta 480 px para priorizar skins, valores, batería y fluidez; la selección manual 3D sigue disponible.",
+      "Cámara 3D: FOV, posición y objetivo acercan el conjunto completo sin cortar dados; ResizeObserver reajusta canvas y proyección al cambiar tamaño u orientación.",
+      "Efectos 3D: partículas reducidas, pequeñas, semitransparentes y ubicadas detrás de los dados; iluminación lateral menos intensa y animación más corta.",
+      "Layout: game-table acepta altura flexible, desplaza solo el contenido central cuando es imprescindible y elimina recortes por overflow.",
+      "Acciones: Tirar/Plantarse y estado de espera usan posición sticky sobre el límite inferior del tablero, separados del chat.",
+      "Chat: sin mensajes no reserva altura; con contenido queda acotado a 52 px y mantiene el compositor accesible.",
+      "PWA: el banner de instalación se oculta durante una partida y deja de superponerse con controles críticos.",
+      "QA visual: partida validada a 1280×720 con resultado, mensaje de tirada y chat visible; dados y ambos controles permanecen completos."
+    ]
+  },
   "3.9.0": {
     title: "✨ Render híbrido 3D de dados y recuperación segura del panel CEO",
     scope: "ceo",
