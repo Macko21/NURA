@@ -176,7 +176,7 @@ function makeStage(container, quality, preview=false) {
   const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:quality === 'high', powerPreference:'high-performance' });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.52;
+  renderer.toneMappingExposure = 2.1;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -189,8 +189,8 @@ function makeStage(container, quality, preview=false) {
   const camera = new THREE.PerspectiveCamera(preview ? 26 : 21,width/height,.1,50);
   camera.position.set(0, preview ? 4.15 : 3.05, preview ? 6.1 : 5.35);
   camera.lookAt(0,preview ? .25 : .62,0);
-  scene.add(new THREE.HemisphereLight(0xffffff,0x272238,quality === 'high' ? 3.2 : 3.5));
-  const key = new THREE.DirectionalLight(0xfff1c4,quality === 'high' ? 4.2 : 3.2);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444466,quality === 'high' ? 4.0 : 4.5));
+  const key = new THREE.DirectionalLight(0xfff5d4,quality === 'high' ? 5.0 : 4.0);
   key.position.set(-3,6,4); key.castShadow = quality === 'high'; scene.add(key);
   const rim = new THREE.PointLight(0x58bfff,quality === 'high' ? 14 : 8,12); rim.position.set(4,2,-2); scene.add(rim);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.36 }));
@@ -245,8 +245,14 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     const targetX=index*spacing-total/2;mesh.position.set(targetX+(Math.random()-.5)*1.8,2.2+Math.random(),(Math.random()-.5)*1.2);
     mesh.quaternion.setFromEuler(new THREE.Euler(Math.random()*6,Math.random()*6,Math.random()*6));
     starts.push({position:mesh.position.clone(),quaternion:mesh.quaternion.clone()});targets.push({position:new THREE.Vector3(targetX,.7,0),quaternion:targetQuaternion(value)});
-    const ring=new THREE.Mesh(new THREE.RingGeometry(.66,.76,36),new THREE.MeshBasicMaterial({color:state==='hot'?0xffc928:state==='scoring'?0x3de77d:new THREE.Color(skin.edge),transparent:true,opacity:state==='dead'?.08:.24,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
-    ring.rotation.x=-Math.PI/2;ring.position.set(targetX,.035,0);stage.scene.add(ring);stage.scene.add(mesh);stage.objects.push(mesh);
+    if (state==='scoring'||state==='hot') {
+      const edgeColor = state==='hot' ? 0xffc928 : 0x3de77d;
+      const edgeMat = new THREE.MeshBasicMaterial({color:edgeColor,transparent:true,opacity:.55,side:THREE.DoubleSide});
+      const edgeMesh = new THREE.Mesh(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.4,1.4,1.4)), edgeMat);
+      edgeMesh.position.set(targetX,.7,0);edgeMesh.quaternion.copy(targetQuaternion(value));
+      stage.scene.add(edgeMesh);
+    }
+    stage.scene.add(mesh);stage.objects.push(mesh);
   });
   const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));
   const particles=addParticles(stage,skinId,quality==='high'?(effectBoost?30:18):(effectBoost?12:8)),start=performance.now(),duration=reducedMotion()?60:460,linger=quality==='high'?420:260;
@@ -255,7 +261,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     if(stage.disposed||currentRequest!==requestId)return;
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
     stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
-    if(!impacted&&t>.62){impacted=true;window.playSkinImpact?.(String(skinId||''));if(!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
+    if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
     stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?7:4.5)*(1+.08*Math.sin(now*.006));stage.renderer.render(stage.scene,stage.camera);
     if(elapsed<duration+linger)stage.frame=requestAnimationFrame(animate);
