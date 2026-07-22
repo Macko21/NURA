@@ -16,46 +16,46 @@ const CHANGELOG = [
   {
     version: "4.2.1",
     date: "2026-07-21",
-    title: "🔧 Fix: skins de dados, modal X, 3D en móvil y spacing",
+    title: "🔧 Fix crítico: skins de dados, modales, 3D móvil y layout",
     scope: "game",
-    files: ["cosmeticResolver.js", "database.js", "dice-renderer-3d.mjs", "dice-renderer.js", "styles.css"],
+    files: ["cosmeticResolver.js", "database.js", "dice-renderer-3d.mjs", "dice-renderer.js", "styles.css", "app.js"],
     changes: [
-      "Fix: skins de dados corregidas — faltaban mapeos para Océano, Sakura, Tóxicos, Vaporwave y Prisma en el resolver",
-      "Fix: catálogo de tienda ahora actualiza nombre/icono si el ID ya existe (antes NO sobreescribía)",
-      "Fix: X de cierre de modales ahora queda dentro del modal con position sticky en móvil",
-      "Fix: modal de preview ajustado al viewport con safe-area insets en PWA",
-      "Fix: dados 3D deshabilitados en celular — WebGL falla en PWA y muestra dados blancos",
-      "Selector de calidad muestra 'Solo 2D en celular' y se desactiva en móvil",
-      "Fix: más espacio entre zona de dados y cajas de jugadores (gap aumentado)",
-      "Fix: zona de dados con más separación interna"
+      "🐛 FIX SKINS: Fantasma se mostraba como Diamante — faltaban 5 mapeos en cosmeticResolver.js (Océano→37, Sakura→38, Tóxicos→39, Vaporwave→40, Prisma→49)",
+      "🐛 FIX SKINS: Catálogo de tienda ahora actualiza nombre/icono/categoría al importar (antes DO NOTHING no sobreescribía datos viejos)",
+      "🐛 FIX MODAL X: Botón de cierre salía fuera del modal en móvil — header ahora es position:sticky dentro del scroll del modal",
+      "🐛 FIX MODAL: Overlay con overscroll-behavior:contain + safe-area insets para que no se superponga con barra de estado en PWA",
+      "🐛 FIX 3D MÓVIL: Dados 3D deshabilitados en celular — WebGL falla en PWA y mostraba dados completamente blancos sin diseño",
+      "📱 SELECTOR CALIDAD: Muestra 'Solo 2D en celular' y se desactiva cuando detecta dispositivo móvil (Mobi/Android/iPhone/iPad)",
+      "📐 LAYOUT: Gap entre zona de dados y cajas de jugadores aumentado (6-12px → 10-18px) para mejor separación visual",
+      "📐 LAYOUT: Separación interna de la zona de dados aumentada (6px → 10px)"
     ]
   },
   {
     version: "4.2.0",
     date: "2026-07-21",
-    title: "🎯 Dados grises sólidos, preview de inventario y efectos renovados",
+    title: "🎯 Dados grises, preview de inventario, efectos renovados y light mode",
     scope: "game",
     files: ["dice-renderer.js", "dice-renderer-3d.mjs", "styles.css", "app.js", "index.html"],
     changes: [
-      "Dados de jugadores que no entraron ahora son sólidos grises (antes se veían con colores de skin)",
-      "Cartel de entrada al juego reemplazado por toast flotante que no bloquea la vista de los dados",
-      "Inventario: celdas más grandes (72px) con iconos y nombres más legibles",
-      "Click en items del inventario abre modal de preview con descripción y botón Equipar (antes equipaba directo)",
-      "Preview de dados en tienda: muestra dado 3D real + los 4 estados (sin puntuar, neutral, sumando, caliente)",
-      "Preview de avatares en tienda e inventario: muestra avatar grande con marco premium si corresponde",
-      "Preview de efectos especiales: avatar animado con el CSS effect real aplicado (Estela Cósmica, Aura Real, etc.)",
-      "Estela Cósmica: anillos orbitales más gruesos y rápidos para mayor visibilidad",
-      "Aura Real: resplandor dorado más intenso con corona más grande",
-      "Confeti Arcoíris: opacidad y velocidad aumentadas, borde más marcado",
-      "Entrada Relámpago: rayo ⚡ emoji, glow más fuerte, ring más rápido",
-      "Efecto Eclipse: glow púrpura más dramático con vignette más oscuro",
-      "Efectos 45-51 agregados al SPECIAL_EFFECTS para que muestren descripción completa en tienda",
-      "Texto 'Click para ver preview' en items de tienda no-ultra",
-      "Panel de sonido adaptado a tema claro con variables CSS",
-      "Toast de puntos adaptado a tema claro",
-      "Partículas de fondo más visibles en tema claro",
-      "Botones de configuración de bots adaptados a tema claro",
-      "Banner de torneo adaptado a tema claro"
+      "🎲 DADOS DEAD: Jugadores que no entraron muestran dados sólidos grises (#999/#777) ignorando colores de skin — antes se veían con los colores de la skin comprada",
+      "🎲 DADOS 3D DEAD: Textura neutral gris cacheada (createNeutralFaceMap), roughness .9, metalness 0, clearcoat 0 — apariencia mate sin brillo",
+      "🎲 DADOS 2D DEAD: Background gris sólido, dots #555, sin skin icon, sin clase die-skin-*, opacity .65",
+      "🎉 CARTEL ENTRADA: Reemplazado overlay fullscreen (z-index:500, blur) por toast flotante arriba que no bloquea la vista de dados",
+      "📱 INVENTARIO CELLS: Grid de 72px (antes 64px), iconos 22px (antes 18px), nombres 8px con better line-height",
+      "👁️ INVENTARIO PREVIEW: Click en item abre modal con vista previa + descripción + botón 'Equipar' (antes equipaba directo sin preguntar)",
+      "🎲 TIENDA PREVIEW DADOS: Muestra dado 3D real con createPreview() + los 4 estados (dead/normal/scoring/hot) via makeDie()",
+      "👤 TIENDA PREVIEW AVATARES: Avatar grande con marco premium si corresponde (specialEquipped === '15')",
+      "✨ TIENDA PREVIEW ESPECIALES: Avatar animado con el CSS effect real aplicado (special-45, special-46, etc.) + descripción del efecto",
+      "🌟 ESTELA CÓSMICA (45): Anillos orbitales más gruesos (2.5px), más rápidos (2.5s/3.5s), glow más fuerte",
+      "👑 AURA REAL (46): Glow dorado más intenso (28px + 56px), corona más grande (13px), animación más rápida (1.8s)",
+      "🌈 CONFETI ARCOÍRIS (47): Opacidad .65 (antes .55), blur 2px, animación 1.5s (antes 2s)",
+      "⚡ ENTRADA RELÁMPAGO (48): Emoji ⚡ visible, glow 48px, ring más rápido (.5s), keyframe lightningBolt nuevo",
+      "🌑 ECLIPSE (51): Glow 32px + 64px, vignette más oscuro (35%→70%→100%), animación 2.5s (antes 3s)",
+      "📋 SPECIAL_EFFECTS: Items 45-51 agregados con descripciones completas (antes solo llegaba hasta 36)",
+      "💡 TEXT 'Click para ver preview': Agregado en items de tienda no-ultra para claridad",
+      "☀️ LIGHT MODE: Panel de sonido, toast de puntos, partículas de fondo, botones de bots, banner de torneo — todos adaptados con CSS variables",
+      "☀️ LIGHT MODE: User-top-bar gradient ahora usa var(--bg-card) en vez de hardcoded dark",
+      "☀️ LIGHT MODE: Botón tema toggle, tag-wait, timer-ring-bg, shop-tabs, avatar-preview, special-preview — todos con var(--bg-input)"
     ]
   },
   {
@@ -75,6 +75,18 @@ const CHANGELOG = [
       "Efecto Eclipse: vignette oscuro + brillo púrpura al ganar",
       "Efecto Láser mejorado: más rayos, colores arcoíris, brillo más intenso",
       "Sonido de dados: eliminado el doble sonido al aterrizar"
+    ]
+  },
+  {
+    version: "4.2.1",
+    date: "2026-07-21",
+    title: "🔧 Backend: resolver de skins y sincronización de catálogo",
+    scope: "ceo",
+    files: ["cosmeticResolver.js", "database.js"],
+    changes: [
+      "🔧 cosmeticResolver: 5 skins agregadas al mapa DICE_SKIN_IDS_BY_NAME (ocean/37, sakura/38, toxicos/39, vaporwave/40, prisma/49)",
+      "🔧 database.js: seedShopItemsFromCatalog ahora usa ON CONFLICT DO UPDATE SET name, icon, category (antes DO NOTHING no actualizaba datos viejos)",
+      "🔧 Esto corrige el bug donde Fantasma se mostraba como Diamante — el DB tenía el ID correcto pero el nombre/icono podían estar desactualizados"
     ]
   },
   {
