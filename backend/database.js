@@ -1882,7 +1882,7 @@ async function seedShopItemsFromCatalog() {
       await pool.query(`
         INSERT INTO shop_items (id, category, name, icon, price, description, enabled, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $7)
-        ON CONFLICT (id) DO NOTHING
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, icon = EXCLUDED.icon, category = EXCLUDED.category
       `, [item.id, item.category, item.name, item.icon, item.price, item.desc || '', now]);
     }
     // Sincronizar la secuencia serial para que el CEO panel pueda crear items sin conflictos

@@ -12,7 +12,15 @@ const DICE_SKIN_IDS_BY_NAME = Object.freeze({
   zombie: "21",
   arcoiris: "22",
   diamante: "32",
-  galacticos: "33"
+  galacticos: "33",
+  ocean: "37",
+  oceano: "37",
+  sakura: "38",
+  toxicos: "39",
+  toxico: "39",
+  vaporwave: "40",
+  vapor: "40",
+  prisma: "49"
 });
 
 function normalizeDiceSkinName(name) {

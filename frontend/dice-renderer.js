@@ -259,6 +259,13 @@ function syncDiceQualityUI() {
   const status = document.getElementById('dice-quality-status');
   const renderer3D = window.MackoDice3D;
   if (!select || !status) return;
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || innerWidth <= 480;
+  if (isMobile) {
+    status.textContent = '📱 Solo 2D en celular (3D deshabilitado)';
+    select.value = 'off';
+    select.disabled = true;
+    return;
+  }
   if (!renderer3D) {
     status.textContent = 'Renderer 2D activo';
     return;

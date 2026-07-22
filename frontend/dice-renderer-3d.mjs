@@ -42,9 +42,9 @@ function configuredQuality() {
 
 function resolvedQuality() {
   const configured = configuredQuality();
+  // En teléfonos siempre 2D — WebGL falla en PWA y da dados blancos
+  if (innerWidth <= 480 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return 'off';
   if (configured !== 'auto') return configured;
-  // En teléfonos priorizamos la lectura inmediata de skins y valores con el renderer 2D clásico.
-  if (innerWidth <= 480) return 'off';
   const memory = Number(navigator.deviceMemory || 4);
   const cores = Number(navigator.hardwareConcurrency || 4);
   return memory <= 4 || cores <= 4 ? 'low' : 'high';

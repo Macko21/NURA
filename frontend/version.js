@@ -10,9 +10,26 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.2.0";
+const GAME_VERSION = "4.2.1";
 
 const CHANGELOG = [
+  {
+    version: "4.2.1",
+    date: "2026-07-21",
+    title: "🔧 Fix: skins de dados, modal X, 3D en móvil y spacing",
+    scope: "game",
+    files: ["cosmeticResolver.js", "database.js", "dice-renderer-3d.mjs", "dice-renderer.js", "styles.css"],
+    changes: [
+      "Fix: skins de dados corregidas — faltaban mapeos para Océano, Sakura, Tóxicos, Vaporwave y Prisma en el resolver",
+      "Fix: catálogo de tienda ahora actualiza nombre/icono si el ID ya existe (antes NO sobreescribía)",
+      "Fix: X de cierre de modales ahora queda dentro del modal con position sticky en móvil",
+      "Fix: modal de preview ajustado al viewport con safe-area insets en PWA",
+      "Fix: dados 3D deshabilitados en celular — WebGL falla en PWA y muestra dados blancos",
+      "Selector de calidad muestra 'Solo 2D en celular' y se desactiva en móvil",
+      "Fix: más espacio entre zona de dados y cajas de jugadores (gap aumentado)",
+      "Fix: zona de dados con más separación interna"
+    ]
+  },
   {
     version: "4.2.0",
     date: "2026-07-21",
