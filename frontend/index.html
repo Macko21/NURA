@@ -2,9 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
 <title>Los 10.000 de Macko</title>
-<meta name="theme-color" content="#C8961E">
+<meta name="theme-color" content="#0b1120">
 <meta name="description" content="Juego de dados familiar — 10.000 puntos para ganar">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.1.0"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.2.0"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -84,6 +84,7 @@
       </div>
     </div>
     <div class="user-wallet">
+      <button id="btn-theme-toggle" class="btn-theme-toggle" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
       <span class="coin-icon">🪙</span>
       <span id="lobby-coins">0</span>
       <button id="btn-wallet-toggle" class="btn-wallet-toggle hidden-desktop" title="Más opciones">▾</button>
@@ -110,7 +111,7 @@
         <button class="btn btn-gold glow-btn" id="btn-create">+ Crear sala</button>
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
       </div>
-      <button class="btn btn-ghost" id="btn-bot-game" style="border-color:rgba(100,200,255,.25);color:#64c8ff">🤖 Jugar vs Bots</button>
+      <button class="btn btn-ghost" id="btn-bot-game">🤖 Jugar vs Bots</button>
       <button class="btn btn-link" id="btn-portal">🏛️ Portal social</button>
       <button class="btn btn-link" id="btn-ranking">🏆 Ranking global</button>
       <button class="btn btn-link" id="btn-tournaments" style="color:var(--gold2)">🏆 Torneos<span id="tournament-push-badge" class="push-badge hidden">🔔</span></button>
@@ -125,9 +126,9 @@
     </div>
     <!-- Banner próximo torneo programado -->
     <div id="next-tournament-banner" class="hidden" style="
-      background:rgba(26,20,48,.9);border:1px solid rgba(212,175,55,.3);
-      border-radius:10px;padding:8px 14px;margin:8px 14px 0;
-      backdrop-filter:blur(8px);animation:fadeIn .3s;font-size:12px;
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--r);padding:8px 14px;margin:8px 14px 0;
+      animation:fadeIn .3s;font-size:12px;
     "></div>
 
     <!-- Misiones diarias (DESKTOP: fuera del lobby-content, posicionado absoluto) -->
@@ -803,10 +804,10 @@
   }
 })();
 </script>
-<script src="/version.js?v=4.1.0"></script>
-  <script src="/dice-renderer.js?v=4.1.0"></script>
-  <script src="/audio.js?v=4.1.0"></script>
-  <script src="/app.js?v=4.1.0"></script>
+<script src="/version.js?v=4.2.0"></script>
+  <script src="/dice-renderer.js?v=4.2.0"></script>
+  <script src="/audio.js?v=4.2.0"></script>
+  <script src="/app.js?v=4.2.0"></script>
 <!-- FIN ⚠️ -->
 
 

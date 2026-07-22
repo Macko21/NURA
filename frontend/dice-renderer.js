@@ -105,7 +105,11 @@ function makeDie(value, state='normal', skinId=null) {
   if (skin) {
     let dotColor;
 
-    if (state === 'scoring') {
+    if (state === 'dead') {
+      el.style.background = 'linear-gradient(145deg,#999,#777)';
+      el.style.boxShadow = '2px 2px 0 #555, 3px 3px 0 #444, 0 4px 12px rgba(0,0,0,.4), inset 0 1px 2px rgba(200,200,200,.3)';
+      dotColor = '#555';
+    } else if (state === 'scoring') {
       el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
       el.style.boxShadow = `2px 2px 0 #206808, 3px 3px 0 #005000, 0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3), inset 0 1px 2px rgba(180,255,160,.5)`;
       dotColor = '#103808';
@@ -113,17 +117,14 @@ function makeDie(value, state='normal', skinId=null) {
       el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
       el.style.boxShadow = `2px 2px 0 #A06008, 3px 3px 0 #784000, 0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3), inset 0 1px 2px rgba(255,230,110,.5)`;
       dotColor = '#6b3400';
-    } else if (state === 'dead') {
-      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
-      dotColor = '#666666';
     } else {
       el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
       el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)`;
       dotColor = skin.dot || '#1a1a2e';
     }
 
-    el.classList.add('die-skin-' + skinId);
-    el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId, dotColor);
+    if (state !== 'dead') el.classList.add('die-skin-' + skinId);
+    el.innerHTML = (state === 'dead' ? '' : `<span class="die-icon-bg">${skin.icon}</span>`) + makeDieSVG(value, state, skinId, dotColor);
   } else if (state === 'scoring') {
     el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
     el.innerHTML = makeDieSVG(value, state, skinId);
@@ -295,23 +296,24 @@ function setMsg(text, type) {
 
 /* ── Cartelito de entrada ────────────────────────────── */
 function showEntryBanner(gained) {
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-banner-overlay';
-  overlay.innerHTML = `
-    <div class="entry-banner-box">
-      <div class="entry-banner-icon">🎉</div>
-      <div class="entry-banner-title">¡ENTRASTE AL JUEGO!</div>
-      <div class="entry-banner-sub">${gained > 0
-        ? `Quedás con <strong>${gained} pts</strong> — próximo turno sumás`
-        : 'Quedás con 0 pts — próximo turno empezás a sumar'
-      }</div>
+  const banner = document.createElement('div');
+  banner.className = 'entry-banner-toast';
+  banner.innerHTML = `
+    <div class="entry-banner-inner">
+      <span class="entry-banner-icon">🎉</span>
+      <span class="entry-banner-title">¡ENTRASTE!</span>
+      <span class="entry-banner-sub">${gained > 0
+        ? `<strong>${gained} pts</strong> — próximo turno sumás`
+        : '0 pts — próximo turno empezás a sumar'
+      }</span>
     </div>
   `;
-  document.body.appendChild(overlay);
+  document.body.appendChild(banner);
+  requestAnimationFrame(() => banner.classList.add('show'));
   setTimeout(() => {
-    overlay.classList.add('fade-out');
-    setTimeout(() => overlay.remove(), 600);
-  }, 2800);
+    banner.classList.remove('show');
+    setTimeout(() => banner.remove(), 500);
+  }, 3000);
 }
 
 // ── Partículas visuales únicas por skin de dados ────────

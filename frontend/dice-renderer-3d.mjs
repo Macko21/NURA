@@ -139,26 +139,42 @@ function faceTexture(value, skinId, quality) {
   return texture;
 }
 
+const _neutralFaceCache = new Map();
+function createNeutralFaceMap(quality) {
+  const key = quality;
+  if (_neutralFaceCache.has(key)) return _neutralFaceCache.get(key);
+  const size = quality === 'high' ? 128 : 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#999999';
+  ctx.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  _neutralFaceCache.set(key, texture);
+  return texture;
+}
+
 function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
   return FACE_VALUES.map(value => {
     const hot = state === 'hot', scoring = state === 'scoring', dead = state === 'dead';
-    const faceMap = faceTexture(value, skinId, quality);
-    const emissive = hot ? '#d89100' : scoring ? '#158b38' : '#ffffff';
+    const faceMap = dead ? createNeutralFaceMap(quality) : faceTexture(value, skinId, quality);
+    const emissive = hot ? '#d89100' : scoring ? '#00cc55' : '#ffffff';
     return new THREE.MeshPhysicalMaterial({
       map: faceMap,
-      color: dead ? '#777777' : '#ffffff',
-      roughness: skin.roughness,
-      metalness: skin.metalness,
+      color: dead ? '#888888' : '#ffffff',
+      roughness: dead ? .9 : skin.roughness,
+      metalness: dead ? 0 : skin.metalness,
       emissive: new THREE.Color(emissive),
       emissiveMap: faceMap,
-      emissiveIntensity: dead ? .12 : hot || scoring ? .48 : .38,
-      transparent: !!skin.opacity || dead,
-      opacity: dead ? .42 : (skin.opacity || 1),
+      emissiveIntensity: dead ? .08 : hot ? .55 : scoring ? .65 : .38,
+      transparent: !!skin.opacity,
+      opacity: dead ? 1 : (skin.opacity || 1),
       transmission: quality === 'high' && ['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0,
       thickness: .35,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
-      clearcoat: ['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25,
+      clearcoat: dead ? 0 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25,
       clearcoatRoughness: skin.effect === 'diamond' ? .05 : .2
     });
   });
@@ -183,12 +199,12 @@ function makeStage(container, quality, preview=false) {
   renderer.domElement.className = preview ? 'dice-3d-preview-canvas' : 'dice-3d-canvas';
   container.replaceChildren(renderer.domElement);
   const width = Math.max(180, container.clientWidth || (preview ? 320 : 350));
-  const height = preview ? 210 : Math.max(112, Math.min(150, width*.36));
+  const height = preview ? 210 : Math.max(110, Math.min(145, width*.33));
   renderer.setSize(width,height,false);
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(preview ? 26 : 21,width/height,.1,50);
-  camera.position.set(0, preview ? 4.15 : 3.05, preview ? 6.1 : 5.35);
-  camera.lookAt(0,preview ? .25 : .62,0);
+  const camera = new THREE.PerspectiveCamera(preview ? 26 : 23,width/height,.1,50);
+  camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
+  camera.lookAt(0,preview ? .25 : .55,0);
   scene.add(new THREE.HemisphereLight(0xffffff,0x444466,quality === 'high' ? 4.0 : 4.5));
   const key = new THREE.DirectionalLight(0xfff5d4,quality === 'high' ? 5.0 : 4.0);
   key.position.set(-3,6,4); key.castShadow = quality === 'high'; scene.add(key);
@@ -200,7 +216,7 @@ function makeStage(container, quality, preview=false) {
     stage.resizeObserver = new ResizeObserver(() => {
       if (stage.disposed) return;
       const nextWidth = Math.max(180, container.clientWidth || width);
-      const nextHeight = preview ? 210 : Math.max(112, container.clientHeight || Math.min(166,nextWidth*.3));
+      const nextHeight = preview ? 210 : Math.max(110, container.clientHeight || Math.min(145,nextWidth*.33));
       if (nextWidth === stage.width && nextHeight === stage.height) return;
       stage.width=nextWidth;stage.height=nextHeight;camera.aspect=nextWidth/nextHeight;camera.updateProjectionMatrix();renderer.setSize(nextWidth,nextHeight,false);
     });
@@ -237,7 +253,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   if (!container || !Array.isArray(dice) || !dice.length || resolvedQuality()==='off' || !supportsWebGL()) return false;
   requestId+=1;const currentRequest=requestId;disposeStage(gameStage);
   const quality=resolvedQuality();gameStage=makeStage(container,quality,false);container.classList.add('dice-row-3d');
-  const stage=gameStage, spacing=Math.min(1.8,7.5/dice.length), total=(dice.length-1)*spacing;
+  const stage=gameStage, spacing=Math.min(1.65,7.0/dice.length), total=(dice.length-1)*spacing;
   const starts=[],targets=[];
   dice.forEach((value,index)=>{
     const state=states[index]||'normal',skin=skinFor(skinId);
@@ -245,13 +261,6 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     const targetX=index*spacing-total/2;mesh.position.set(targetX+(Math.random()-.5)*1.8,2.2+Math.random(),(Math.random()-.5)*1.2);
     mesh.quaternion.setFromEuler(new THREE.Euler(Math.random()*6,Math.random()*6,Math.random()*6));
     starts.push({position:mesh.position.clone(),quaternion:mesh.quaternion.clone()});targets.push({position:new THREE.Vector3(targetX,.7,0),quaternion:targetQuaternion(value)});
-    if (state==='scoring'||state==='hot') {
-      const edgeColor = state==='hot' ? 0xffc928 : 0x3de77d;
-      const edgeMat = new THREE.MeshBasicMaterial({color:edgeColor,transparent:true,opacity:.55,side:THREE.DoubleSide});
-      const edgeMesh = new THREE.Mesh(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.4,1.4,1.4)), edgeMat);
-      edgeMesh.position.set(targetX,.7,0);edgeMesh.quaternion.copy(targetQuaternion(value));
-      stage.scene.add(edgeMesh);
-    }
     stage.scene.add(mesh);stage.objects.push(mesh);
   });
   const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));

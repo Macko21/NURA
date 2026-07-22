@@ -10,9 +10,37 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.1.0";
+const GAME_VERSION = "4.2.0";
 
 const CHANGELOG = [
+  {
+    version: "4.2.0",
+    date: "2026-07-21",
+    title: "🎯 Dados grises sólidos, preview de inventario y efectos renovados",
+    scope: "game",
+    files: ["dice-renderer.js", "dice-renderer-3d.mjs", "styles.css", "app.js", "index.html"],
+    changes: [
+      "Dados de jugadores que no entraron ahora son sólidos grises (antes se veían con colores de skin)",
+      "Cartel de entrada al juego reemplazado por toast flotante que no bloquea la vista de los dados",
+      "Inventario: celdas más grandes (72px) con iconos y nombres más legibles",
+      "Click en items del inventario abre modal de preview con descripción y botón Equipar (antes equipaba directo)",
+      "Preview de dados en tienda: muestra dado 3D real + los 4 estados (sin puntuar, neutral, sumando, caliente)",
+      "Preview de avatares en tienda e inventario: muestra avatar grande con marco premium si corresponde",
+      "Preview de efectos especiales: avatar animado con el CSS effect real aplicado (Estela Cósmica, Aura Real, etc.)",
+      "Estela Cósmica: anillos orbitales más gruesos y rápidos para mayor visibilidad",
+      "Aura Real: resplandor dorado más intenso con corona más grande",
+      "Confeti Arcoíris: opacidad y velocidad aumentadas, borde más marcado",
+      "Entrada Relámpago: rayo ⚡ emoji, glow más fuerte, ring más rápido",
+      "Efecto Eclipse: glow púrpura más dramático con vignette más oscuro",
+      "Efectos 45-51 agregados al SPECIAL_EFFECTS para que muestren descripción completa en tienda",
+      "Texto 'Click para ver preview' en items de tienda no-ultra",
+      "Panel de sonido adaptado a tema claro con variables CSS",
+      "Toast de puntos adaptado a tema claro",
+      "Partículas de fondo más visibles en tema claro",
+      "Botones de configuración de bots adaptados a tema claro",
+      "Banner de torneo adaptado a tema claro"
+    ]
+  },
   {
     version: "4.1.0",
     date: "2026-07-21",

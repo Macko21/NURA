@@ -714,27 +714,52 @@ function initBgCanvas() {
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#0b0b12';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const g = ctx.createRadialGradient(
-      canvas.width * .4, 0, 0,
-      canvas.width * .4, canvas.height * .5, canvas.height
-    );
-    g.addColorStop(0, 'rgba(26,20,48,.8)');
-    g.addColorStop(1, 'rgba(11,11,18,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    particles.forEach(p => {
-      p.x += p.vx; p.y += p.vy;
-      if (p.x < 0) p.x = canvas.width;
-      if (p.x > canvas.width)  p.x = 0;
-      if (p.y < 0) p.y = canvas.height;
-      if (p.y > canvas.height) p.y = 0;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(212,175,55,${p.alpha})`;
-      ctx.fill();
-    });
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    if (isLight) {
+      ctx.fillStyle = '#f5f3ef';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const g = ctx.createRadialGradient(
+        canvas.width * .5, canvas.height * .3, 0,
+        canvas.width * .5, canvas.height * .5, canvas.height * .8
+      );
+      g.addColorStop(0, 'rgba(200,180,140,.06)');
+      g.addColorStop(1, 'rgba(245,243,239,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width)  p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(8,145,178,${p.alpha * .55})`;
+        ctx.fill();
+      });
+    } else {
+      ctx.fillStyle = '#0c0e1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const g = ctx.createRadialGradient(
+        canvas.width * .4, 0, 0,
+        canvas.width * .4, canvas.height * .5, canvas.height
+      );
+      g.addColorStop(0, 'rgba(6,182,212,.06)');
+      g.addColorStop(1, 'rgba(12,14,26,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width)  p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(6,182,212,${p.alpha})`;
+        ctx.fill();
+      });
+    }
     requestAnimationFrame(draw);
   }
   draw();
@@ -3107,6 +3132,25 @@ function initUI() {
   initBgCanvas();
   initBgCanvas();
 
+  /* ── Theme toggle (dark/light) ──────────────────────── */
+  const savedTheme = localStorage.getItem('macko-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  const themeBtn = $('btn-theme-toggle');
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  const applyThemeMeta = (t) => { if (metaTheme) metaTheme.content = t === 'dark' ? '#0b1120' : '#f8fafc'; };
+  applyThemeMeta(savedTheme);
+  if (themeBtn) {
+    themeBtn.textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+    themeBtn.onclick = () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('macko-theme', next);
+      themeBtn.textContent = next === 'dark' ? '🌙' : '☀️';
+      applyThemeMeta(next);
+    };
+  }
+
   /* PWA — botón instalar */
   $('pwa-install-btn').onclick = async () => {
     if (!_deferredInstall) return;
@@ -4155,8 +4199,7 @@ function loadInventoryData(invData) {
         <span class="inv-item-name">${esc(String(item.name || 'Cosmético'))}</span>
         ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
       `;
-      div.onclick = () => !isEquipped && equipItemFromProfile(String(item.id), equipCategory);
-      if (!isEquipped) div.style.cursor = 'pointer';
+      div.onclick = () => openInventoryPreview(item, equipCategory, isEquipped);
       grid.appendChild(div);
     });
   }
@@ -4757,7 +4800,7 @@ async function loadShopCatalog() {
             <p class="shop-item-desc">${esc(item.desc)}</p>
             ${item.category === 'ultra'
               ? '<span class="shop-premium-note">🎁 Cofre diario · 💳 pack premium</span>'
-              : `<button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>`}
+              : `<p class="shop-item-hint" style="font-size:10px;color:var(--text3);margin-top:4px;opacity:.7">Click para ver preview</p><button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>`}
           `;
         }
         grid.appendChild(div);
@@ -5296,8 +5339,66 @@ const SPECIAL_EFFECTS = {
   '29': { name:'Dados Mágicos', desc:'Brillo mágico al rodar los dados' },
   '30': { name:'Racha Visible', desc:'Mostrá tu racha de victorias' },
   '31': { name:'+50% Monedas', desc:'50% más de monedas en cada partida' },
-  '36': { name:'Efecto Láser', desc:'Una explosión de rayos ilumina tu victoria' },
+  '36': { name:'Efecto Láser', desc:'Rayos laser cruzan la pantalla al ganar' },
+  '45': { name:'Estela Cósmica', desc:'Anillos orbitales giran alrededor de tu avatar' },
+  '46': { name:'Aura Real', desc:'Aura dorada pulsante con corona flotante' },
+  '47': { name:'Confeti Arcoíris', desc:'Arcoíris giratorio + confetti explosivo al ganar' },
+  '48': { name:'Entrada Relámpago', desc:'Rayos eléctricos envuelven tu avatar al entrar' },
+  '51': { name:'Efecto Eclipse', desc:'Oscuridad envuelve tu avatar con brillo púrpura' },
 };
+
+function openInventoryPreview(item, equipCategory, isEquipped) {
+  try {
+    const old = document.querySelector('.shop-preview-overlay');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'shop-preview-overlay';
+    let dispose3DPreview = null;
+    const closePreview = () => { try { dispose3DPreview?.(); } catch(e) {} overlay.remove(); };
+    overlay.onclick = (e) => { if (e.target === overlay) closePreview(); };
+    const box = document.createElement('div');
+    box.className = 'shop-preview-box';
+    const cat = equipCategory === 'dice' ? 'dados' : equipCategory === 'avatar' ? 'avatares' : 'especiales';
+    let bodyHtml = '';
+    if (cat === 'dados') {
+      bodyHtml = buildDicePreviewHTML(String(item.id), item.name || '', item.icon || '');
+    } else if (cat === 'avatares') {
+      const isPremium = window.S?.specialEquipped === '15';
+      bodyHtml = '<div class="avatar-preview-display' + (isPremium ? ' avatar-premium' : '') + '">' + esc(String(item.icon || '')) + '</div><p style="text-align:center;font-size:12px;color:var(--text3)">Así se ve tu avatar en el juego</p>';
+    } else if (cat === 'especiales') {
+      const effect = SPECIAL_EFFECTS[String(item.id)];
+      const demoAvatars = ['🧙‍♂️','👻','🤖','🦹','🧛','🧟','🧞','🧚'];
+      const randAvatar = demoAvatars[Math.floor(Math.random()*demoAvatars.length)];
+      const specialClass = 'special-' + item.id;
+      bodyHtml = '<div class="special-preview-demo"><span class="demo-avatar sc-av ' + specialClass + '">' + esc(randAvatar) + '</span></div><div class="special-preview-desc">' + esc(item.name || '') + '</div>' + (effect ? '<div class="special-preview-effect">✨ ' + esc(effect.desc) + '</div>' : '') + '<p style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px">Así se ve tu avatar con este efecto</p>';
+    }
+    const equipBtnHtml = isEquipped
+      ? '<button class="btn btn-ghost" disabled style="width:100%;opacity:.5;margin-top:12px">Ya equipado ✔</button>'
+      : '<button class="btn btn-gold inv-equip-btn" style="width:100%;margin-top:12px">Equipar</button>';
+    box.innerHTML = '<div class="shop-preview-header"><h2>' + esc(item.name || '') + '</h2><button class="shop-preview-close">✕</button></div>' + bodyHtml + equipBtnHtml;
+    box.querySelector('.shop-preview-close').onclick = closePreview;
+    const equipBtn = box.querySelector('.inv-equip-btn');
+    if (equipBtn) {
+      equipBtn.onclick = () => {
+        equipItemFromProfile(String(item.id), equipCategory);
+        closePreview();
+      };
+    }
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    if (cat === 'dados') {
+      const stage = box.querySelector('.dice-3d-shop-stage');
+      if (stage && typeof loadDice3D === 'function') {
+        loadDice3D().then(renderer3D => {
+          if (!renderer3D || !stage.isConnected) return;
+          dispose3DPreview = renderer3D.createPreview(stage, String(item.id), 5);
+          stage.classList.toggle('is-fallback', !dispose3DPreview);
+        });
+      }
+    }
+  } catch(e) { toast('⚠ Error: ' + e.message); }
+}
+window.openInventoryPreview = openInventoryPreview;
 
 function openItemPreview(category, itemId, itemName, itemIcon) {
   // Ensure global access even if SW serves stale cache
@@ -5323,7 +5424,10 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
       bodyHtml = '<div class="avatar-preview-display' + (isPremium ? ' avatar-premium' : '') + '">' + esc(itemIcon) + '</div><p style="text-align:center;font-size:13px;color:var(--text3)">Preview del avatar — así se ve en el juego</p>';
     } else if (category === 'especiales' || category === 'special') {
       const effect = SPECIAL_EFFECTS[itemId];
-      bodyHtml = '<div class="special-preview-icon">' + esc(itemIcon) + '</div><div class="special-preview-desc">' + esc(itemName) + '</div>' + (effect ? '<div class="special-preview-effect">✨ ' + esc(effect.desc) + '</div>' : '');
+      const demoAvatars = ['🧙‍♂️','👻','🤖','🦹','🧛','🧟','🧞','🧚'];
+      const randAvatar = demoAvatars[Math.floor(Math.random()*demoAvatars.length)];
+      const specialClass = 'special-' + itemId;
+      bodyHtml = '<div class="special-preview-demo"><span class="demo-avatar sc-av ' + specialClass + '">' + esc(randAvatar) + '</span></div><div class="special-preview-desc">' + esc(itemName) + '</div>' + (effect ? '<div class="special-preview-effect">✨ ' + esc(effect.desc) + '</div>' : '') + '<p style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px">Así se verá tu avatar con este efecto activo</p>';
     }
     box.innerHTML = '<div class="shop-preview-header"><h2>' + esc(itemName) + '</h2><button class="shop-preview-close">✕</button></div>' + bodyHtml;
     box.querySelector('.shop-preview-close').onclick = closePreview;
