@@ -4131,14 +4131,16 @@ async function loadProfile() {
     $('profile-loading').classList.add('hidden');
     $('profile-content').classList.remove('hidden');
     
-    // Cargar inventario, historial y badges después del perfil
-    loadInventoryData(inv);
-    // Cargar estado de boosts para mostrar timers en inventario
+    // Cargar inventario DESPUÉS de que los boosts se hayan cargado (render único)
     fetch('/api/user/boost-status', { headers: { 'Authorization': `Bearer ${localStorage.getItem('gameToken')}` } })
       .then(r => r.json()).then(d => {
         window._lastBoosts = d.boosts || {};
         loadInventoryData(inv, window._lastBoosts);
-      }).catch(() => {});
+      }).catch(() => {
+        // Si falla boost, renderizar sin boosts
+        window._lastBoosts = {};
+        loadInventoryData(inv, {});
+      });
     loadTransactions();
     loadBadges();
   } catch (err) {
@@ -4275,7 +4277,7 @@ function loadInventoryData(invData, boostsData) {
     div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
     let boostTimerHtml = '';
     const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
-    const boostExpiry = boostKey ? boosts[boostKey] : 0;
+    const boostExpiry = boostKey ? (boosts || {})[boostKey] : 0;
     if (boostExpiry && boostExpiry > now) {
       const remaining = boostExpiry - now;
       const hours = Math.floor(remaining / 3600000);

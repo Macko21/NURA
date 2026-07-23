@@ -106,25 +106,31 @@ function makeDie(value, state='normal', skinId=null) {
     let dotColor;
 
     if (state === 'dead') {
-      el.style.background = 'linear-gradient(145deg,#999,#777)';
-      el.style.boxShadow = '2px 2px 0 #555, 3px 3px 0 #444, 0 4px 12px rgba(0,0,0,.4), inset 0 1px 2px rgba(200,200,200,.3)';
-      dotColor = '#555';
+      // Mostrar la skin grisada en vez de dados genéricos grises
+      const skinBg0 = shadeColor(skin.bg[0], -40);
+      const skinBg1 = shadeColor(skin.bg[1], -40);
+      el.style.background = `linear-gradient(145deg,${skinBg0},${skinBg1})`;
+      el.style.boxShadow = `2px 2px 0 ${shadeColor(skin.sh, -30)}, 3px 3px 0 ${shadeColor(skin.sh, -40)}, 0 4px 12px rgba(0,0,0,.4), inset 0 1px 2px rgba(200,200,200,.3)`;
+      dotColor = '#666666';
+      el.classList.add('die-skin-' + skinId);
     } else if (state === 'scoring') {
       el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
       el.style.boxShadow = `2px 2px 0 #206808, 3px 3px 0 #005000, 0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3), inset 0 1px 2px rgba(180,255,160,.5)`;
       dotColor = '#103808';
+      el.classList.add('die-skin-' + skinId);
     } else if (state === 'hot') {
       el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
       el.style.boxShadow = `2px 2px 0 #A06008, 3px 3px 0 #784000, 0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3), inset 0 1px 2px rgba(255,230,110,.5)`;
       dotColor = '#6b3400';
+      el.classList.add('die-skin-' + skinId);
     } else {
       el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
       el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)`;
       dotColor = skin.dot || '#1a1a2e';
+      el.classList.add('die-skin-' + skinId);
     }
 
-    if (state !== 'dead') el.classList.add('die-skin-' + skinId);
-    el.innerHTML = (state === 'dead' ? '' : `<span class="die-icon-bg">${skin.icon}</span>`) + makeDieSVG(value, state, skinId, dotColor);
+    el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId, dotColor);
   } else if (state === 'scoring') {
     el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
     el.innerHTML = makeDieSVG(value, state, skinId);
@@ -436,6 +442,18 @@ function createDicePreviewDiv(skinId, size = 'small') {
   container.appendChild(label);
 
   return container;
+}
+
+/* Helper para oscurecer colores (usado en estado 'dead' con skin activa) */
+function shadeColor(hex, percent) {
+  if (!hex) return '#666666';
+  hex = hex.replace('#','');
+  if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  const num = parseInt(hex, 16);
+  const r = Math.min(255, Math.max(0, (num >> 16) + percent));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent));
+  const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent));
+  return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
 }
 
 if (typeof module !== 'undefined' && module.exports) {

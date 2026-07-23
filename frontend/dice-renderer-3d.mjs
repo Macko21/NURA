@@ -109,7 +109,6 @@ function faceTexture(value, skinId, quality) {
   if (textureCache.has(key)) return textureCache.get(key);
   const skin = skinFor(skinId);
   const size = quality === 'high' ? 256 : 128;
-  // Draw on canvas, then extract pixels to DataTexture (bypass CanvasTexture GPU upload issues)
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -130,8 +129,7 @@ function faceTexture(value, skinId, quality) {
     ctx.beginPath(); ctx.arc(x*size,y*size,10*scale,0,Math.PI*2); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
-  const imgData = ctx.getImageData(0, 0, size, size);
-  const texture = new THREE.DataTexture(imgData.data, size, size, THREE.RGBAFormat);
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -151,8 +149,7 @@ function createNeutralFaceMap(quality) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#999999';
   ctx.fillRect(0, 0, size, size);
-  const imgData = ctx.getImageData(0, 0, size, size);
-  const texture = new THREE.DataTexture(imgData.data, size, size, THREE.RGBAFormat);
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -167,12 +164,14 @@ function materialsFor(skinId, state, quality) {
   const isSimple = quality !== 'high';
   return FACE_VALUES.map(value => {
     const hot = state === 'hot', scoring = state === 'scoring', dead = state === 'dead';
-    const faceMap = dead ? createNeutralFaceMap(quality) : faceTexture(value, skinId, quality);
-    const emissive = hot ? '#d89100' : scoring ? '#00cc55' : '#000000';
-    const emissiveIntensity = dead ? 0 : hot ? .35 : scoring ? .4 : 0;
+    // Para estado 'dead' (antes de entrar), usar la textura del skin pero grisada
+    const faceMap = dead ? faceTexture(value, skinId, quality) : faceTexture(value, skinId, quality);
+    const baseColor = dead ? '#777777' : '#ffffff';
+    const emissive = hot ? '#d89100' : scoring ? '#00cc55' : dead ? '#222222' : '#000000';
+    const emissiveIntensity = dead ? 0.15 : hot ? .35 : scoring ? .4 : 0;
     if (isSimple) {
       return new THREE.MeshStandardMaterial({
-        map: faceMap, color: dead ? '#888888' : '#ffffff',
+        map: faceMap, color: baseColor,
         roughness: .7, metalness: 0,
         emissive: new THREE.Color(emissive), emissiveIntensity,
         transparent: !!skin.opacity, opacity: dead ? 1 : (skin.opacity || 1)
@@ -180,15 +179,15 @@ function materialsFor(skinId, state, quality) {
     }
     return new THREE.MeshPhysicalMaterial({
       map: faceMap,
-      color: dead ? '#888888' : '#ffffff',
+      color: baseColor,
       roughness: dead ? .9 : skin.roughness,
       metalness: dead ? 0 : skin.metalness,
       emissive: new THREE.Color(emissive),
-      emissiveMap: faceMap,
+      emissiveMap: dead ? undefined : faceMap,
       emissiveIntensity,
       transparent: !!skin.opacity,
-      opacity: dead ? 1 : (skin.opacity || 1),
-      transmission: ['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0,
+      opacity: dead ? .7 : (skin.opacity || 1),
+      transmission: dead ? 0 : (['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0),
       thickness: .35,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
       clearcoat: dead ? 0 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25,

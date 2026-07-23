@@ -10,9 +10,27 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.4.0";
+const GAME_VERSION = "4.5.0";
 
 const CHANGELOG = [
+  {
+    version: "4.5.0",
+    date: "2026-07-23",
+    title: "🎨 Fix visual: dados 3D blancos, skins pre-entry, shop PWA y perfil",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "dice-renderer.js", "app.js", "styles.css"],
+    changes: [
+      "🎲 3D FIX: DataTexture→CanvasTexture (datos no se subían a GPU, dados siempre blancos)",
+      "🎲 3D FIX: emissiveMap restaurado para estados normales, desactivado en dead",
+      "🎲 SKINS PRE-ENTRY: Dados en dead ahora muestran la skin del jugador grisada con ícono",
+      "🎲 shadeColor(): helper para oscurecer colores hex en estado dead",
+      "🛒 SHOP PWA: max-height:90vh + overflow scroll para tienda y tabs",
+      "📖 RULES MODAL: 85dvh, sticky footer, padding reducido en mobile",
+      "👤 PERFIL: eliminado doble render de loadInventoryData (flicker + error consumibles)",
+      "👤 PERFIL: catch handler renderiza inventario aunque falle carga de boosts",
+      "👤 PERFIL: (boosts || {}) defensivo en renderInventoryItem"
+    ]
+  },
   {
     version: "4.4.0",
     date: "2026-07-23",

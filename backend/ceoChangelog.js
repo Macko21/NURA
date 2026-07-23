@@ -2,6 +2,33 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.5.0": {
+    title: "🎨 Fix visual integral: dados 3D blancos, skins pre-entry, layout PWA y perfil",
+    scope: "ceo",
+    files: [
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/dice-renderer.js",
+      "frontend/app.js",
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/version.js"
+    ],
+    changes: [
+      "3D DICE: DataTexture→CanvasTexture en faceTexture y createNeutralFaceMap — corrige dados siempre blancos por fallo de subida a GPU en dispositivos selectos.",
+      "3D DICE: emissiveMap restaurado para estados normales (hot/scoring/normal), explícitamente undefined en estado dead para evitar glow incorrecto.",
+      "3D DICE: color base de dead #777777 con emissive #222222/intensidad 0.15 vs #888888 anterior — mejor diferenciación visual.",
+      "2D DICE: makeDie renderiza skin icon + colores oscurecidos (shadeColor -40) en estado dead en vez de dado gris genérico sin identidad.",
+      "2D DICE: clase die-skin-X aplicada siempre, incluso en dead, + shadeColor() helper con soporte hex corto (3 dígitos) y null safety.",
+      "SHOP PWA: shop-box max-height:90vh + overflow-y:auto, shop-tabs overflow-x:auto + -webkit-overflow-scrolling:touch + flex-shrink:0.",
+      "RULES MODAL: max-height 85dvh (antes 92vh), position:sticky + bottom:0 + z-index:2 en footer, padding reducido en header y tabs para mobile.",
+      "PROFILE INVENTORY: eliminado doble render de loadInventoryData — ahora render único post fetch de boost-status.",
+      "PROFILE INVENTORY: catch handler de boost-status renderiza con {} en vez de fallar silenciosamente (antes no renderizaba nada).",
+      "PROFILE INVENTORY: (boosts || {}) defensivo en renderInventoryItem previene TypeError si boosts es undefined.",
+      "CSS: media queries reorganizadas con overrides específicos para 0-420px, 421-768px y 769+.",
+      "Shop preview responsive con safe-area insets para PWA móvil.",
+      "QA: 57 tests (22 rules + 35 smoke) aprobados + syntax check en todos los archivos modificados."
+    ]
+  },
   "4.4.0": {
     title: "📱 Aplicaciones nativas con Capacitor 8 para Android e iOS",
     scope: "ceo",
