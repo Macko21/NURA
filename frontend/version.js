@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.3.0";
+const GAME_VERSION = "4.3.1";
 
 const CHANGELOG = [
+  {
+    version: "4.3.1",
+    date: "2026-07-22",
+    title: "🔧 Fix dados 3D blancos: tonemapping, DataTexture y fallback 2D",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "dice-renderer.js"],
+    changes: [
+      "🎲 3D FIX: tonemapping Neutral→ACESFilmic, exposure 2.1→1.0 (blancos por sobreexposición)",
+      "🎲 3D FIX: DataTexture reemplaza CanvasTexture (bypass problema canvas→WebGL en algunos GPUs)",
+      "🎲 3D FIX: reducido lighting total (hemisphere 1.2→1.0, directional 1.5→1.2, point 3→2)",
+      "🎲 3D FIX: fallback 2D limpia container antes de recrear dados (solapa canvas+2D)",
+      "🎲 3D FIX: handler macko-dice-3d-lost restaura dados 2D desde último estado conocido",
+      "🎲 2D FIX: restore2D limpieza de container antes de recrear dados HTML"
+    ]
+  },
   {
     version: "4.3.0",
     date: "2026-07-22",

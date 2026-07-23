@@ -212,8 +212,8 @@ function configureRenderer(container, quality, preview) {
   } catch (_) { return null; }
   if (!renderer.getContext() || renderer.getContext().isContextLost()) { renderer.dispose(); return null; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 2.1;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -234,11 +234,11 @@ function makeStage(container, quality, preview=false) {
   camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
   camera.lookAt(0,preview ? .25 : .55,0);
   const lightMul = quality === 'high' ? 1 : .6;
-  scene.add(new THREE.HemisphereLight(0xffffff,0x666688,1.2 * lightMul));
-  const key = new THREE.DirectionalLight(0xfff5d4,1.5 * lightMul);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x666688,1.0 * lightMul));
+  const key = new THREE.DirectionalLight(0xfff5d4,1.2 * lightMul);
   key.position.set(-3,6,4); scene.add(key);
-  const rim = new THREE.PointLight(0x88ddff,3 * lightMul,10); rim.position.set(4,2,-2); scene.add(rim);
-  const fill = new THREE.DirectionalLight(0x8888ff,.6 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
+  const rim = new THREE.PointLight(0x88ddff,2.0 * lightMul,10); rim.position.set(4,2,-2); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0x8888ff,.4 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.3 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=-.35;ground.receiveShadow=true;scene.add(ground);
   const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
