@@ -235,11 +235,14 @@ app.get("/ranking", requireAuth, async (req, res) => {
 app.get("/api/shop/catalog", requireAuth, async (req, res) => {
   try {
     const items = await getShopCatalog();
-    // Obtener items que ya posee el usuario
     const inv = await getOwnedItems(req.user.userId);
     const ownedIds = inv.owned.map(i => i.id);
     const equipped = inv.equipped;
-    res.json({ items, ownedIds, equipped });
+    // Incluir estado de boosts para mostrar timers en consumibles
+    const pRes = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [req.user.userId]);
+    const playerId = pRes.rows[0]?.id;
+    const boosts = playerId ? (await getBoostStatus(playerId)).boosts : {};
+    res.json({ items, ownedIds, equipped, boosts });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1688,12 +1691,13 @@ async function resolveDiceSkinId(itemId) {
 /* ── Cargar items equipados a un room player ──────────── */
 async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
   try {
-    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [playerId]);
+    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak, level FROM players WHERE id = $1`, [playerId]);
     if (plRes.rows[0]) {
       roomPlayer.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
       roomPlayer.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice);
       roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
       roomPlayer.winStreak = Number(plRes.rows[0].win_streak) || 0;
+      roomPlayer.level = Number(plRes.rows[0].level) || 1;
       console.log(`📦 loadEquipped(${playerId}): dice=${roomPlayer.equippedDice} av=${roomPlayer.equippedAvatar} sp=${roomPlayer.equippedSpecial}`);
     } else {
       console.log(`📦 loadEquipped(${playerId}): NO ROW found in players table`);
@@ -1778,7 +1782,7 @@ async function onMatchWon(match, roomId) {
           const amount = rewards[i];
           if (amount > 0 && player.id) {
             try {
-              await rewardWinner(player.id, amount);
+              await rewardWinner(player.id, amount, { isWin: i === 0 });
               console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
             } catch (e) {
               console.error(`Error al premiar a ${player.id}:`, e.message);
@@ -1788,9 +1792,48 @@ async function onMatchWon(match, roomId) {
       }
     }
 
-    for (const p of match.players) {
+    // XP por puesto + boost XP
+    const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+    for (let i = 0; i < sortedByScore.length; i++) {
+      const p = sortedByScore[i];
       if (!registeredIdSet.has(p.id)) continue;
-      try { await awardXP(p.id, XP_PER_GAME); } catch(e) {}
+      let xpTotal = XP_PER_GAME; // 15 base
+      if (i === 0) { // 1° puesto (ganador)
+        xpTotal += XP_PER_WIN; // +35
+        // 25 monedas extra al ganador (con boosts de monedas por ganar)
+        try { await rewardWinner(p.id, 25, { isWin: true }); } catch(e) {}
+      } else if (i <= 2) { // 2° y 3° puesto
+        xpTotal += XP_PER_TOP3; // +10
+      }
+      // Racha de victorias
+      if (p.winStreak >= 2) xpTotal += XP_PER_STREAK_WIN; // +20
+      // Boost de XP 100% (item 52)
+      if (p.id) {
+        try {
+          const xpBoostRes = await pool.query(`SELECT boost_xp_expires FROM players WHERE id = $1`, [p.id]);
+          if (xpBoostRes.rows[0]?.boost_xp_expires && Date.now() < Number(xpBoostRes.rows[0].boost_xp_expires)) {
+            xpTotal *= 2;
+          }
+        } catch(e) {}
+      }
+      try { await awardXP(p.id, xpTotal); } catch(e) {}
+      // Mejor turno individual: escanear historial de la partida
+      if (match.history) {
+        let bestThisGame = 0;
+        for (const ev of match.history) {
+          if ((ev.type === 'BANKED' || ev.type === 'SCORED') && ev.payload?.playerId === p.id) {
+            const gained = ev.payload.gained || 0;
+            if (gained > bestThisGame) bestThisGame = gained;
+          }
+        }
+        if (bestThisGame > 0) {
+          try { await pool.query(`UPDATE players SET best_turn = GREATEST(COALESCE(best_turn,0), $1) WHERE id = $2`, [bestThisGame, p.id]); } catch(e) {}
+        }
+      }
+      // Mejor racha de victorias
+      try {
+        await pool.query(`UPDATE players SET best_win_streak = GREATEST(COALESCE(best_win_streak,0), COALESCE(win_streak,0)) WHERE id = $1`, [p.id]);
+      } catch(e) {}
       if (p.straights > 0) await registerStraight(p.id);
       if (p.fiveOnes > 0 && p.id === winner.id) await registerFiveOnes(p.id);
     }
@@ -1865,12 +1908,13 @@ async function startMatchForRoom(roomId, triggerData) {
   for (const p of match.players) {
     if (p.id) {
       try {
-        const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak FROM players WHERE id = $1`, [p.id]);
+        const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak, level FROM players WHERE id = $1`, [p.id]);
         if (plRes.rows[0]) {
           p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
           p.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice) || null;
           p.equippedSpecial = plRes.rows[0].equipped_special || null;
           p.winStreak = plRes.rows[0].win_streak || 0;
+          p.level = Number(plRes.rows[0].level) || 1;
         }
       } catch(e) {}
       const roomP = room.players.find(rp => rp.id === p.id);

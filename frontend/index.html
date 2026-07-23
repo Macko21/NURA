@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.2.1"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.3.0"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -341,9 +341,14 @@
         <div class="profile-stat"><span class="ps-val" id="ps-coins">0</span><span class="ps-label">🪙 Monedas</span></div>
         <div class="profile-stat"><span class="ps-val" id="ps-wins">0</span><span class="ps-label">🏆 Victorias</span></div>
         <div class="profile-stat"><span class="ps-val" id="ps-games">0</span><span class="ps-label">🎲 Partidas</span></div>
-        <div class="profile-stat"><span class="ps-val" id="ps-streak">0</span><span class="ps-label">🔥 Racha</span></div>
-        <div class="profile-stat"><span class="ps-val" id="ps-total">0</span><span class="ps-label">📊 Puntos totales</span></div>
-        <div class="profile-stat"><span class="ps-val" id="ps-highest">0</span><span class="ps-label">💥 Récord</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-tournaments">0</span><span class="ps-label">🏟️ Torneos</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-tournament-wins">0</span><span class="ps-label">👑 Torneos ganados</span></div>
+        <div class="profile-stat"><span class="ps-val" id="ps-best-turn">0</span><span class="ps-label">🎯 Mejor turno</span></div>
+      </div>
+      <!-- Racha -->
+      <div class="profile-streak-row">
+        <span class="ps-streak-current" id="ps-streak-current">🔥 Racha actual: 0</span>
+        <span class="ps-streak-best" id="ps-streak-best">🏆 Mejor racha: 0</span>
       </div>
 
       <!-- Privacidad -->
@@ -366,16 +371,16 @@
         <div id="profile-inventory" class="inventory-grid"></div>
       </div>
 
-      <!-- HISTORIAL DE TRANSACCIONES -->
-      <div class="profile-section">
-        <p class="profile-section-title">📜 <span>Historial</span></p>
-        <div id="profile-transactions" class="transactions-list"></div>
-      </div>
-
       <!-- INSIGNIAS / LOGROS -->
       <div class="profile-section">
         <p class="profile-section-title">🏅 <span>Insignias</span></p>
         <div id="profile-badges" class="badges-grid"></div>
+      </div>
+
+      <!-- HISTORIAL DE TRANSACCIONES -->
+      <div class="profile-section">
+        <p class="profile-section-title">📜 <span>Historial (últimas 10)</span></p>
+        <div id="profile-transactions" class="transactions-list"></div>
       </div>
     </div>
   </div>
@@ -804,10 +809,10 @@
   }
 })();
 </script>
-<script src="/version.js?v=4.2.1"></script>
-  <script src="/dice-renderer.js?v=4.2.1"></script>
-  <script src="/audio.js?v=4.2.1"></script>
-  <script src="/app.js?v=4.2.1"></script>
+<script src="/version.js?v=4.3.0"></script>
+  <script src="/dice-renderer.js?v=4.3.0"></script>
+  <script src="/audio.js?v=4.3.0"></script>
+  <script src="/app.js?v=4.3.0"></script>
 <!-- FIN ⚠️ -->
 
 

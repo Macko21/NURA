@@ -1967,7 +1967,7 @@ function renderSB(match) {
     chip.innerHTML = `
       <span class="sc-av${hasCustomAvatar ? ' icon' : ''} special-${esc(String(p.equippedSpecial || 'none'))}${p.isBot ? ' bot-avatar' : ''}">${avContent}</span>
       ${yoTag}
-      <span class="sc-nm">${esc(p.name)}</span>
+      <span class="sc-nm">${esc(p.name)}</span><span class="sc-lv">Lv.${Number(p.level)||1}</span>
       <span class="sc-sc">${p.score}</span>
       ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
@@ -4086,9 +4086,12 @@ async function loadProfile() {
     $('ps-coins').textContent = (p.coins || 0).toLocaleString();
     $('ps-wins').textContent = p.gamesWon || 0;
     $('ps-games').textContent = p.gamesPlayed || 0;
-    $('ps-streak').textContent = p.winStreak || 0;
-    $('ps-total').textContent = (p.totalScore || 0).toLocaleString();
-    $('ps-highest').textContent = (p.highestScore || 0).toLocaleString();
+    $('ps-tournaments').textContent = p.tournamentsEntered || 0;
+    $('ps-tournament-wins').textContent = p.tournamentsWon || 0;
+    $('ps-best-turn').textContent = (p.bestTurn || 0).toLocaleString();
+    // Racha
+    $('ps-streak-current').textContent = '🔥 Racha actual: ' + (p.winStreak || 0);
+    $('ps-streak-best').textContent = '🏆 Mejor racha: ' + (p.bestWinStreak || 0);
 
     // Privacidad: toggle ocultar última conexión
     const hideLastSeenToggle = $('profile-hide-last-seen');
@@ -4131,6 +4134,12 @@ async function loadProfile() {
     
     // Cargar inventario, historial y badges después del perfil
     loadInventoryData(inv);
+    // Cargar estado de boosts para mostrar timers en inventario
+    fetch('/api/user/boost-status', { headers: { 'Authorization': `Bearer ${localStorage.getItem('gameToken')}` } })
+      .then(r => r.json()).then(d => {
+        window._lastBoosts = d.boosts || {};
+        loadInventoryData(inv, window._lastBoosts);
+      }).catch(() => {});
     loadTransactions();
     loadBadges();
   } catch (err) {
@@ -4149,15 +4158,18 @@ const ULTRA_ITEM_EQUIP_CATEGORIES = Object.freeze({
   36: 'special'
 });
 
+const CONSUMABLE_IDS = new Set(['31','52','53','54']);
+
 function getItemEquipCategory(item) {
   if (!item) return null;
+  if (CONSUMABLE_IDS.has(String(item.id))) return 'consumable';
   if (item.category === 'avatares') return 'avatar';
   if (item.category === 'dados') return 'dice';
   if (item.category === 'especiales') return 'special';
   return ULTRA_ITEM_EQUIP_CATEGORIES[Number(item.id)] || null;
 }
 
-function loadInventoryData(invData) {
+function loadInventoryData(invData, boostsData) {
   const container = $('profile-inventory');
   if (!container) return;
   if (!invData) {
@@ -4173,9 +4185,14 @@ function loadInventoryData(invData) {
   const categories = {
     avatar: { label: 'Avatares', icon: '👤' },
     dice: { label: 'Dados', icon: '🎲' },
-    special: { label: 'Especiales', icon: '✨' }
+    special: { label: 'Especiales', icon: '✨' },
+    consumable: { label: 'Consumibles', icon: '🧪' }
   };
   container.innerHTML = '';
+  window._lastBoosts = window._lastBoosts || {};
+  const boosts = boostsData || window._lastBoosts;
+  if (boostsData) window._lastBoosts = boostsData;
+  const now = Date.now();
   for (const [equipCategory, categoryInfo] of Object.entries(categories)) {
     const items = owned.filter(item => getItemEquipCategory(item) === equipCategory);
     if (!items.length) continue;
@@ -4184,22 +4201,51 @@ function loadInventoryData(invData) {
     section.innerHTML = `<p class="inv-cat-title">${categoryInfo.label}</p><div class="inv-items"></div>`;
     container.appendChild(section);
     const grid = section.querySelector('.inv-items');
-    // Botón para default
-    const defaultDiv = document.createElement('div');
-    defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
-    defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
-    defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
-    grid.appendChild(defaultDiv);
+    // Para consumibles no mostrar "Original", solo los items
+    if (equipCategory !== 'consumable') {
+      const defaultDiv = document.createElement('div');
+      defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
+      defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
+      defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
+      grid.appendChild(defaultDiv);
+    }
     items.forEach(item => {
       const isEquipped = String(equipped[equipCategory] || '') === String(item.id);
       const div = document.createElement('div');
       div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
+      // Mostrar tiempo restante si el boost está activo
+      let boostTimerHtml = '';
+      const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
+      const boostExpiry = boostKey ? boosts[boostKey] : 0;
+      if (boostExpiry && boostExpiry > now) {
+        const remaining = boostExpiry - now;
+        const hours = Math.floor(remaining / 3600000);
+        const mins = Math.floor((remaining % 3600000) / 60000);
+        boostTimerHtml = `<span class="inv-boost-timer">⏱ ${hours}h ${mins}m</span>`;
+      }
       div.innerHTML = `
         <div class="inv-item-icon">${esc(String(item.icon || ''))}</div>
         <span class="inv-item-name">${esc(String(item.name || 'Cosmético'))}</span>
+        ${boostTimerHtml}
         ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
       `;
-      div.onclick = () => openInventoryPreview(item, equipCategory, isEquipped);
+      if (equipCategory === 'consumable') {
+        // Para consumibles: botón "Usar" en vez de preview
+        div.classList.add('inv-consumable');
+        const useBtn = document.createElement('button');
+        useBtn.className = 'btn btn-gold inv-use-btn';
+        useBtn.textContent = boostTimerHtml ? 'Activo' : 'Usar';
+        useBtn.disabled = !!boostTimerHtml;
+        if (!boostTimerHtml) {
+          useBtn.onclick = (e) => {
+            e.stopPropagation();
+            equipItemFromProfile(String(item.id), 'special');
+          };
+        }
+        div.appendChild(useBtn);
+      } else {
+        div.onclick = () => openInventoryPreview(item, equipCategory, isEquipped);
+      }
       grid.appendChild(div);
     });
   }
@@ -4518,14 +4564,14 @@ function applyPremiumMarcoToAll() {
   // Room players avatars (se actualizan dinamicamente, se aplica en renderRoom)
 }
 
-/* ── Actualizar badge de boost +50% con tiempo restante ── */
+/* ── Actualizar badges de boosts con tiempo restante ── */
 let _boostTimer = null;
 
 async function updateBoostBadge() {
   const badge = $('boost-badge');
   if (!badge) return;
   const token = localStorage.getItem('gameToken');
-  if (!token || S.specialEquipped !== '31') {
+  if (!token) {
     badge.classList.add('hidden');
     if (_boostTimer) { clearInterval(_boostTimer); _boostTimer = null; }
     return;
@@ -4536,28 +4582,33 @@ async function updateBoostBadge() {
     });
     if (!res.ok) { badge.classList.add('hidden'); return; }
     const data = await res.json();
-    if (!data.active) {
+    const boosts = data.boosts || {};
+    const now = Date.now();
+    // Encontrar el boost activo más cercano a expirar
+    const active = Object.entries(boosts).filter(([k,v]) => v > now);
+    if (!active.length) {
       badge.classList.add('hidden');
       if (_boostTimer) { clearInterval(_boostTimer); _boostTimer = null; }
       return;
     }
     badge.classList.remove('hidden');
-    // Actualizar tiempo restante cada segundo
+    const earliestExpiry = Math.min(...active.map(([_,v]) => v));
     const updateTime = () => {
-      const remaining = data.remaining - (Date.now() - _boostLastFetch);
+      const remaining = earliestExpiry - Date.now();
       if (remaining <= 0) {
         badge.classList.add('hidden');
         if (_boostTimer) { clearInterval(_boostTimer); _boostTimer = null; }
+        loadInventoryData(); // Recargar inventario al expirar boost
         return;
       }
       const hours = Math.floor(remaining / 3600000);
       const mins = Math.floor((remaining % 3600000) / 60000);
-      badge.textContent = `⏫ +50% - ${hours}h ${mins}m`;
+      const labels = active.map(([k]) => ({ coins_all:'🪙+50%', xp:'⚡x2', coins_win_50:'🪙+50%W', coins_win_100:'🪙x2W' }[k] || '⚡')).join(' ');
+      badge.textContent = `${labels} ${hours}h ${mins}m`;
     };
-    const _boostLastFetch = Date.now();
     updateTime();
     if (_boostTimer) clearInterval(_boostTimer);
-    _boostTimer = setInterval(updateTime, 10000); // actualizar cada 10s
+    _boostTimer = setInterval(updateTime, 10000);
   } catch (e) {
     badge.classList.add('hidden');
   }
@@ -4747,10 +4798,12 @@ async function loadShopCatalog() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) return;
-    const { items, ownedIds, equipped } = await res.json();
+    const { items, ownedIds, equipped, boosts } = await res.json();
     if (!items) return;
     
     const ownedSet = new Set(ownedIds || []);
+    window._lastBoosts = window._lastBoosts || {};
+    if (boosts) window._lastBoosts = boosts;
     
     // Renderizar items por categoría
     const container = $('shop-items-container');
@@ -4761,6 +4814,7 @@ async function loadShopCatalog() {
       dados: { label: '🎲 Skins de Dados', icon: '🎲', id: 'dados' },
       avatares: { label: '👤 Avatares', icon: '👤', id: 'avatares' },
       especiales: { label: '✨ Especiales', icon: '✨', id: 'especiales' },
+      consumibles: { label: '🧪 Consumibles (24h)', icon: '🧪', id: 'consumibles' },
       ultra: { label: '💠 Ultra · cofre diario o pack premium', icon: '💠', id: 'ultra' }
     };
     
@@ -4787,12 +4841,31 @@ async function loadShopCatalog() {
       div.dataset.category = cat;
       div.dataset.id = String(item.id);
         if (isOwned) {
+          const isConsumable = item.category === 'consumibles';
+          const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
+          const boosts = window._lastBoosts || {};
+          const boostActive = boostKey && boosts[boostKey] > Date.now();
           div.innerHTML = `
             <div class="shop-item-preview">${esc(item.icon)}</div>
             <h3>${esc(item.name)}</h3>
             <p class="shop-item-desc">${esc(item.desc)}</p>
-            <button class="btn btn-ghost btn-equip-shop" data-id="${esc(item.id)}" data-cat="${esc(cat)}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>
+            ${isConsumable
+              ? (boostActive ? '<span class="shop-item-timer" data-boost="'+boostKey+'">✅ Activo</span>' : '<button class="btn btn-gold btn-equip-shop" data-id="'+esc(item.id)+'" data-cat="special">Usar</button>')
+              : '<button class="btn btn-ghost btn-equip-shop" data-id="'+esc(item.id)+'" data-cat="'+esc(cat)+'" '+(isEquipped ? 'disabled' : '')+'>'+(isEquipped ? '✔ Equipado' : 'Aplicar')+'</button>'}
           `;
+          if (boostActive) {
+            // Iniciar timer dinámico
+            const timerEl = div.querySelector('.shop-item-timer');
+            if (timerEl) {
+              const updateTimer = () => {
+                const rem = (boosts[boostKey] || 0) - Date.now();
+                if (rem <= 0) { timerEl.textContent = '⏳ Expirado'; return; }
+                timerEl.textContent = `⏱ ${Math.floor(rem/3600000)}h ${Math.floor((rem%3600000)/60000)}m`;
+              };
+              updateTimer();
+              setInterval(updateTimer, 30000);
+            }
+          }
         } else {
           div.innerHTML = `
             <div class="shop-item-preview">${esc(item.icon)}</div>
@@ -4896,7 +4969,7 @@ async function loadCoinPacks() {
       const div = document.createElement('div');
       div.className = 'coin-pack' + (pack.badge ? ' premium' : '');
       const icon = pack.icon || '💎';
-      const contents = [pack.coins ? `🪙 ${pack.coins.toLocaleString()}` : '', ...(pack.items || []).map(item => `${item.icon} ${item.name}`)].filter(Boolean);
+      const contents = [pack.coins ? `🪙 ${pack.coins.toLocaleString()}` : '', pack.xp ? `⚡ ${pack.xp} XP` : '', ...(pack.items || []).map(item => `${item.icon} ${item.name}`)].filter(Boolean);
       div.innerHTML = `
         <div class="coin-pack-icon">${icon}</div>
         ${pack.badge ? `<span class="pack-badge">${esc(pack.badge)}</span>` : ''}

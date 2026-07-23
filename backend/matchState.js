@@ -95,6 +95,11 @@ function createPlayerState(player) {
     winStreak: player.winStreak || 0,
 
     /**
+     * Nivel actual del jugador
+     */
+    level: player.level || 1,
+
+    /**
      * Es un bot (jugador automático)
      */
     isBot: player.isBot || false,

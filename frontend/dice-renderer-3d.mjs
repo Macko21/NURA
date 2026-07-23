@@ -42,9 +42,8 @@ function configuredQuality() {
 
 function resolvedQuality() {
   const configured = configuredQuality();
-  // En teléfonos siempre 2D — WebGL falla en PWA y da dados blancos
-  if (innerWidth <= 480 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return 'off';
   if (configured !== 'auto') return configured;
+  if (innerWidth <= 480) return 'low';
   const memory = Number(navigator.deviceMemory || 4);
   const cores = Number(navigator.hardwareConcurrency || 4);
   return memory <= 4 || cores <= 4 ? 'low' : 'high';
@@ -211,7 +210,8 @@ function makeStage(container, quality, preview=false) {
   const rim = new THREE.PointLight(0x58bfff,quality === 'high' ? 14 : 8,12); rim.position.set(4,2,-2); scene.add(rim);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.36 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=.02;ground.receiveShadow=true;scene.add(ground);
-  const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,resizeObserver:null};
+  const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
+  renderer.domElement.addEventListener('webglcontextlost',()=>{stage.contextLost=true;if(stage.disposed)return;clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));},{once:true});
   if (typeof ResizeObserver !== 'undefined') {
     stage.resizeObserver = new ResizeObserver(() => {
       if (stage.disposed) return;
@@ -268,6 +268,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   let impacted=false;
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
+    if(stage.contextLost||stage.renderer.getContext()?.isContextLost()){clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return;}
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
     stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
     if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}

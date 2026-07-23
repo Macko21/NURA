@@ -1,0 +1,19 @@
+{
+  "appId": "com.macko.los10000",
+  "appName": "Los 10.000 de Macko",
+  "webDir": "mobile-dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#0c0c14",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": false
+    }
+  }
+}

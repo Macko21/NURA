@@ -111,8 +111,15 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_special TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_expires BIGINT DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_xp_expires BIGINT DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_coins_win_50_expires BIGINT DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_coins_win_100_expires BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS hide_last_seen BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS best_turn INTEGER DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS best_win_streak INTEGER DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS tournaments_entered INTEGER DEFAULT 0`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS tournaments_won INTEGER DEFAULT 0`,
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_games_played INTEGER DEFAULT 0`,
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_games_won INTEGER DEFAULT 0`,
       `ALTER TABLE missions_reset ADD COLUMN IF NOT EXISTS daily_total_score INTEGER DEFAULT 0`,
@@ -483,27 +490,25 @@ async function getRanking() {
 const crypto = require("crypto");
 
 // --- SISTEMA DE NIVELES ---
-const XP_PER_GAME = 25;
-const XP_PER_WIN = 50;
-const XP_PER_STREAK_WIN = 10;
-const XP_PER_TOP3 = 15;
+const XP_PER_GAME = 15;
+const XP_PER_WIN = 35;
+const XP_PER_STREAK_WIN = 20;
+const XP_PER_TOP3 = 10;
 const RANKS = [
-  { min: 0, max: 99, title: 'Rookie', icon: '🌱' },
-  { min: 100, max: 299, title: 'Aprendiz', icon: '📖' },
-  { min: 300, max: 599, title: 'Profesional', icon: '⚙️' },
-  { min: 600, max: 1199, title: 'Maestro', icon: '🏅' },
-  { min: 1200, max: 1999, title: 'Leyenda', icon: '🌟' },
-  { min: 2000, max: 3499, title: 'Elite', icon: '💎' },
-  { min: 3500, max: 5999, title: 'Mitico', icon: '⚡' },
-  { min: 6000, max: Infinity, title: 'Dios', icon: '👑' }
+  { min: 0, max: 59, title: 'Rookie', icon: '🌱' },
+  { min: 60, max: 149, title: 'Aprendiz', icon: '📖' },
+  { min: 150, max: 499, title: 'Profesional', icon: '⚙️' },
+  { min: 500, max: 1099, title: 'Maestro', icon: '🏅' },
+  { min: 1100, max: 1899, title: 'Leyenda', icon: '🌟' },
+  { min: 1900, max: 3399, title: 'Elite', icon: '💎' },
+  { min: 3400, max: 5899, title: 'Mitico', icon: '⚡' },
+  { min: 5900, max: Infinity, title: 'Dios', icon: '👑' }
 ];
-const MAX_LEVEL = 300;
-function getRank(xp) {
-  return RANKS.find(r => xp >= r.min && xp <= r.max) || RANKS[RANKS.length - 1];
+const MAX_LEVEL = 6000;
+function getRank(level) {
+  return RANKS.find(r => level >= r.min && level <= r.max) || RANKS[RANKS.length - 1];
 }
 function getLevel(xp) {
-  // XP no-lineal: cada 10 niveles sube la dificultad
-  // Lv1→10: 200xp/nivel, Lv11→30: 350, Lv31→60: 600, Lv61→100: 1000, Lv101→200: 1800, Lv201→300: 3000
   let level = 1;
   let totalXp = 0;
   while (level < MAX_LEVEL) {
@@ -520,6 +525,7 @@ function xpCostForLevel(level) {
   if (level <= 60)  return 600;
   if (level <= 100) return 1000;
   if (level <= 200) return 1800;
+  if (level <= 300) return 3000;
   return 3000;
 }
 function xpToNextLevel(currentLevel) {
@@ -540,7 +546,7 @@ const MISSIONS = [
   { id: 'a3', type: 'achievement', name: 'Imparable', desc: 'Gana 3 partidas seguidas', req: 3, track: 'win_streak', coins: 300, xp: 150 },
   { id: 'a4', type: 'achievement', name: 'Leyenda del juego', desc: 'Gana 50 partidas', req: 50, track: 'games_won', coins: 2000, xp: 500 },
   { id: 'a6', type: 'achievement', name: 'Coleccionista', desc: 'Compra 10 items en la tienda', req: 10, track: 'shop_purchases', coins: 800, xp: 300 },
-  { id: 'a7', type: 'achievement', name: 'Dios de los dados', desc: 'Nivel 300', req: 300, track: 'level', coins: 5000, xp: 1000 },
+  { id: 'a7', type: 'achievement', name: 'Dios de los dados', desc: 'Nivel 6000', req: 6000, track: 'level', coins: 50000, xp: 10000 },
   { id: 'a8', type: 'achievement', name: 'Perfecto', desc: 'Saca cinco 1 en una tirada', req: 1, track: 'perfect_game', coins: 1000, xp: 500 },
 ];
 
@@ -642,7 +648,7 @@ const SHOP_CATALOG = [
   { id: 28, category: 'especiales',name: 'Nick Dorado',        icon: '✨', price: 2000, desc: 'Tu nombre brilla en el chat' },
   { id: 29, category: 'especiales',name: 'Dado Mag. Animado',  icon: '🪄', price: 3500, desc: 'Animación especial al tirar' },
   { id: 30, category: 'especiales',name: 'Racha Visible',      icon: '📢', price: 1200, desc: 'Todos ven tu racha de victorias' },
-  { id: 31, category: 'especiales',name: '+50% Monedas x 1d',  icon: '⏫', price: 2500, desc: 'Ganás 50% más monedas por 24h' },
+  { id: 31, category: 'consumibles',name: '+50% Monedas x 1d',icon: '⏫', price: 2500, desc: '50% más monedas en TODAS las recompensas por 24h' },
   { id: 45, category: 'especiales',name: 'Estela Cósmica',      icon: '☄️', price: 3200, desc: 'Partículas cósmicas alrededor de tu avatar' },
   { id: 46, category: 'especiales',name: 'Aura Real',           icon: '👑', price: 3800, desc: 'Tu avatar irradia una corona dorada' },
   { id: 47, category: 'especiales',name: 'Confeti Arcoíris',    icon: '🎊', price: 4200, desc: 'Celebración multicolor exclusiva al ganar' },
@@ -657,6 +663,11 @@ const SHOP_CATALOG = [
   { id: 49, category: 'ultra',     name: 'Dados Prisma',      icon: '🔮', price: 12000, desc: 'Ultra: refracción mística en cada cara' },
   { id: 50, category: 'ultra',     name: 'Avatar Kraken',     icon: '🐙', price: 12000, desc: 'Ultra: criatura de las profundidades' },
   { id: 51, category: 'ultra',     name: 'Efecto Eclipse',    icon: '🌘', price: 14000, desc: 'Ultra: la victoria oscurece la arena' },
+  
+  // ── CONSUMIBLES (24h boosts) ──
+  { id: 52, category: 'consumibles',name: '100% XP x 1d',     icon: '⚡', price: 3000, desc: 'Ganás el doble de XP por 24h' },
+  { id: 53, category: 'consumibles',name: '+50% Monedas x 1d',icon: '🪙', price: 2500, desc: 'Ganás 50% más monedas por 24h (al ganar)' },
+  { id: 54, category: 'consumibles',name: '+100% Monedas x 1d',icon: '💎', price: 4000, desc: 'Ganás 100% más monedas por 24h (al ganar)' },
 ];
 
 async function getShopCatalog() {
@@ -718,36 +729,53 @@ async function checkBoostActive(playerId) {
   }
 }
 
-// ── Obtener estado del boost (para el frontend) ────────
+// ── Obtener estado de todos los boosts ────────
 async function getBoostStatus(playerId) {
   try {
-    const res = await pool.query(`SELECT equipped_special, boost_expires FROM players WHERE id = $1`, [playerId]);
-    if (!res.rows[0]) return { active: false, remaining: 0 };
-    const { equipped_special, boost_expires } = res.rows[0];
-    if (equipped_special !== '31' || !boost_expires) return { active: false, remaining: 0 };
-    const remaining = Number(boost_expires) - Date.now();
-    if (remaining <= 0) return { active: false, remaining: 0 };
-    return { active: true, remaining };
+    const res = await pool.query(`SELECT boost_expires, boost_xp_expires, boost_coins_win_50_expires, boost_coins_win_100_expires FROM players WHERE id = $1`, [playerId]);
+    if (!res.rows[0]) return { boosts: {} };
+    const now = Date.now();
+    const b = res.rows[0];
+    const isActive = (val) => val && Number(val) > now;
+    const boosts = {
+      coins_all: isActive(b.boost_expires) ? Number(b.boost_expires) : 0,
+      xp: isActive(b.boost_xp_expires) ? Number(b.boost_xp_expires) : 0,
+      coins_win_50: isActive(b.boost_coins_win_50_expires) ? Number(b.boost_coins_win_50_expires) : 0,
+      coins_win_100: isActive(b.boost_coins_win_100_expires) ? Number(b.boost_coins_win_100_expires) : 0,
+    };
+    return { boosts };
   } catch (e) {
-    return { active: false, remaining: 0 };
+    return { boosts: {} };
   }
 }
 
 // --- SISTEMA DE RECOMPENSAS ---
-async function rewardWinner(playerId, coinsAmount) {
+async function rewardWinner(playerId, coinsAmount, { isWin = false } = {}) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     
-    // Verificar boost de +50% (item 31) antes de sumar
-    const boostRes = await client.query(`SELECT equipped_special, boost_expires FROM players WHERE id = $1`, [playerId]);
+    // Verificar boosts de monedas
+    const boostRes = await client.query(`SELECT boost_expires, boost_coins_win_50_expires, boost_coins_win_100_expires FROM players WHERE id = $1`, [playerId]);
     let finalAmount = coinsAmount;
     let boostNote = '';
+    const now = Date.now();
     if (boostRes.rows[0]) {
-      const { equipped_special, boost_expires } = boostRes.rows[0];
-      if (equipped_special === '31' && boost_expires && Date.now() < Number(boost_expires)) {
-        finalAmount = Math.round(coinsAmount * 1.5);
+      const b = boostRes.rows[0];
+      // Boost general +50% (item 31) aplica a todas las recompensas
+      if (b.boost_expires && now < Number(b.boost_expires)) {
+        finalAmount = Math.round(finalAmount * 1.5);
         boostNote = ' (+50% boost)';
+      }
+      // Boost de victoria +50% (solo si es premio por ganar)
+      if (isWin && b.boost_coins_win_50_expires && now < Number(b.boost_coins_win_50_expires)) {
+        finalAmount = Math.round(finalAmount * 1.5);
+        boostNote += ' (+50% win)';
+      }
+      // Boost de victoria +100% (solo si es premio por ganar)
+      if (isWin && b.boost_coins_win_100_expires && now < Number(b.boost_coins_win_100_expires)) {
+        finalAmount = Math.round(finalAmount * 2);
+        boostNote += ' (+100% win)';
       }
     }
     
@@ -766,7 +794,7 @@ async function rewardWinner(playerId, coinsAmount) {
 
     await client.query("COMMIT");
     if (boostNote) {
-      console.log(`💰 ${finalAmount} monedas (${coinsAmount}x1.5) → ${playerId} (boost +50% activo)`);
+      console.log(`💰 ${finalAmount} monedas (${coinsAmount}${boostNote}) → ${playerId}`);
     }
   } catch (err) {
     await client.query("ROLLBACK");
@@ -842,14 +870,14 @@ async function getUserProfile(userId) {
     SELECT p.id, p.alias, p.name, p.coins, p.xp, p.level,
            p.games_played, p.games_won, p.total_score, p.highest_score,
            p.win_streak, p.equipped_avatar, p.equipped_dice, p.equipped_special,
-           p.hide_last_seen, u.email
+           p.hide_last_seen, p.best_turn, p.best_win_streak, p.tournaments_entered, p.tournaments_won, u.email
     FROM players p
     JOIN users u ON u.id = p.user_id
     WHERE p.user_id = $1
   `, [userId]);
   if (!result.rows[0]) return null;
   const p = result.rows[0];
-  const rank = getRank(p.xp || 0);
+  const rank = getRank(p.level || 1);
   const level = p.level || 1;
   const xp = p.xp || 0;
   // XP total necesario para llegar al nivel actual
@@ -865,6 +893,10 @@ async function getUserProfile(userId) {
     gamesPlayed: p.games_played || 0, gamesWon: p.games_won || 0,
     totalScore: p.total_score || 0, highestScore: p.highest_score || 0,
     winStreak: p.win_streak || 0,
+    bestTurn: p.best_turn || 0,
+    bestWinStreak: p.best_win_streak || 0,
+    tournamentsEntered: p.tournaments_entered || 0,
+    tournamentsWon: p.tournaments_won || 0,
     equipped_avatar: p.equipped_avatar || '',
     equipped_dice: p.equipped_dice || '',
     equipped_special: p.equipped_special || '',
@@ -1119,6 +1151,30 @@ async function getOwnedItems(userId) {
       return { owned: [], equipped: {} };
     }
     const p = playerRes.rows[0];
+    const now = Date.now();
+    
+    // Limpiar consumibles expirados
+    const boostColumns = [
+      { id: 31, col: 'boost_expires' },
+      { id: 52, col: 'boost_xp_expires' },
+      { id: 53, col: 'boost_coins_win_50_expires' },
+      { id: 54, col: 'boost_coins_win_100_expires' }
+    ];
+    for (const bc of boostColumns) {
+      if (p[bc.col] && Number(p[bc.col]) > 0 && now >= Number(p[bc.col])) {
+        await pool.query(`DELETE FROM redemptions WHERE player_id = $1 AND reward_id = $2`, [p.id, bc.id]);
+      }
+    }
+    // Resetear columnas expiradas
+    if (p.boost_expires && Number(p.boost_expires) > 0 && now >= Number(p.boost_expires))
+      await pool.query(`UPDATE players SET boost_expires = 0 WHERE id = $1`, [p.id]);
+    if (p.boost_xp_expires && Number(p.boost_xp_expires) > 0 && now >= Number(p.boost_xp_expires))
+      await pool.query(`UPDATE players SET boost_xp_expires = 0 WHERE id = $1`, [p.id]);
+    if (p.boost_coins_win_50_expires && Number(p.boost_coins_win_50_expires) > 0 && now >= Number(p.boost_coins_win_50_expires))
+      await pool.query(`UPDATE players SET boost_coins_win_50_expires = 0 WHERE id = $1`, [p.id]);
+    if (p.boost_coins_win_100_expires && Number(p.boost_coins_win_100_expires) > 0 && now >= Number(p.boost_coins_win_100_expires))
+      await pool.query(`UPDATE players SET boost_coins_win_100_expires = 0 WHERE id = $1`, [p.id]);
+    
     // Obtener items comprados desde redemptions
     const redRes = await pool.query(`SELECT reward_id FROM redemptions WHERE player_id = $1 AND status = 'completed'`, [p.id]);
     const ownedIds = new Set(redRes.rows.map(r => Number(r.reward_id)));
@@ -1155,42 +1211,44 @@ async function getOwnedItems(userId) {
 }
 
 async function equipItem(playerId, itemId, category) {
-  // category: 'avatar' | 'dice' | 'special'
   const colMap = { avatar: 'equipped_avatar', dice: 'equipped_dice', special: 'equipped_special' };
   const col = colMap[category];
   if (!col) throw new Error('Categoria invalida');
+  const parsedId = parseInt(itemId);
   
-  // Verificar que posee el item (solo si NO es 'default')
   if (itemId !== 'default') {
-    const parsedId = parseInt(itemId);
     if (isNaN(parsedId)) throw new Error('ID de item invalido');
     const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parsedId]);
     if (!redRes.rows.length) throw new Error('No posees este item');
-    const item = await getShopItemById(parsedId);
-    if (!item) throw new Error('Item no disponible');
-    const expectedCategory = item.category === 'avatares' || [34, 35].includes(parsedId)
-      ? 'avatar'
-      : item.category === 'dados' || [32, 33].includes(parsedId)
-        ? 'dice'
-        : 'special';
-    if (expectedCategory !== category) throw new Error('Categoria de item invalida');
   }
+
+  // Si es consumible, activar boost pero NO borrar de redemptions
+  const CONSUMIBLE_IDS = new Set(['31','52','53','54']);
+  if (CONSUMIBLE_IDS.has(itemId)) {
+    const now = Date.now();
+    const expires = now + 24 * 60 * 60 * 1000;
+    let colName = null;
+    if (itemId === '31') colName = 'boost_expires';
+    else if (itemId === '52') colName = 'boost_xp_expires';
+    else if (itemId === '53') colName = 'boost_coins_win_50_expires';
+    else if (itemId === '54') colName = 'boost_coins_win_100_expires';
+    if (colName) {
+      await pool.query(`UPDATE players SET ${colName} = $1 WHERE id = $2`, [expires, playerId]);
+    }
+    console.log(`🧪 Consumible ${itemId} usado por ${playerId} — expira ${new Date(expires).toISOString()}`);
+    return { success: true, consumed: true };
+  }
+  
+  const item = await getShopItemById(parsedId);
+  if (!item) throw new Error('Item no disponible');
+  const expectedCategory = item.category === 'avatares' || [34, 35].includes(parsedId)
+    ? 'avatar'
+    : item.category === 'dados' || [32, 33].includes(parsedId)
+      ? 'dice'
+      : 'special';
+  if (expectedCategory !== category) throw new Error('Categoria de item invalida');
   
   await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [itemId === 'default' ? '' : String(itemId), playerId]);
-  
-  // Si se equipa el item 31 (+50% Monedas x 1d), activar el boost por 24h
-  if (itemId === '31') {
-    const expires = Date.now() + 24 * 60 * 60 * 1000; // 24h desde ahora
-    const activated = await pool.query(
-      `UPDATE players SET boost_expires = $1
-       WHERE id = $2 AND COALESCE(boost_expires, 0) = 0
-       RETURNING boost_expires`,
-      [expires, playerId]
-    );
-    if (activated.rows.length) {
-      console.log(`⏫ Boost +50% activado para ${playerId} - expira ${new Date(expires).toISOString()}`);
-    }
-  }
   
   return { success: true };
 }
@@ -1207,7 +1265,7 @@ async function getAvatarUrl(playerId) {
 }
 
 // ── HISTORIAL DE TRANSACCIONES ──────────────────────────
-async function getPlayerTransactions(playerId, limit = 50) {
+async function getPlayerTransactions(playerId, limit = 10) {
   try {
     const res = await pool.query(
       `SELECT id, amount, reason, created_at FROM transactions WHERE player_id = $1 ORDER BY created_at DESC LIMIT $2`,

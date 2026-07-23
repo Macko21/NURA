@@ -8,9 +8,23 @@
     "dev": "nodemon backend/server.js",
     "test": "node scripts/game-rules-test.js && node scripts/smoke-test.js",
     "test:rules": "node scripts/game-rules-test.js",
+    "mobile:prepare": "node scripts/prepare-mobile.js",
+    "mobile:sync": "npm run mobile:prepare && cap sync",
+    "mobile:doctor": "cap doctor",
+    "mobile:android": "npm run mobile:sync && cap open android",
+    "mobile:ios": "npm run mobile:sync && cap open ios",
+    "mobile:build:android": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
     "test:syntax": "node -c backend/server.js && node -c backend/commerceCatalog.js && node -c backend/database.js && node -c backend/authManager.js && node -c backend/ceoAuth.js && node -c backend/ceoChangelog.js && node -c backend/gameEngine.js && node -c backend/roomManager.js && node -c backend/playerManager.js && node -c backend/diceManager.js && node -c backend/matchState.js && node -c backend/botManager.js && node -c backend/botGameHandler.js && node -c backend/emailManager.js && node -c backend/paymentManager.js && node -c backend/paymentManagerMP.js && node -c backend/pushManager.js && node -c backend/tournamentManager.js && node -c frontend/version.js && node -c frontend/dice-renderer.js && node -c frontend/dice-renderer-3d.mjs && node -c frontend/audio.js && node -c frontend/app.js && node -c frontend/ceo-panel.js && node -c frontend/sw.js"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.4.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",
     "express": "^4.18.2",
@@ -25,6 +39,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
     "nodemon": "^3.1.0"
   },
   "engines": {

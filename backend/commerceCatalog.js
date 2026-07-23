@@ -10,7 +10,12 @@ const COMMERCE_PACKS = {
   legend_combo: { name: "Pack Leyenda", icon: "🐉", coins: 1500, itemIds: [19, 13, 16, 46], usdCents: 999, arsPrice: 13990, badge: "Combo completo" },
   ultra_diamond: { name: "Ultra Diamante", icon: "💠", coins: 1000, itemIds: [32], usdCents: 1299, arsPrice: 17990, badge: "Ultra directo" },
   ultra_galaxy: { name: "Ultra Galáctico", icon: "🌌", coins: 1200, itemIds: [33, 36], usdCents: 1699, arsPrice: 23990, badge: "Ultra + efecto" },
-  ultra_mythic: { name: "Ultra Mítico", icon: "🔮", coins: 1500, itemIds: [49, 50, 51], usdCents: 2199, arsPrice: 30990, badge: "3 Ultra" }
+  ultra_mythic: { name: "Ultra Mítico", icon: "🔮", coins: 1500, itemIds: [49, 50, 51], usdCents: 2199, arsPrice: 30990, badge: "3 Ultra" },
+  // XP packs
+  xp_small:  { name: "Pack XP Inicial", icon: "⚡", coins: 200, xp: 500, usdCents: 399, arsPrice: 600, badge: "500 XP" },
+  xp_medium: { name: "Pack XP Pro", icon: "⚡", coins: 500, xp: 2000, usdCents: 999, arsPrice: 1600, badge: "2000 XP" },
+  xp_large:  { name: "Pack XP Master", icon: "⚡", coins: 1500, xp: 5000, usdCents: 1999, arsPrice: 3500, badge: "5000 XP" },
+  xp_mega:   { name: "Pack XP Legend", icon: "⚡", coins: 5000, xp: 15000, usdCents: 3999, arsPrice: 7500, badge: "15000 XP" }
 };
 
 function getCommercePack(id) {
@@ -24,6 +29,7 @@ function listCommercePacks(catalog, currency = "ARS") {
     const pack = getCommercePack(id);
     const price = currency === "USD" ? pack.usdCents : pack.arsPrice;
     return [id, { name: pack.name, icon: pack.icon, coins: pack.coins, badge: pack.badge || "",
+      xp: pack.xp || 0,
       items: pack.itemIds.map(itemId => items.get(itemId)).filter(Boolean).map(item => ({ id: item.id, name: item.name, icon: item.icon })),
       price, priceDisplay: currency === "USD" ? `$${(price / 100).toFixed(2)}` : `$${price.toLocaleString("es-AR")}` }];
   }));
@@ -32,13 +38,20 @@ function listCommercePacks(catalog, currency = "ARS") {
 async function grantCommercePack(client, userId, packId, provider) {
   const pack = getCommercePack(packId);
   if (!pack) throw new Error("Paquete no válido");
-  const playerResult = await client.query("SELECT id FROM players WHERE user_id = $1 FOR UPDATE", [userId]);
+  const playerResult = await client.query("SELECT id, xp FROM players WHERE user_id = $1 FOR UPDATE", [userId]);
   if (!playerResult.rows.length) throw new Error(`Usuario ${userId} sin jugador`);
   const playerId = playerResult.rows[0].id;
   if (pack.coins) {
     await client.query("UPDATE players SET coins = coins + $1 WHERE id = $2", [pack.coins, playerId]);
     await client.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
       [playerId, pack.coins, `Compra ${provider}: ${pack.name}`, Date.now()]);
+  }
+  if (pack.xp) {
+    const oldXp = Number(playerResult.rows[0].xp) || 0;
+    const newXp = oldXp + pack.xp;
+    await client.query("UPDATE players SET xp = $1, level = $2 WHERE id = $3", [newXp, require('./database').getLevel(newXp), playerId]);
+    await client.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, 0, $2, $3)`,
+      [playerId, `Compra ${provider}: +${pack.xp} XP (${pack.name})`, Date.now()]);
   }
   let deliveredItems = 0;
   for (const itemId of pack.itemIds) {
@@ -50,7 +63,7 @@ async function grantCommercePack(client, userId, packId, provider) {
     deliveredItems += inserted.rows.length;
   }
   if (deliveredItems) await client.query("UPDATE players SET shop_purchases = COALESCE(shop_purchases, 0) + $1 WHERE id = $2", [deliveredItems, playerId]);
-  return { playerId, coins: pack.coins, itemIds: pack.itemIds, deliveredItems };
+  return { playerId, coins: pack.coins, xp: pack.xp || 0, itemIds: pack.itemIds, deliveredItems };
 }
 
 module.exports = { COMMERCE_PACKS, getCommercePack, listCommercePacks, grantCommercePack };

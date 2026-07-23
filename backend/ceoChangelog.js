@@ -2,6 +2,42 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.3.0": {
+    title: "⚡ Sistema XP total, niveles 6000, boosts consumibles y tienda real extendida",
+    scope: "game",
+    files: [
+      "backend/database.js",
+      "backend/server.js",
+      "backend/commerceCatalog.js",
+      "backend/ceoChangelog.js",
+      "backend/matchState.js",
+      "backend/playerManager.js",
+      "frontend/app.js",
+      "frontend/dice-renderer.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/version.js",
+      "frontend/sw.js"
+    ],
+    changes: [
+      "XP por puesto: 15 base + 35 ganar + 10 top3 + 20 racha (antes 25 fijos para todos). Ganador recibe +25 monedas extra aparte del pozo.",
+      "MAX LEVEL 6000: niveles 301-6000 cuestan 3000 XP c/u. RANGOS ahora basados en nivel (no XP): Rookie 0-59, Aprendiz 60-149, Profesional 150-499, Maestro 500-1099, Leyenda 1100-1899, Elite 1900-3399, Mítico 3400-5899, Dios 5900-6000.",
+      "Boosts consumibles: item 31 movido a consumibles + 3 nuevos (52=100% XP x1d 3000₡, 53=+50% monedas al ganar x1d 2500₡, 54=+100% monedas al ganar x1d 4000₡). Flujo: comprar → inventario → 'Usar' → 24h de boost → auto-expira + se borra de redemptions.",
+      "getOwnedItems: limpia automáticamente consumibles expirados (verifica las 4 columnas boost, elimina redemptions vencidas y resetea columnas).",
+      "3D dados reactivado en móvil/PWA. Detección de pérdida de contexto WebGL (webglcontextlost + stage.contextLost) → evento macko-dice-3d-lost → fallback 2D limpio.",
+      "Efecto eléctrico (special-48) mejorado: electricAvatar animation en avatar (flash + glow), clase .die.electric-dice en dados 2D (⚡ + borde eléctrico pulsante).",
+      "Perfil reordenado: badges antes que historial. Stats reemplazadas: quitado total_score y record, agregado torneos entrados/ganados, mejor turno, mejor racha histórica. Transacciones limitadas a 10 con paginación.",
+      "Nivel visible en partida: badge Lv.X bajo el nombre de cada jugador en player cards.",
+      "Mejor turno: extraído del historial de la partida (eventos BANKED/SCORED) al terminar el juego. Mejor racha: actualizada vía GREATEST(COALESCE(best_win_streak,0), win_streak).",
+      "Dios de los dados (logro): requisito cambiado de nivel 300 a nivel 6000.",
+      "Packs de XP en tienda real: 4 nuevos paquetes (XP Inicial 500XP+200🪙, XP Pro 2000XP+500🪙, XP Master 5000XP+1500🪙, XP Legend 15000XP+5000🪙) integrados vía Mercado Pago y Stripe.",
+      "grantCommercePack extendido: ahora otorga XP directamente (consulta level desde database.getLevel), actualiza xp/level y registra transacción.",
+      "Nuevas columnas DB: boost_xp_expires, boost_coins_win_50_expires, boost_coins_win_100_expires, best_turn, best_win_streak, tournaments_entered, tournaments_won.",
+      "EquipItem: fix de scope (parsedId hoisted fuera del if (itemId !== 'default')).",
+      "Versión bump 4.2.1→4.3.0 (version.js, sw.js, index.html cache busting)."
+    ]
+  },
   "4.0.0": {
     title: "🎲 Renovación de cosméticos, bots y monetización determinística",
     scope: "ceo",

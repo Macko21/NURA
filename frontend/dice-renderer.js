@@ -227,6 +227,9 @@ function showDice(dice, mode) {
     if (activeSpecialId === '29' && mode !== 'dead') {
       die.classList.add('magic-dice');
     }
+    if (activeSpecialId === '48' && mode !== 'dead') {
+      die.classList.add('electric-dice');
+    }
     row.appendChild(die);
   });
   loadDice3D().then(renderer3D => {
@@ -259,22 +262,26 @@ function syncDiceQualityUI() {
   const status = document.getElementById('dice-quality-status');
   const renderer3D = window.MackoDice3D;
   if (!select || !status) return;
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || innerWidth <= 480;
-  if (isMobile) {
-    status.textContent = '📱 Solo 2D en celular (3D deshabilitado)';
-    select.value = 'off';
-    select.disabled = true;
-    return;
-  }
   if (!renderer3D) {
     status.textContent = 'Renderer 2D activo';
     return;
   }
+  select.disabled = false;
   select.value = renderer3D.getQuality();
   const resolved = renderer3D.getResolvedQuality();
   const labels = { high:'3D alta activa', low:'3D ahorro activo', off:'2D clásica activa' };
   status.textContent = renderer3D.isSupported() ? labels[resolved] : '2D clásica · WebGL no disponible';
 }
+
+window.addEventListener('macko-dice-3d-lost', () => {
+  const select = document.getElementById('dice-quality-select');
+  if (select && !select.disabled) { select.value = 'off'; select.disabled = true; }
+  const status = document.getElementById('dice-quality-status');
+  if (status) status.textContent = '2D clásica · WebGL perdido';
+  const container = document.querySelector('.dice-3d-area');
+  if (container) container.classList.remove('dice-row-3d');
+  window.mackoForce2D?.();
+});
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.addEventListener('macko-dice-3d-ready', syncDiceQualityUI);

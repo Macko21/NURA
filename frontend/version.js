@@ -10,9 +10,31 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.2.1";
+const GAME_VERSION = "4.3.0";
 
 const CHANGELOG = [
+  {
+    version: "4.3.0",
+    date: "2026-07-22",
+    title: "⚡ XP total, niveles 6000, boosts consumibles y perfil renovado",
+    scope: "game",
+    files: ["database.js", "server.js", "dice-renderer-3d.mjs", "dice-renderer.js", "styles.css", "app.js", "index.html", "version.js", "sw.js", "matchState.js", "playerManager.js"],
+    changes: [
+      "🎲 3D DADOS: reactivado en móvil/PWA, pérdida de contexto WebGL → fallback 2D limpio",
+      "🧪 ENTRADA RELÁMPAGO: efecto eléctrico en dados 2D con ⚡ + glow pulsante",
+      "📊 XP POR PUESTO: 15 XP base + 35 ganar + 10 top3 + 20 racha (antes 25 fijos)",
+      "🏆 GANADOR: +25 monedas extra aparte de XP",
+      "📈 MAX LEVEL 6000: rangos basados en nivel (Rookie 0-59…Dios 5900-6000)",
+      "🏅 RANGOS CORREGIDOS: ahora se basan en NIVEL, no en XP (Tarzán ya no es Leyenda siendo Rookie)",
+      "🧪 BOOSTS CONSUMIBLES: item 31 rework + 3 nuevos (100% XP, +50%/+100% monedas al ganar)",
+      "⏱ TIMERS: boosts muestran tiempo restante en inventario y tienda",
+      "🔄 PERFIL: badges antes que historial, historial limitado a 10, puntaje total → torneos",
+      "🎯 MEJOR TURNO: tracking automático del turno más alto en cada partida",
+      "🏆 MEJOR RACHA: tracking de racha máxima histórica",
+      "👑 DIOS DE LOS DADOS: requisito cambiado de nivel 300 a nivel 6000",
+      "🏟️ NIVEL EN PARTIDA: se muestra Lv.X debajo del nombre de cada jugador"
+    ]
+  },
   {
     version: "4.2.1",
     date: "2026-07-21",
