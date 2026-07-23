@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.3.1";
+const GAME_VERSION = "4.4.0";
 
 const CHANGELOG = [
+  {
+    version: "4.4.0",
+    date: "2026-07-23",
+    title: "📱 Preparación para Android y iPhone",
+    scope: "game",
+    files: [],
+    changes: [
+      "📱 El juego ya cuenta con una base nativa preparada para Android y iPhone",
+      "🎮 Mejor respuesta en dispositivos móviles con vibración, pantalla de inicio y barra de estado integradas",
+      "🔗 Los enlaces externos y el regreso al juego ahora se comportan mejor dentro de la aplicación",
+      "🛡️ Se reforzó la conexión móvil y la recuperación automática de los dados si el modo 3D no está disponible"
+    ]
+  },
   {
     version: "4.3.1",
     date: "2026-07-22",

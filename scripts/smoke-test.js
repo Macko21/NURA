@@ -37,9 +37,9 @@ function assert(name, condition, detail) {
   }
 }
 
-function fetchUrl(path) {
+function fetchUrl(path, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.get(`${BASE}${path}`, { timeout: 5000 }, res => {
+    const req = http.get(`${BASE}${path}`, { timeout: 5000, headers }, res => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
@@ -133,6 +133,17 @@ async function runTests() {
   }
 
   try {
+    const res = await fetchUrl('/api/version', { Origin: 'https://localhost' });
+    assert(
+      'Native app CORS origin',
+      res.headers['access-control-allow-origin'] === 'https://localhost',
+      `Origin ${res.headers['access-control-allow-origin'] || 'missing'}`
+    );
+  } catch (e) {
+    assert('Native app CORS origin', false, e.message);
+  }
+
+  try {
     let res = await fetchUrl('/styles.css');
     assert('GET /styles.css', res.status === 200, `Status ${res.status}`);
     assert('Content-Type is CSS', (res.headers['content-type'] || '').includes('text/css'));
@@ -217,7 +228,7 @@ async function runTests() {
 
   try {
     const closeCode = await new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://localhost:${PORT}`);
+      const ws = new WebSocket(`ws://localhost:${PORT}`, { origin: 'https://localhost' });
       const timeout = setTimeout(() => {
         ws.terminate();
         reject(new Error('Timeout esperando rechazo WebSocket'));
@@ -229,9 +240,9 @@ async function runTests() {
       });
       ws.on('error', reject);
     });
-    assert('WebSocket rejects unauthenticated actions', closeCode === 4003, `Close code ${closeCode}`);
+    assert('Native WebSocket origin is accepted before auth', closeCode === 4003, `Close code ${closeCode}`);
   } catch (e) {
-    assert('WebSocket rejects unauthenticated actions', false, e.message);
+    assert('Native WebSocket origin is accepted before auth', false, e.message);
   }
 
   // ── 4. CEO endpoints ────────────────────────────

@@ -290,7 +290,8 @@ function syncDiceQualityUI() {
   status.textContent = renderer3D.isSupported() ? labels[resolved] : '2D clásica · WebGL no disponible';
 }
 
-window.addEventListener('macko-dice-3d-lost', () => {
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  window.addEventListener('macko-dice-3d-lost', () => {
   const select = document.getElementById('dice-quality-select');
   if (select && !select.disabled) { select.value = 'off'; select.disabled = true; }
   const status = document.getElementById('dice-quality-status');
@@ -310,9 +311,8 @@ window.addEventListener('macko-dice-3d-lost', () => {
       container.appendChild(die);
     });
   }
-});
+  });
 
-if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.addEventListener('macko-dice-3d-ready', syncDiceQualityUI);
   window.addEventListener('macko-dice-quality', () => {
     syncDiceQualityUI();

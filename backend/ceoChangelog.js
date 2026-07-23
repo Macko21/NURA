@@ -2,6 +2,50 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.4.0": {
+    title: "📱 Aplicaciones nativas con Capacitor 8 para Android e iOS",
+    scope: "ceo",
+    files: [
+      ".gitignore",
+      "README.md",
+      "capacitor.config.json",
+      "mobile/native-entry.js",
+      "scripts/prepare-mobile.js",
+      "scripts/mobile-smoke-test.js",
+      "scripts/smoke-test.js",
+      "android/app/build.gradle",
+      "android/app/src/main/AndroidManifest.xml",
+      "ios/App/App.xcodeproj/project.pbxproj",
+      "ios/App/App/Info.plist",
+      "backend/server.js",
+      "frontend/app.js",
+      "frontend/dice-renderer.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/index.html",
+      "frontend/styles.css",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "package.json",
+      "package-lock.json"
+    ],
+    changes: [
+      "Capacitor 8 integrado con proyectos nativos Android e iOS bajo el application ID com.macko.los10000.",
+      "Runtime mobile empaquetado localmente: las rutas /api y /ranking apuntan al backend productivo, mientras los recursos visuales y Three.js permanecen dentro de la aplicación.",
+      "WebSocket nativo usa wss://los10mildemacko.onrender.com y el backend admite únicamente los origins locales exactos de Capacitor.",
+      "Plugins nativos activos: App lifecycle/deep links, Browser, Haptics, Splash Screen y Status Bar.",
+      "Deep link los10000:// agregado en Android e iOS; ambas plataformas quedan limitadas a orientación vertical.",
+      "Service Worker e instalación PWA se desactivan dentro del contenedor nativo para evitar cachés duplicadas y banners impropios.",
+      "Los enlaces de pago se abren en navegador seguro. La compra de bienes digitales queda deshabilitada dentro de las apps hasta integrar Google Play Billing y Apple In-App Purchase.",
+      "Scripts mobile:prepare, mobile:sync, mobile:doctor, mobile:android, mobile:ios, mobile:build:android y test:mobile documentados.",
+      "Android configurado con compile/target SDK 36, min SDK 24, versionCode 40400 y versionName 4.4.0.",
+      "iOS configurado con MARKETING_VERSION 4.4.0 y CURRENT_PROJECT_VERSION 40400; la compilación final requiere macOS, Xcode y firma Apple.",
+      "Iconos y splash nativos generados a partir del ícono oficial. Las claves de firma y artefactos compilados permanecen excluidos de Git.",
+      "Corregida regresión de dice-renderer.js: el listener de pérdida WebGL ahora está protegido fuera del navegador y vuelve a permitir ejecutar las pruebas Node.",
+      "QA: 22 pruebas de reglas, 35 smoke tests, prueba de integración mobile, validación sintáctica, CORS/WebSocket nativo y build APK Android aprobados.",
+      "Seguridad: npm audit de dependencias de producción informa 0 vulnerabilidades.",
+      "Versionado sincronizado en web, caché PWA, npm, Android e iOS a v4.4.0."
+    ]
+  },
   "4.3.0": {
     title: "⚡ Sistema XP total, niveles 6000, boosts consumibles y tienda real extendida",
     scope: "game",
