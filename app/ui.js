@@ -69,6 +69,7 @@ const NOTAS_VERSION = [
     'Dashboard con gráfico de barras y actividad reciente',
     'Filtros mes/año en Reportes',
     'Top combos en Reportes',
+    'Notas de versión (solo admin)',
   ]},
   { v: '1.5', fecha: '2026-07-20', notas: [
     'Supabase realtime + debounce',
