@@ -48,6 +48,7 @@ function calcularCostoVenta(venta) {
 function renderDashboard() {
   const el = document.getElementById('page-dashboard');
   if (!el) return;
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-sm btn-outline" onclick="verNotasVersion()">📋 Notas</button>`;
   const tv = DB.ventas.reduce((s,v) => s+v.total, 0);
   const tc = DB.compras.reduce((s,c) => s+c.total, 0);
   const ganancia = tv - tc;

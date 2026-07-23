@@ -61,6 +61,43 @@ function openModal(title, bodyHTML, onSave, wide=false) {
 }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
 
+// ── Notas de versión ──────────────────────────────────────────────────
+const NOTAS_VERSION = [
+  { v: '2.0', fecha: '2026-07-22', notas: [
+    'Rediseño completo UI v2.0 — mobile-first',
+    'Bottom nav + FAB para nueva venta',
+    'Dashboard con gráfico de barras y actividad reciente',
+    'Filtros mes/año en Reportes',
+    'Top combos en Reportes',
+  ]},
+  { v: '1.5', fecha: '2026-07-20', notas: [
+    'Supabase realtime + debounce',
+    'Edge Function para login seguro',
+    'XSS protection con escapeHTML',
+    'Service Worker con cache v11',
+  ]},
+  { v: '1.0', fecha: '2026-07-15', notas: [
+    'Versión inicial — módulos de gestión',
+    'Ventas, stock, clientes, combos, deudas',
+    'Dashboard con estadísticas',
+    'PWA instalable',
+  ]},
+];
+function verNotasVersion() {
+  const html = NOTAS_VERSION.map(n => `
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:var(--font-display);font-weight:800;font-size:18px;" class="text-gradient">v${n.v}</span>
+        <span style="font-size:12px;color:var(--text-muted);">${n.fecha}</span>
+      </div>
+      <ul style="margin:0;padding-left:20px;">
+        ${n.notas.map(nt => `<li style="font-size:13px;color:var(--text-secondary);margin-bottom:3px;">${nt}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+  openModal('📋 Notas de versión', html);
+}
+
 // ── Navegación ────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
 const PAGES_ADMIN = ['dashboard','catalogo','clientes','ventas','compras','stock','combos','deudas','reportes','usuarios'];
