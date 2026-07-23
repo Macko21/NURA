@@ -184,7 +184,6 @@ function showDice(dice, mode) {
   const row = document.getElementById('dice-row');
   if (!row) return;
   row.closest('.dice-tray')?.classList.remove('is-empty');
-  _lastDiceView = { dice:[...dice], mode };
   const renderRequest = ++_diceRenderRequest;
   row.classList.remove('dice-row-3d');
   row.innerHTML = '';
@@ -204,6 +203,8 @@ function showDice(dice, mode) {
     }
   }
 
+  _lastDiceView = { dice:[...dice], mode, diceStates:[], skinId:activeSkinId, specialId:activeSpecialId };
+
   let greenIdx = [];
   if (mode === 'scored') {
     const sorted = [...dice].sort((a,b)=>a-b).join('');
@@ -222,6 +223,7 @@ function showDice(dice, mode) {
     if (mode === 'dead')   state = 'dead';
     if (mode === 'scored' && greenIdx.includes(i)) state = 'scoring';
     diceStates.push(state);
+    _lastDiceView.diceStates.push(state);
     const die = makeDie(val, state, activeSkinId);
     die.style.animationDelay = (i * 55) + 'ms';
     if (activeSpecialId === '29' && mode !== 'dead') {
@@ -246,6 +248,7 @@ function showDice(dice, mode) {
   function restore2D() {
     if (renderRequest !== _diceRenderRequest || !row.isConnected) return;
     if (row.querySelector('.die')) return;
+    row.innerHTML = '';
     row.classList.remove('dice-row-3d');
     dice.forEach((val, i) => {
       const die = makeDie(val, diceStates[i], activeSkinId);
@@ -292,9 +295,21 @@ window.addEventListener('macko-dice-3d-lost', () => {
   if (select && !select.disabled) { select.value = 'off'; select.disabled = true; }
   const status = document.getElementById('dice-quality-status');
   if (status) status.textContent = '2D clásica · WebGL perdido';
-  const container = document.querySelector('.dice-3d-area');
-  if (container) container.classList.remove('dice-row-3d');
-  window.mackoForce2D?.();
+  const container = document.getElementById('dice-row');
+  if (!container) return;
+  container.classList.remove('dice-row-3d');
+  const lv = _lastDiceView;
+  if (lv && lv.dice && lv.dice.length) {
+    container.innerHTML = '';
+    lv.dice.forEach((val, i) => {
+      const st = lv.diceStates ? lv.diceStates[i] : 'normal';
+      const die = makeDie(val, st, lv.skinId);
+      die.style.animationDelay = (i * 55) + 'ms';
+      if (lv.specialId === '29' && st !== 'dead') die.classList.add('magic-dice');
+      if (lv.specialId === '48' && st !== 'dead') die.classList.add('electric-dice');
+      container.appendChild(die);
+    });
+  }
 });
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {

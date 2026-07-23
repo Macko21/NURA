@@ -32,7 +32,6 @@ const SKINS_3D = {
 };
 
 const textureCache = new Map();
-const canvasCache = new Map(); // prevent GC of canvases
 const geometry = new RoundedBoxGeometry(1.34, 1.34, 1.34, 5, .14);
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -110,6 +109,7 @@ function faceTexture(value, skinId, quality) {
   if (textureCache.has(key)) return textureCache.get(key);
   const skin = skinFor(skinId);
   const size = quality === 'high' ? 256 : 128;
+  // Draw on canvas, then extract pixels to DataTexture (bypass CanvasTexture GPU upload issues)
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -130,14 +130,14 @@ function faceTexture(value, skinId, quality) {
     ctx.beginPath(); ctx.arc(x*size,y*size,10*scale,0,Math.PI*2); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
-  const texture = new THREE.CanvasTexture(canvas);
+  const imgData = ctx.getImageData(0, 0, size, size);
+  const texture = new THREE.DataTexture(imgData.data, size, size, THREE.RGBAFormat);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
   textureCache.set(key, texture);
-  canvasCache.set(key, canvas);
   return texture;
 }
 
@@ -151,14 +151,14 @@ function createNeutralFaceMap(quality) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#999999';
   ctx.fillRect(0, 0, size, size);
-  const texture = new THREE.CanvasTexture(canvas);
+  const imgData = ctx.getImageData(0, 0, size, size);
+  const texture = new THREE.DataTexture(imgData.data, size, size, THREE.RGBAFormat);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
   _neutralFaceCache.set(key, texture);
-  canvasCache.set('neutral:' + key, canvas);
   return texture;
 }
 
