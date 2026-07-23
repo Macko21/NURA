@@ -508,20 +508,32 @@
     <p class="shop-desc">Personalizá tu experiencia y conseguí monedas</p>
     
     <div class="shop-tabs">
-      <button class="shop-tab active" data-tab="items">🎨 Skins</button>
-      <button class="shop-tab" data-tab="ultra">💎 Ultra</button>
+      <button class="shop-tab active" data-tab="dados">🎲 Dados</button>
+      <button class="shop-tab" data-tab="avatares">👤 Avatares</button>
+      <button class="shop-tab" data-tab="efectos">✨ Efectos</button>
+      <button class="shop-tab" data-tab="consumibles">🧪 Consumibles</button>
       <button class="shop-tab" data-tab="missions">🎯 Misiones</button>
-      <button class="shop-tab" data-tab="coins">🪙 Monedas</button>
+      <button class="shop-tab" data-tab="store">🪙 Tienda Real</button>
     </div>
     
-    <!-- TAB: Items (catálogo dinámico desde backend) -->
-    <div id="shop-tab-items" class="shop-tab-content">
-      <div id="shop-items-container"></div>
+    <!-- TAB: Dados -->
+    <div id="shop-tab-dados" class="shop-tab-content">
+      <div id="shop-items-dados"></div>
     </div>
     
-    <!-- TAB: Ultra (exclusivos cofre diario) -->
-    <div id="shop-tab-ultra" class="shop-tab-content" style="display:none">
-      <div id="ultra-items-container"></div>
+    <!-- TAB: Avatares -->
+    <div id="shop-tab-avatares" class="shop-tab-content" style="display:none">
+      <div id="shop-items-avatares"></div>
+    </div>
+    
+    <!-- TAB: Efectos -->
+    <div id="shop-tab-efectos" class="shop-tab-content" style="display:none">
+      <div id="shop-items-efectos"></div>
+    </div>
+    
+    <!-- TAB: Consumibles -->
+    <div id="shop-tab-consumibles" class="shop-tab-content" style="display:none">
+      <div id="shop-items-consumibles"></div>
     </div>
     
     <!-- TAB: Misiones -->
@@ -530,9 +542,9 @@
       <div id="missions-container"></div>
     </div>
 
-    <!-- TAB: Comprar monedas -->
-    <div id="shop-tab-coins" class="shop-tab-content" style="display:none">
-      <p class="shop-section-title">🪙 <span>Comprar monedas</span></p>
+    <!-- TAB: Tienda Real -->
+    <div id="shop-tab-store" class="shop-tab-content" style="display:none">
+      <p class="shop-section-title">🪙 <span>Packs con dinero real</span></p>
       <div class="shop-grid" id="coin-packs-grid"></div>
     </div>
   </div>

@@ -187,8 +187,12 @@ function targetQuaternion(value) {
   return new THREE.Quaternion().setFromEuler(new THREE.Euler(...(rotations[value] || rotations[1])));
 }
 
-function makeStage(container, quality, preview=false) {
-  const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:quality === 'high', powerPreference:'high-performance' });
+function configureRenderer(container, quality, preview) {
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ alpha:true, antialias:quality === 'high', powerPreference:'default' });
+  } catch (_) { return null; }
+  if (!renderer.getContext() || renderer.getContext().isContextLost()) { renderer.dispose(); return null; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 2.1;
@@ -197,6 +201,12 @@ function makeStage(container, quality, preview=false) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = preview ? 'dice-3d-preview-canvas' : 'dice-3d-canvas';
   container.replaceChildren(renderer.domElement);
+  return renderer;
+}
+
+function makeStage(container, quality, preview=false) {
+  const renderer = configureRenderer(container, quality, preview);
+  if (!renderer) return null;
   const width = Math.max(180, container.clientWidth || (preview ? 320 : 350));
   const height = preview ? 210 : Math.max(110, Math.min(145, width*.33));
   renderer.setSize(width,height,false);
@@ -211,7 +221,14 @@ function makeStage(container, quality, preview=false) {
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.36 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=.02;ground.receiveShadow=true;scene.add(ground);
   const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
-  renderer.domElement.addEventListener('webglcontextlost',()=>{stage.contextLost=true;if(stage.disposed)return;clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));},{once:true});
+  const onLost = () => {
+    stage.contextLost = true;
+    if (stage.disposed) return;
+    clearGameDice();
+    container.classList.remove('dice-row-3d');
+    window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));
+  };
+  renderer.domElement.addEventListener('webglcontextlost', onLost, {once:true});
   if (typeof ResizeObserver !== 'undefined') {
     stage.resizeObserver = new ResizeObserver(() => {
       if (stage.disposed) return;
@@ -252,7 +269,8 @@ let gameStage=null, requestId=0;
 function renderGameDice({container,dice,states,skinId,specialId}) {
   if (!container || !Array.isArray(dice) || !dice.length || resolvedQuality()==='off' || !supportsWebGL()) return false;
   requestId+=1;const currentRequest=requestId;disposeStage(gameStage);
-  const quality=resolvedQuality();gameStage=makeStage(container,quality,false);container.classList.add('dice-row-3d');
+  const quality=resolvedQuality();gameStage=makeStage(container,quality,false);if(!gameStage)return false;
+  container.classList.add('dice-row-3d');
   const stage=gameStage, spacing=Math.min(1.65,7.0/dice.length), total=(dice.length-1)*spacing;
   const starts=[],targets=[];
   dice.forEach((value,index)=>{
@@ -268,12 +286,13 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   let impacted=false;
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
-    if(stage.contextLost||stage.renderer.getContext()?.isContextLost()){clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return;}
+    if(stage.contextLost||!stage.renderer.getContext()||stage.renderer.getContext().isContextLost()){clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return;}
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
     stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
     if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
-    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?7:4.5)*(1+.08*Math.sin(now*.006));stage.renderer.render(stage.scene,stage.camera);
+    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?7:4.5)*(1+.08*Math.sin(now*.006));
+    try { stage.renderer.render(stage.scene,stage.camera); } catch(_){ clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return; }
     if(elapsed<duration+linger)stage.frame=requestAnimationFrame(animate);
   };
   stage.frame=requestAnimationFrame(animate);return true;
@@ -281,7 +300,8 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
 
 function createPreview(container,skinId,value=5) {
   if(!container||resolvedQuality()==='off'||!supportsWebGL())return null;
-  const quality=resolvedQuality(),stage=makeStage(container,quality,true),mesh=new THREE.Mesh(geometry,materialsFor(skinId,'normal',quality));
+  const quality=resolvedQuality(),stage=makeStage(container,quality,true);if(!stage)return null;
+  const mesh=new THREE.Mesh(geometry,materialsFor(skinId,'normal',quality));
   const spinner=new THREE.Group();mesh.castShadow=quality==='high';mesh.position.y=.72;mesh.quaternion.copy(targetQuaternion(value));spinner.add(mesh);stage.scene.add(spinner);stage.objects.push(mesh);const particles=addParticles(stage,skinId,quality==='high'?20:9);const start=performance.now();
   const animate=now=>{if(stage.disposed||!container.isConnected){if(!container.isConnected)disposeStage(stage);return;}const elapsed=(now-start)*.001;spinner.rotation.y=elapsed*.65;spinner.rotation.z=Math.sin(elapsed*.7)*.06;particles.rotation.y=elapsed*.12;stage.rim.color.set(skinFor(skinId).edge);stage.renderer.render(stage.scene,stage.camera);stage.frame=requestAnimationFrame(animate);};
   stage.frame=requestAnimationFrame(animate);return()=>disposeStage(stage);

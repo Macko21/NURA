@@ -235,12 +235,26 @@ function showDice(dice, mode) {
   loadDice3D().then(renderer3D => {
     if (!renderer3D || renderRequest !== _diceRenderRequest || !row.isConnected) return;
     try {
-      renderer3D.renderDice({ container: row, dice, states: diceStates, skinId: activeSkinId, specialId: activeSpecialId });
+      const ok = renderer3D.renderDice({ container: row, dice, states: diceStates, skinId: activeSkinId, specialId: activeSpecialId });
+      if (!ok) restore2D();
       syncDiceQualityUI();
     } catch (err) {
       console.warn('Fallback a dados 2D:', err.message);
+      restore2D();
     }
   });
+  function restore2D() {
+    if (renderRequest !== _diceRenderRequest || !row.isConnected) return;
+    if (row.querySelector('.die')) return;
+    row.classList.remove('dice-row-3d');
+    dice.forEach((val, i) => {
+      const die = makeDie(val, diceStates[i], activeSkinId);
+      die.style.animationDelay = (i * 55) + 'ms';
+      if (activeSpecialId === '29' && diceStates[i] !== 'dead') die.classList.add('magic-dice');
+      if (activeSpecialId === '48' && diceStates[i] !== 'dead') die.classList.add('electric-dice');
+      row.appendChild(die);
+    });
+  }
   if (activeSkinId && SKIN_PARTICLES[activeSkinId] && mode !== 'dead') {
     setTimeout(() => {
       if (!row.classList.contains('dice-row-3d') && renderRequest === _diceRenderRequest) spawnSkinParticles(activeSkinId, row);

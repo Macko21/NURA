@@ -3258,10 +3258,9 @@ function initUI() {
       document.querySelectorAll('.shop-tab-content').forEach(c => c.style.display = 'none');
       const content = $('shop-tab-' + tab.dataset.tab);
       if (content) content.style.display = 'block';
-      if (tab.dataset.tab === 'coins') loadCoinPacks();
-      if (tab.dataset.tab === 'items') loadShopCatalog();
+      if (tab.dataset.tab === 'store') loadCoinPacks();
+      if (['dados','avatares','efectos','consumibles'].includes(tab.dataset.tab)) loadShopTab(tab.dataset.tab);
       if (tab.dataset.tab === 'missions') loadMissions();
-      if (tab.dataset.tab === 'ultra') loadUltraItems();
     };
   });
 
@@ -4169,6 +4168,19 @@ function getItemEquipCategory(item) {
   return ULTRA_ITEM_EQUIP_CATEGORIES[Number(item.id)] || null;
 }
 
+// Subtipo visual para items especiales (agrupación en inventario)
+function getSpecialSubtype(item) {
+  const avatarEffects = new Set([45, 46, 15]);
+  const diceEffects = new Set([29, 48]);
+  const nickChat = new Set([3, 28, 30]);
+  const victoryEffects = new Set([16, 36, 47, 51]);
+  if (avatarEffects.has(Number(item.id))) return 'avatar';
+  if (diceEffects.has(Number(item.id))) return 'dice';
+  if (victoryEffects.has(Number(item.id))) return 'victory';
+  if (nickChat.has(Number(item.id))) return 'chat';
+  return 'other';
+}
+
 function loadInventoryData(invData, boostsData) {
   const container = $('profile-inventory');
   if (!container) return;
@@ -4201,53 +4213,76 @@ function loadInventoryData(invData, boostsData) {
     section.innerHTML = `<p class="inv-cat-title">${categoryInfo.label}</p><div class="inv-items"></div>`;
     container.appendChild(section);
     const grid = section.querySelector('.inv-items');
-    // Para consumibles no mostrar "Original", solo los items
-    if (equipCategory !== 'consumable') {
+    if (equipCategory === 'special') {
+      // Especiales: agrupar por subtipo
+      const subLabels = { avatar:'🎭 Para avatar', dice:'🎲 Para dados', victory:'🏆 Victoria', chat:'💬 Chat/Nick', other:'✨ Otros' };
+      const grouped = {};
+      items.forEach(item => {
+        const sub = getSpecialSubtype(item);
+        if (!grouped[sub]) grouped[sub] = [];
+        grouped[sub].push(item);
+      });
+      for (const [subKey, subItems] of Object.entries(grouped)) {
+        const subSection = document.createElement('div');
+        subSection.className = 'inv-cat';
+        subSection.innerHTML = `<p class="inv-cat-title" style="font-size:11px;opacity:.7;padding:8px 0 4px">${subLabels[subKey] || '✨ Otros'}</p><div class="inv-items"></div>`;
+        section.appendChild(subSection);
+        const subGrid = subSection.querySelector('.inv-items');
+        // "Original" solo para el primer subgrupo
+        const defaultDiv = document.createElement('div');
+        defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
+        defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
+        defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
+        subGrid.appendChild(defaultDiv);
+        subItems.forEach(item => renderInventoryItem(item, equipCategory, grid, equipped, boosts, now));
+      }
+    } else {
+      // Para avatar, dice, consumable — render normal
       const defaultDiv = document.createElement('div');
       defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
       defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
       defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
       grid.appendChild(defaultDiv);
+      items.forEach(item => renderInventoryItem(item, equipCategory, grid, equipped, boosts, now));
     }
-    items.forEach(item => {
-      const isEquipped = String(equipped[equipCategory] || '') === String(item.id);
-      const div = document.createElement('div');
-      div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
-      // Mostrar tiempo restante si el boost está activo
-      let boostTimerHtml = '';
-      const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
-      const boostExpiry = boostKey ? boosts[boostKey] : 0;
-      if (boostExpiry && boostExpiry > now) {
-        const remaining = boostExpiry - now;
-        const hours = Math.floor(remaining / 3600000);
-        const mins = Math.floor((remaining % 3600000) / 60000);
-        boostTimerHtml = `<span class="inv-boost-timer">⏱ ${hours}h ${mins}m</span>`;
+  }
+
+  function renderInventoryItem(item, equipCategory, grid, equipped, boosts, now) {
+    const isEquipped = String(equipped[equipCategory] || '') === String(item.id);
+    const div = document.createElement('div');
+    div.className = 'inv-item' + (isEquipped ? ' equipped' : '');
+    let boostTimerHtml = '';
+    const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
+    const boostExpiry = boostKey ? boosts[boostKey] : 0;
+    if (boostExpiry && boostExpiry > now) {
+      const remaining = boostExpiry - now;
+      const hours = Math.floor(remaining / 3600000);
+      const mins = Math.floor((remaining % 3600000) / 60000);
+      boostTimerHtml = `<span class="inv-boost-timer">⏱ ${hours}h ${mins}m</span>`;
+    }
+    div.innerHTML = `
+      <div class="inv-item-icon">${esc(String(item.icon || ''))}</div>
+      <span class="inv-item-name">${esc(String(item.name || 'Cosmético'))}</span>
+      ${boostTimerHtml}
+      ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
+    `;
+    if (equipCategory === 'consumable') {
+      div.classList.add('inv-consumable');
+      const useBtn = document.createElement('button');
+      useBtn.className = 'btn btn-gold inv-use-btn';
+      useBtn.textContent = boostTimerHtml ? 'Activo' : 'Usar';
+      useBtn.disabled = !!boostTimerHtml;
+      if (!boostTimerHtml) {
+        useBtn.onclick = (e) => {
+          e.stopPropagation();
+          equipItemFromProfile(String(item.id), 'special');
+        };
       }
-      div.innerHTML = `
-        <div class="inv-item-icon">${esc(String(item.icon || ''))}</div>
-        <span class="inv-item-name">${esc(String(item.name || 'Cosmético'))}</span>
-        ${boostTimerHtml}
-        ${isEquipped ? '<span class="inv-equipped-badge">✔</span>' : ''}
-      `;
-      if (equipCategory === 'consumable') {
-        // Para consumibles: botón "Usar" en vez de preview
-        div.classList.add('inv-consumable');
-        const useBtn = document.createElement('button');
-        useBtn.className = 'btn btn-gold inv-use-btn';
-        useBtn.textContent = boostTimerHtml ? 'Activo' : 'Usar';
-        useBtn.disabled = !!boostTimerHtml;
-        if (!boostTimerHtml) {
-          useBtn.onclick = (e) => {
-            e.stopPropagation();
-            equipItemFromProfile(String(item.id), 'special');
-          };
-        }
-        div.appendChild(useBtn);
-      } else {
-        div.onclick = () => openInventoryPreview(item, equipCategory, isEquipped);
-      }
-      grid.appendChild(div);
-    });
+      div.appendChild(useBtn);
+    } else {
+      div.onclick = () => openInventoryPreview(item, equipCategory, isEquipped);
+    }
+    grid.appendChild(div);
   }
 }
 
@@ -4732,162 +4767,91 @@ async function equipShopItem(itemId, category) {
     await loadEquippedItems();
     updateUserPanel(S.name, parseInt($('lobby-coins')?.textContent) || 0);
     toast('✔ Item aplicado en el lobby');
-    await Promise.all([loadShopCatalog(), loadUltraItems()]);
+    // Recargar pestaña activa
+    const activeTab = document.querySelector('.shop-tab.active');
+    if (activeTab && ['dados','avatares','efectos','consumibles'].includes(activeTab.dataset.tab)) {
+      loadShopTab(activeTab.dataset.tab);
+    }
   } catch (err) {
     toast('⚠ ' + err.message);
   }
 }
 
-async function loadUltraItems() {
+/* ── Cargar tienda por pestaña (dados/avatares/efectos/consumibles) ── */
+async function loadShopTab(tabName) {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
-  const container = $('ultra-items-container');
+  const container = $('shop-items-' + tabName);
   if (!container) return;
+  const catMap = { dados:'dados', avatares:'avatares', efectos:'especiales', consumibles:'consumibles' };
+  const mainCat = catMap[tabName];
+  if (!mainCat) { container.innerHTML = ''; return; }
   try {
     const res = await fetch('/api/shop/catalog', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) { container.innerHTML = '<p class="shop-desc">Error al cargar</p>'; return; }
-    const { items, ownedIds, equipped } = await res.json();
-    const ownedSet = new Set((ownedIds || []).map(Number));
-    const ultraItems = items.filter(i => i.category === 'ultra');
-    if (!ultraItems.length) {
-      container.innerHTML = '<p class="shop-desc" style="padding:20px;text-align:center">Próximamente...</p>';
-      return;
-    }
-    container.innerHTML = `
-      <p class="shop-section-title">💎 <span>Ultra Raros</span></p>
-      <p class="shop-desc" style="font-size:11px;color:var(--gold2);text-align:center;margin-bottom:12px">
-        🎁 Estos items solo se obtienen en el <strong>Cofre Diario</strong> (5% de chance)
-      </p>
-      <div class="shop-grid"></div>
-    `;
-    const grid = container.querySelector('.shop-grid');
-    ultraItems.forEach(item => {
-      const category = getItemEquipCategory(item);
-      const owned = ownedSet.has(Number(item.id));
-      const isEquipped = owned && String(equipped?.[category] || '') === String(item.id);
-      const div = document.createElement('div');
-      div.className = 'shop-item ultra-teaser' + (owned ? ' owned' : '');
-      div.innerHTML = `
-        <div class="shop-item-preview" style="font-size:44px">${esc(item.icon)}</div>
-        <h3>${esc(item.name)}</h3>
-        <p class="shop-item-desc">${esc(item.desc)}</p>
-        <span class="shop-item-price" style="font-size:12px;color:var(--gold2);font-weight:600">💰 ${esc(item.priceDisplay)}</span>
-        ${owned
-          ? `<button class="btn btn-ghost btn-equip-shop" data-id="${esc(item.id)}" data-cat="${esc(category)}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? '✔ Equipado' : 'Aplicar'}</button>`
-          : '<span class="ultra-badge">🎁 Cofre diario · 💳 pack premium</span>'}
-      `;
-      grid.appendChild(div);
-    });
-    grid.querySelectorAll('.btn-equip-shop:not([disabled])').forEach(btn => {
-      btn.onclick = () => equipShopItem(btn.dataset.id, btn.dataset.cat);
-    });
-  } catch (err) {
-    container.innerHTML = '<p class="shop-desc">Error al cargar</p>';
-  }
-}
-
-/* ── Cargar catálogo de tienda (dinámico desde backend) ─── */
-async function loadShopCatalog() {
-  const token = localStorage.getItem('gameToken');
-  if (!token) return;
-  
-  try {
-    const res = await fetch('/api/shop/catalog', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) return;
     const { items, ownedIds, equipped, boosts } = await res.json();
-    if (!items) return;
-    
+    if (!items) { container.innerHTML = ''; return; }
     const ownedSet = new Set(ownedIds || []);
     window._lastBoosts = window._lastBoosts || {};
     if (boosts) window._lastBoosts = boosts;
-    
-    // Renderizar items por categoría
-    const container = $('shop-items-container');
-    if (!container) return;
+    const filtered = items.filter(i => i.category === mainCat);
+    if (!filtered.length) { container.innerHTML = '<p class="shop-desc">Sin items en esta categoría</p>'; return; }
     container.innerHTML = '';
-    
-    const categories = {
-      dados: { label: '🎲 Skins de Dados', icon: '🎲', id: 'dados' },
-      avatares: { label: '👤 Avatares', icon: '👤', id: 'avatares' },
-      especiales: { label: '✨ Especiales', icon: '✨', id: 'especiales' },
-      consumibles: { label: '🧪 Consumibles (24h)', icon: '🧪', id: 'consumibles' },
-      ultra: { label: '💠 Ultra · cofre diario o pack premium', icon: '💠', id: 'ultra' }
-    };
-    
-    for (const [catKey, catInfo] of Object.entries(categories)) {
-      const catItems = items.filter(i => i.category === catKey);
-      if (!catItems.length) continue;
-      
-      const section = document.createElement('div');
-      section.className = 'shop-section';
-      section.innerHTML = `
-        <p class="shop-section-title">${catInfo.icon} <span>${catInfo.label}</span></p>
-        <div class="shop-grid" id="shop-grid-${catKey}"></div>
-      `;
-      container.appendChild(section);
-      
-      const grid = section.querySelector('.shop-grid');
-      catItems.forEach(item => {
-        const isOwned = ownedSet.has(item.id);
-        const cat = item.category === 'avatares' || (item.category === 'ultra' && /^Avatar/i.test(item.name)) ? 'avatar'
-          : item.category === 'dados' || (item.category === 'ultra' && /^Dados/i.test(item.name)) ? 'dice' : 'special';
-        const isEquipped = equipped && equipped[cat] === String(item.id);
-        const div = document.createElement('div');
-        div.className = 'shop-item' + (isOwned ? ' owned' : '') + (item.category === 'ultra' ? ' ultra-teaser' : '');
+    const grid = document.createElement('div');
+    grid.className = 'shop-grid';
+    container.appendChild(grid);
+    filtered.forEach(item => {
+      const isOwned = ownedSet.has(item.id);
+      const cat = item.category === 'avatares' || (item.category === 'ultra' && /^Avatar/i.test(item.name)) ? 'avatar'
+        : item.category === 'dados' || (item.category === 'ultra' && /^Dados/i.test(item.name)) ? 'dice' : 'special';
+      const isEquipped = equipped && equipped[cat] === String(item.id);
+      const div = document.createElement('div');
+      div.className = 'shop-item' + (isOwned ? ' owned' : '');
       div.dataset.category = cat;
       div.dataset.id = String(item.id);
-        if (isOwned) {
-          const isConsumable = item.category === 'consumibles';
-          const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
-          const boosts = window._lastBoosts || {};
-          const boostActive = boostKey && boosts[boostKey] > Date.now();
-          div.innerHTML = `
-            <div class="shop-item-preview">${esc(item.icon)}</div>
-            <h3>${esc(item.name)}</h3>
-            <p class="shop-item-desc">${esc(item.desc)}</p>
-            ${isConsumable
-              ? (boostActive ? '<span class="shop-item-timer" data-boost="'+boostKey+'">✅ Activo</span>' : '<button class="btn btn-gold btn-equip-shop" data-id="'+esc(item.id)+'" data-cat="special">Usar</button>')
-              : '<button class="btn btn-ghost btn-equip-shop" data-id="'+esc(item.id)+'" data-cat="'+esc(cat)+'" '+(isEquipped ? 'disabled' : '')+'>'+(isEquipped ? '✔ Equipado' : 'Aplicar')+'</button>'}
-          `;
-          if (boostActive) {
-            // Iniciar timer dinámico
-            const timerEl = div.querySelector('.shop-item-timer');
-            if (timerEl) {
-              const updateTimer = () => {
-                const rem = (boosts[boostKey] || 0) - Date.now();
-                if (rem <= 0) { timerEl.textContent = '⏳ Expirado'; return; }
-                timerEl.textContent = `⏱ ${Math.floor(rem/3600000)}h ${Math.floor((rem%3600000)/60000)}m`;
-              };
-              updateTimer();
-              setInterval(updateTimer, 30000);
-            }
+      if (isOwned) {
+        const isConsumable = mainCat === 'consumibles';
+        const boostKey = { '31':'coins_all', '52':'xp', '53':'coins_win_50', '54':'coins_win_100' }[String(item.id)];
+        const boosts = window._lastBoosts || {};
+        const boostActive = boostKey && boosts[boostKey] > Date.now();
+        div.innerHTML = `
+          <div class="shop-item-preview">${esc(item.icon)}</div>
+          <h3>${esc(item.name)}</h3>
+          <p class="shop-item-desc">${esc(item.desc)}</p>
+          ${isConsumable
+            ? (boostActive ? '<span class="shop-item-timer" data-boost="'+boostKey+'">✅ Activo</span>' : '<button class="btn btn-gold btn-equip-shop" data-id="'+esc(item.id)+'" data-cat="special">Usar</button>')
+            : '<button class="btn btn-ghost btn-equip-shop" data-id="'+esc(item.id)+'" data-cat="'+esc(cat)+'" '+(isEquipped ? 'disabled' : '')+'>'+(isEquipped ? '✔ Equipado' : 'Aplicar')+'</button>'}
+        `;
+        if (boostActive) {
+          const timerEl = div.querySelector('.shop-item-timer');
+          if (timerEl) {
+            const updateTimer = () => {
+              const rem = (boosts[boostKey] || 0) - Date.now();
+              if (rem <= 0) { timerEl.textContent = '⏳ Expirado'; return; }
+              timerEl.textContent = `⏱ ${Math.floor(rem/3600000)}h ${Math.floor((rem%3600000)/60000)}m`;
+            };
+            updateTimer();
+            setInterval(updateTimer, 30000);
           }
-        } else {
-          div.innerHTML = `
-            <div class="shop-item-preview">${esc(item.icon)}</div>
-            <h3>${esc(item.name)}</h3>
-            <p class="shop-item-desc">${esc(item.desc)}</p>
-            ${item.category === 'ultra'
-              ? '<span class="shop-premium-note">🎁 Cofre diario · 💳 pack premium</span>'
-              : `<p class="shop-item-hint" style="font-size:10px;color:var(--text3);margin-top:4px;opacity:.7">Click para ver preview</p><button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>`}
-          `;
         }
-        grid.appendChild(div);
-      });
-    }
-    
-    // Handlers de compra (solo para botones que no son "Tuyo")
-    container.querySelectorAll('.btn-buy').forEach(btn => {
+      } else {
+        div.innerHTML = `
+          <div class="shop-item-preview">${esc(item.icon)}</div>
+          <h3>${esc(item.name)}</h3>
+          <p class="shop-item-desc">${esc(item.desc)}</p>
+          <p class="shop-item-hint" style="font-size:10px;color:var(--text3);margin-top:4px;opacity:.7">Click para ver preview</p>
+          <button class="btn btn-gold btn-buy" data-id="${esc(item.id)}">🪙 ${esc(item.priceDisplay)}</button>
+        `;
+      }
+      grid.appendChild(div);
+    });
+    // Handlers de compra
+    grid.querySelectorAll('.btn-buy').forEach(btn => {
       btn.onclick = async (e) => {
         const itemId = e.target.getAttribute('data-id');
-        if (!token) {
-          toast('Debes iniciar sesión');
-          return;
-        }
+        if (!token) { toast('Debes iniciar sesión'); return; }
         const originalText = e.target.textContent;
         e.target.textContent = '⏳';
         e.target.disabled = true;
@@ -4899,54 +4863,43 @@ async function loadShopCatalog() {
           });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error);
-          // Efecto de sonido de compra
           SFX.purchase();
-          // Efecto visual: destello en el item comprado antes de recargar
           const boughtItem = e.target.closest('.shop-item');
           if (boughtItem) {
             boughtItem.classList.add('shop-item-bought');
-            // Mini confetti localizado
             const rect = boughtItem.getBoundingClientRect();
             for (let i = 0; i < 12; i++) {
               const spark = document.createElement('div');
               spark.className = 'buy-sparkle';
-              spark.style.cssText = `
-                left:${rect.left + rect.width/2}px;
-                top:${rect.top + rect.height/2}px;
-                --tx:${(Math.random() - .5) * 120}px;
-                --ty:${(Math.random() - .5) * 120}px;
-                background:${['#D4AF37','#F0D060','#fff','#52c87a'][Math.floor(Math.random()*4)]};
-                animation-duration:${.4 + Math.random() * .4}s;
-              `;
+              spark.style.cssText = `left:${rect.left + rect.width/2}px;top:${rect.top + rect.height/2}px;--tx:${(Math.random() - .5) * 120}px;--ty:${(Math.random() - .5) * 120}px;background:${['#D4AF37','#F0D060','#fff','#52c87a'][Math.floor(Math.random()*4)]};animation-duration:${.4 + Math.random() * .4}s;`;
               document.body.appendChild(spark);
-              setTimeout(() => spark.remove(), 1000);
+              setTimeout(() => spark.remove(), 800);
             }
           }
-          toast('¡Compra exitosa! 🎉');
-          $('lobby-coins').textContent = d.newBalance;
-          $('game-coins-amount').textContent = d.newBalance;
-          // Recargar el catálogo para mostrar "✔ Tuyo" (con delay para animación)
-          setTimeout(async () => {
-            await loadShopCatalog();
-            e.target.disabled = false;
-            e.target.textContent = originalText;
-          }, 500);
-          loadUserBalance();
-          return; // evitar el finally que re-habilita el botón
+          toast('🎉 ' + d.message);
+          loadShopTab(tabName);
         } catch (err) {
           toast('⚠ ' + err.message);
           e.target.textContent = originalText;
+          e.target.disabled = false;
         }
-        e.target.disabled = false;
       };
     });
-    container.querySelectorAll('.btn-equip-shop:not([disabled])').forEach(btn => {
+    // Handlers de equipar/aplicar
+    grid.querySelectorAll('.btn-equip-shop:not([disabled])').forEach(btn => {
       btn.onclick = () => equipShopItem(btn.dataset.id, btn.dataset.cat);
     });
-    
-        // (event delegation moved to initUI)
   } catch (err) {
-    console.error("Error cargando tienda:", err);
+    container.innerHTML = '<p class="shop-desc">Error al cargar</p>';
+  }
+}
+
+/* ── Cargar catálogo de tienda (dinámico desde backend) ─── */
+// La tienda por categorías usa loadShopTab. Esta función recarga la pestaña activa.
+async function loadShopCatalog() {
+  const activeTab = document.querySelector('.shop-tab.active');
+  if (activeTab && ['dados','avatares','efectos','consumibles'].includes(activeTab.dataset.tab)) {
+    return loadShopTab(activeTab.dataset.tab);
   }
 }
 
