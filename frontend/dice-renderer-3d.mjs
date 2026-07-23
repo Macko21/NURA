@@ -109,7 +109,7 @@ function faceTexture(value, skinId, quality) {
   const key = `${skinId || 'default'}:${value}:${quality}`;
   if (textureCache.has(key)) return textureCache.get(key);
   const skin = skinFor(skinId);
-  const size = quality === 'high' ? 192 : 96;
+  const size = quality === 'high' ? 256 : 128;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -132,10 +132,12 @@ function faceTexture(value, skinId, quality) {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = quality === 'high' ? 4 : 1;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
   texture.needsUpdate = true;
   textureCache.set(key, texture);
-  canvasCache.set(key, canvas); // keep canvas alive
+  canvasCache.set(key, canvas);
   return texture;
 }
 
@@ -151,6 +153,9 @@ function createNeutralFaceMap(quality) {
   ctx.fillRect(0, 0, size, size);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
   texture.needsUpdate = true;
   _neutralFaceCache.set(key, texture);
   canvasCache.set('neutral:' + key, canvas);

@@ -1726,6 +1726,18 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 .inv-boost-timer{font-size:7px;color:var(--green);font-weight:600;text-align:center;width:100%;margin-top:1px}
 .inv-empty{font-size:12px;color:var(--text3);text-align:center;padding:16px 0}
 
+/* Barra de equipado resumida */
+.inv-equipped-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;background:rgba(0,0,0,.15);border-radius:6px;margin-bottom:12px;font-size:10px}
+.eq-slot{cursor:pointer;padding:2px 6px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);transition:.2s}
+.eq-slot:hover{border-color:var(--gold);background:var(--bg-hover)}
+.eq-slot.eq-avatar{color:var(--rose)}
+.eq-slot.eq-dice{color:var(--gold)}
+.eq-slot.eq-special{color:var(--green)}
+
+/* Subcategorías dentro de inv */
+.inv-subcat{margin-bottom:4px}
+.inv-subtitle{font-size:9px;color:var(--text3);padding:4px 0 2px;letter-spacing:.3px}
+
 /* Destello al equipar item en el inventario */
 .inv-item.equip-flash{
   animation:equipGlow .6s ease;

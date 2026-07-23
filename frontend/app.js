@@ -4197,7 +4197,7 @@ function loadInventoryData(invData, boostsData) {
   const categories = {
     avatar: { label: 'Avatares', icon: '👤' },
     dice: { label: 'Dados', icon: '🎲' },
-    special: { label: 'Especiales', icon: '✨' },
+    special: { label: 'Efectos', icon: '✨' },
     consumable: { label: 'Consumibles', icon: '🧪' }
   };
   container.innerHTML = '';
@@ -4205,44 +4205,66 @@ function loadInventoryData(invData, boostsData) {
   const boosts = boostsData || window._lastBoosts;
   if (boostsData) window._lastBoosts = boostsData;
   const now = Date.now();
+
+  // Equipped summary bar
+  const eqSummary = document.createElement('div');
+  eqSummary.className = 'inv-equipped-bar';
+  const eqParts = [];
+  for (const [cat, info] of Object.entries(categories)) {
+    if (cat === 'consumable') continue;
+    const eqId = equipped[cat];
+    const eqItem = eqId ? owned.find(i => String(i.id) === String(eqId)) : null;
+    const label = eqItem ? `${info.icon} ${eqItem.name}` : `${info.icon} Original`;
+    const cls = cat === 'avatar' ? 'avatar' : cat === 'dice' ? 'dice' : 'special';
+    eqParts.push(`<span class="eq-slot eq-${cls}" onclick="equipItemFromProfile('default','${cat}')">${esc(label)}</span>`);
+  }
+  eqSummary.innerHTML = `<span style="font-size:10px;opacity:.5;margin-right:6px">EQUIPADO</span>${eqParts.join('')}`;
+  container.appendChild(eqSummary);
+
+  // Items by category
   for (const [equipCategory, categoryInfo] of Object.entries(categories)) {
     const items = owned.filter(item => getItemEquipCategory(item) === equipCategory);
     if (!items.length) continue;
     const section = document.createElement('div');
     section.className = 'inv-cat';
-    section.innerHTML = `<p class="inv-cat-title">${categoryInfo.label}</p><div class="inv-items"></div>`;
     container.appendChild(section);
-    const grid = section.querySelector('.inv-items');
+
     if (equipCategory === 'special') {
-      // Especiales: agrupar por subtipo
-      const subLabels = { avatar:'🎭 Para avatar', dice:'🎲 Para dados', victory:'🏆 Victoria', chat:'💬 Chat/Nick', other:'✨ Otros' };
+      const subLabels = { avatar:'🎭 Avatar', dice:'🎲 Dados', victory:'🏆 Victoria', chat:'💬 Chat', other:'✨ Otros' };
       const grouped = {};
       items.forEach(item => {
         const sub = getSpecialSubtype(item);
         if (!grouped[sub]) grouped[sub] = [];
         grouped[sub].push(item);
       });
+      let first = true;
       for (const [subKey, subItems] of Object.entries(grouped)) {
         const subSection = document.createElement('div');
-        subSection.className = 'inv-cat';
-        subSection.innerHTML = `<p class="inv-cat-title" style="font-size:11px;opacity:.7;padding:8px 0 4px">${subLabels[subKey] || '✨ Otros'}</p><div class="inv-items"></div>`;
+        subSection.className = 'inv-subcat';
+        if (first) subSection.innerHTML = `<p class="inv-cat-title">${categoryInfo.label}</p>`;
+        subSection.innerHTML += `<p class="inv-subtitle">${subLabels[subKey] || '✨ Otros'}</p><div class="inv-items"></div>`;
         section.appendChild(subSection);
         const subGrid = subSection.querySelector('.inv-items');
-        // "Original" solo para el primer subgrupo
-        const defaultDiv = document.createElement('div');
-        defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
-        defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
-        defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
-        subGrid.appendChild(defaultDiv);
-        subItems.forEach(item => renderInventoryItem(item, equipCategory, grid, equipped, boosts, now));
+        if (first) {
+          const defaultDiv = document.createElement('div');
+          defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
+          defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Ninguno</span>`;
+          defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
+          subGrid.appendChild(defaultDiv);
+          first = false;
+        }
+        subItems.forEach(item => renderInventoryItem(item, equipCategory, subGrid, equipped, boosts, now));
       }
     } else {
-      // Para avatar, dice, consumable — render normal
-      const defaultDiv = document.createElement('div');
-      defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
-      defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Original</span>`;
-      defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
-      grid.appendChild(defaultDiv);
+      section.innerHTML = `<p class="inv-cat-title">${categoryInfo.label}</p><div class="inv-items"></div>`;
+      const grid = section.querySelector('.inv-items');
+      if (equipCategory !== 'consumable') {
+        const defaultDiv = document.createElement('div');
+        defaultDiv.className = 'inv-item' + (String(equipped[equipCategory] || '') === '' ? ' equipped' : '');
+        defaultDiv.innerHTML = `<div class="inv-item-icon">${categoryInfo.icon}</div><span class="inv-item-name">Ninguno</span>`;
+        defaultDiv.onclick = () => equipItemFromProfile('default', equipCategory);
+        grid.appendChild(defaultDiv);
+      }
       items.forEach(item => renderInventoryItem(item, equipCategory, grid, equipped, boosts, now));
     }
   }
