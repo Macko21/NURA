@@ -32,6 +32,7 @@ const SKINS_3D = {
 };
 
 const textureCache = new Map();
+const canvasCache = new Map(); // prevent GC of canvases
 const geometry = new RoundedBoxGeometry(1.34, 1.34, 1.34, 5, .14);
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -112,9 +113,7 @@ function faceTexture(value, skinId, quality) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
-  const gradient = skin.effect === 'rainbow'
-    ? ctx.createLinearGradient(0,0,size,size)
-    : ctx.createLinearGradient(0,0,size,size);
+  const gradient = ctx.createLinearGradient(0,0,size,size);
   (skin.colors || []).forEach((color, index, colors) => gradient.addColorStop(colors.length === 1 ? 0 : index/(colors.length-1), color));
   ctx.fillStyle = gradient;
   roundedRect(ctx, 0, 0, size, size, size*.09);
@@ -134,7 +133,9 @@ function faceTexture(value, skinId, quality) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = quality === 'high' ? 4 : 1;
+  texture.needsUpdate = true;
   textureCache.set(key, texture);
+  canvasCache.set(key, canvas); // keep canvas alive
   return texture;
 }
 
@@ -150,16 +151,28 @@ function createNeutralFaceMap(quality) {
   ctx.fillRect(0, 0, size, size);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
   _neutralFaceCache.set(key, texture);
+  canvasCache.set('neutral:' + key, canvas);
   return texture;
 }
 
 function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
+  const isSimple = quality !== 'high';
   return FACE_VALUES.map(value => {
     const hot = state === 'hot', scoring = state === 'scoring', dead = state === 'dead';
     const faceMap = dead ? createNeutralFaceMap(quality) : faceTexture(value, skinId, quality);
-    const emissive = hot ? '#d89100' : scoring ? '#00cc55' : '#ffffff';
+    const emissive = hot ? '#d89100' : scoring ? '#00cc55' : '#000000';
+    const emissiveIntensity = dead ? 0 : hot ? .35 : scoring ? .4 : 0;
+    if (isSimple) {
+      return new THREE.MeshStandardMaterial({
+        map: faceMap, color: dead ? '#888888' : '#ffffff',
+        roughness: .7, metalness: 0,
+        emissive: new THREE.Color(emissive), emissiveIntensity,
+        transparent: !!skin.opacity, opacity: dead ? 1 : (skin.opacity || 1)
+      });
+    }
     return new THREE.MeshPhysicalMaterial({
       map: faceMap,
       color: dead ? '#888888' : '#ffffff',
@@ -167,10 +180,10 @@ function materialsFor(skinId, state, quality) {
       metalness: dead ? 0 : skin.metalness,
       emissive: new THREE.Color(emissive),
       emissiveMap: faceMap,
-      emissiveIntensity: dead ? .08 : hot ? .55 : scoring ? .65 : .38,
+      emissiveIntensity,
       transparent: !!skin.opacity,
       opacity: dead ? 1 : (skin.opacity || 1),
-      transmission: quality === 'high' && ['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0,
+      transmission: ['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0,
       thickness: .35,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
       clearcoat: dead ? 0 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25,
@@ -211,15 +224,18 @@ function makeStage(container, quality, preview=false) {
   const height = preview ? 210 : Math.max(110, Math.min(145, width*.33));
   renderer.setSize(width,height,false);
   const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
   const camera = new THREE.PerspectiveCamera(preview ? 26 : 23,width/height,.1,50);
   camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
   camera.lookAt(0,preview ? .25 : .55,0);
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444466,quality === 'high' ? 4.0 : 4.5));
-  const key = new THREE.DirectionalLight(0xfff5d4,quality === 'high' ? 5.0 : 4.0);
-  key.position.set(-3,6,4); key.castShadow = quality === 'high'; scene.add(key);
-  const rim = new THREE.PointLight(0x58bfff,quality === 'high' ? 14 : 8,12); rim.position.set(4,2,-2); scene.add(rim);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.36 }));
-  ground.rotation.x=-Math.PI/2;ground.position.y=.02;ground.receiveShadow=true;scene.add(ground);
+  const lightMul = quality === 'high' ? 1 : .6;
+  scene.add(new THREE.HemisphereLight(0xffffff,0x666688,1.2 * lightMul));
+  const key = new THREE.DirectionalLight(0xfff5d4,1.5 * lightMul);
+  key.position.set(-3,6,4); scene.add(key);
+  const rim = new THREE.PointLight(0x88ddff,3 * lightMul,10); rim.position.set(4,2,-2); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0x8888ff,.6 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.3 }));
+  ground.rotation.x=-Math.PI/2;ground.position.y=-.35;ground.receiveShadow=true;scene.add(ground);
   const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
   const onLost = () => {
     stage.contextLost = true;
@@ -276,7 +292,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   dice.forEach((value,index)=>{
     const state=states[index]||'normal',skin=skinFor(skinId);
     const mesh=new THREE.Mesh(geometry,materialsFor(skinId,state,quality));mesh.castShadow=quality==='high';mesh.receiveShadow=true;
-    const targetX=index*spacing-total/2;mesh.position.set(targetX+(Math.random()-.5)*1.8,2.2+Math.random(),(Math.random()-.5)*1.2);
+    const targetX=index*spacing-total/2;mesh.position.set(targetX+(Math.random()-.5)*1.8,1.8+Math.random(),(Math.random()-.5)*1.2);
     mesh.quaternion.setFromEuler(new THREE.Euler(Math.random()*6,Math.random()*6,Math.random()*6));
     starts.push({position:mesh.position.clone(),quaternion:mesh.quaternion.clone()});targets.push({position:new THREE.Vector3(targetX,.7,0),quaternion:targetQuaternion(value)});
     stage.scene.add(mesh);stage.objects.push(mesh);
@@ -291,7 +307,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
     if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
-    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?7:4.5)*(1+.08*Math.sin(now*.006));
+    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?3:2)*(1+.06*Math.sin(now*.005));
     try { stage.renderer.render(stage.scene,stage.camera); } catch(_){ clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return; }
     if(elapsed<duration+linger)stage.frame=requestAnimationFrame(animate);
   };
