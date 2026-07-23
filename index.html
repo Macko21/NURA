@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#52dad2" />
+  <meta name="theme-color" content="#0c1220" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -20,10 +20,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Supabase — reemplaza Firebase (env.js ahora carga el SDK y crea el cliente) -->
   <script src="env.js"></script>
 
-  <!-- Módulos de la aplicación -->
   <script defer src="app/db.js"></script>
   <script defer src="app/ui.js"></script>
   <script defer src="app/auth.js"></script>
@@ -40,11 +38,11 @@
 <body>
 
   <!-- SPLASH -->
-  <div id="splash" style="position:fixed;inset:0;background:#0d1117;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s;">
-    <img src="logo.png" style="width:110px;height:110px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(82,218,210,0.6));animation:splashPulse 1.5s ease-in-out infinite alternate;" />
-    <div style="font-family:'Nunito',sans-serif;font-size:28px;font-weight:900;letter-spacing:8px;color:#fff;margin-top:8px;">NUR<span style="color:#a78bfa;">A</span></div>
-    <div style="font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:3px;text-transform:uppercase;margin-top:4px;">artículos de limpieza</div>
-    <div style="margin-top:28px;width:48px;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
+  <div id="splash" style="position:fixed;inset:0;background:#0c1220;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s;">
+    <img src="logo.png" style="width:96px;height:96px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(82,218,210,0.5));animation:splashPulse 1.5s ease-in-out infinite alternate;" />
+    <div style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900;letter-spacing:6px;color:#fff;margin-top:8px;">NUR<span style="color:#a78bfa;">A</span></div>
+    <div style="font-size:8px;color:rgba(255,255,255,0.25);letter-spacing:2.5px;text-transform:uppercase;margin-top:4px;">artículos de limpieza</div>
+    <div style="margin-top:24px;width:40px;height:2.5px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
       <div style="height:100%;background:linear-gradient(90deg,#52dad2,#a78bfa);animation:splashLoad 1.2s ease-in-out infinite;border-radius:2px;"></div>
     </div>
   </div>
@@ -67,12 +65,12 @@
   </div>
 
   <!-- SYNC BAR -->
-  <div id="syncBar" style="display:none;position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#1ab8af,#a78bfa);z-index:8000;animation:syncP .9s ease-in-out infinite alternate;pointer-events:none;"></div>
+  <div id="syncBar" style="display:none;position:fixed;top:0;left:0;right:0;height:2.5px;background:linear-gradient(90deg,#1ab8af,#a78bfa);z-index:8000;animation:syncP .9s ease-in-out infinite alternate;pointer-events:none;"></div>
 
   <!-- APP -->
   <div id="app" style="display:none;">
     <nav class="sidebar" id="sidebar">
-      <button id="sidebarClose" style="position:absolute; top:10px; right:10px; background:none; border:none; color:white; font-size:24px; z-index:101;">✕</button>
+      <button id="sidebarClose" style="position:absolute;top:8px;right:8px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:20px;z-index:101;padding:8px;">✕</button>
       <div class="sidebar-logo">
         <img src="logo.png" alt="Nura" class="logo-img" />
         <div class="logo-text">
@@ -82,8 +80,8 @@
       </div>
       <ul class="nav-menu" id="navMenu"></ul>
       <div class="sidebar-footer">
-        <div id="syncStatus" style="display:flex;align-items:center;gap:8px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:rgba(255,255,255,0.35);">
-          <span id="syncDot" style="width:6px;height:6px;border-radius:50%;background:#52dad2;flex-shrink:0;transition:background .3s;"></span>
+        <div id="syncStatus" style="display:flex;align-items:center;gap:6px;padding:6px 12px;margin-bottom:6px;font-size:10px;color:rgba(255,255,255,0.3);">
+          <span id="syncDot" style="width:5px;height:5px;border-radius:50%;background:#52dad2;flex-shrink:0;transition:background .3s;"></span>
           <span id="syncTxt">Conectando...</span>
         </div>
         <button class="btn-wsp" id="btnWhatsappGlobal">
@@ -98,8 +96,7 @@
         <button class="hamburger" id="hamburger">☰</button>
         <div class="topbar-title" id="pageTitle">Dashboard</div>
         <div class="topbar-actions" id="topbarActions"></div>
-         <!-- BOTÓN CERRAR SESIÓN -->
-        <button id="logoutBtn" class="btn btn-sm btn-outline" style="flex-shrink:0;">🚪 Salir</button>
+        <button id="logoutBtn" class="btn btn-sm btn-outline">🚪 Salir</button>
       </header>
       <div class="page active" id="page-dashboard"></div>
       <div class="page" id="page-catalogo"></div>
@@ -113,6 +110,14 @@
       <div class="page" id="page-usuarios"></div>
       <div class="page" id="page-misreportes"></div>
     </main>
+
+    <!-- BOTTOM NAV (Mobile) -->
+    <nav class="bottom-nav" id="bottomNav">
+      <div class="bottom-nav-inner" id="bottomNavInner"></div>
+    </nav>
+
+    <!-- FAB (Mobile) -->
+    <button class="fab" id="fab" title="Nueva Venta">+</button>
   </div>
 
   <!-- MODAL -->
@@ -134,7 +139,6 @@
     function initApp() {
       if (!window._FB_READY) { document.addEventListener('fb-ready', initApp, { once:true }); return; }
       if (window._nuraInit) { window._nuraInit(); return; }
-      // Si _nuraInit no está listo aún, esperar a que db.js lo setee
       const check = setInterval(() => {
         if (window._nuraInit) { clearInterval(check); window._nuraInit(); }
       }, 50);
@@ -154,11 +158,11 @@
     function mostrarInstall() {
       if (!_dip || document.getElementById('installBanner')) return;
       const b = document.createElement('div'); b.id = 'installBanner';
-      b.innerHTML = `<div style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:#161d27;border:1px solid rgba(82,218,210,0.3);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:11px;box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:7000;max-width:330px;width:calc(100% - 24px);">
-        <img src="logo.png" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;">
-        <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:800;color:#fff;font-size:13px;">Instalá NURA</div><div style="font-size:11px;color:rgba(255,255,255,0.4);">Accedé desde la pantalla de inicio</div></div>
-        <button onclick="instalarPWA()" style="background:linear-gradient(135deg,#1ab8af,#52dad2);color:#fff;border:none;border-radius:8px;padding:8px 13px;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;cursor:pointer;">Instalar</button>
-        <button onclick="this.closest('#installBanner').remove()" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:18px;padding:2px 4px;">✕</button>
+      b.innerHTML = `<div style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#161d27;border:1px solid rgba(82,218,210,0.25);border-radius:var(--r-md);padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:7000;max-width:320px;width:calc(100% - 24px);">
+        <img src="logo.png" style="width:34px;height:34px;object-fit:contain;flex-shrink:0;">
+        <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:800;color:#fff;font-size:12px;">Instalá NURA</div><div style="font-size:10px;color:rgba(255,255,255,0.35);">Accedé desde la pantalla de inicio</div></div>
+        <button onclick="instalarPWA()" style="background:linear-gradient(135deg,#1ab8af,#52dad2);color:#fff;border:none;border-radius:var(--r-sm);padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;cursor:pointer;">Instalar</button>
+        <button onclick="this.closest('#installBanner').remove()" style="background:none;border:none;color:rgba(255,255,255,0.25);cursor:pointer;font-size:16px;padding:2px 4px;">✕</button>
       </div>`;
       document.body.appendChild(b);
     }
@@ -168,7 +172,6 @@
       const b = document.getElementById('installBanner'); if(b) b.remove();
     };
 
-    // bloquear zoom multitouch
     document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
     let lastTouchEnd = 0;
     document.addEventListener('touchend', function (event) {

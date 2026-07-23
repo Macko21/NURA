@@ -66,6 +66,33 @@ let currentPage = 'dashboard';
 const PAGES_ADMIN = ['dashboard','catalogo','clientes','ventas','compras','stock','combos','deudas','reportes','usuarios'];
 const PAGES_VENDEDOR = ['catalogo','combos','stock','clientes','ventas','misreportes'];
 
+const BOTTOM_NAV_ADMIN = [
+  { page: 'dashboard', icon: '📊', label: 'Inicio' },
+  { page: 'ventas',    icon: '💸', label: 'Ventas' },
+  { page: 'reportes',  icon: '📈', label: 'Reportes' },
+  { page: 'clientes',  icon: '👥', label: 'Clientes' },
+  { page: 'stock',     icon: '📦', label: 'Stock' },
+];
+const BOTTOM_NAV_VENDEDOR = [
+  { page: 'catalogo',    icon: '🧴', label: 'Catálogo' },
+  { page: 'ventas',      icon: '💸', label: 'Ventas' },
+  { page: 'misreportes', icon: '📈', label: 'Reportes' },
+  { page: 'clientes',    icon: '👥', label: 'Clientes' },
+  { page: 'stock',       icon: '📦', label: 'Stock' },
+];
+
+function buildBottomNav() {
+  const inner = document.getElementById('bottomNavInner');
+  if (!inner) return;
+  const items = Sesion.esAdmin() ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_VENDEDOR;
+  inner.innerHTML = items.map(it =>
+    `<div class="bottom-nav-item" data-page="${it.page}"><span class="bnav-icon">${it.icon}</span><span>${it.label}</span></div>`
+  ).join('');
+  inner.querySelectorAll('.bottom-nav-item').forEach(el => {
+    el.onclick = () => navigate(el.dataset.page);
+  });
+}
+
 function buildMenu() {
   const menu = document.getElementById('navMenu');
   if (!menu) return;
@@ -93,17 +120,19 @@ function buildMenu() {
   document.querySelectorAll('.nav-item').forEach(item => {
     item.onclick = () => navigate(item.dataset.page);
   });
+  buildBottomNav();
 }
 
 function navigate(page) {
   const allowed = Sesion.esAdmin() ? PAGES_ADMIN : PAGES_VENDEDOR;
   if (!allowed.includes(page)) return;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + page));
   document.getElementById('pageTitle').textContent =
     { dashboard: 'Dashboard', catalogo: 'Catálogo', clientes: 'Clientes', ventas: 'Ventas', compras: 'Compras',
-      stock: 'Stock', reportes: 'Reportes', combos: 'Combos', deudas: '💳 Deudas', usuarios: '👤 Usuarios',
-      misreportes: '📈 Mis Reportes' }[page];
+      stock: 'Stock', reportes: 'Reportes', combos: 'Combos', deudas: 'Deudas', usuarios: 'Usuarios',
+      misreportes: 'Mis Reportes' }[page];
   currentPage = page;
   document.getElementById('topbarActions').innerHTML = '';
   renderPage(page);

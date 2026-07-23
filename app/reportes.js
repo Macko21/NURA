@@ -46,57 +46,65 @@ function calcularCostoVenta(venta) {
 // DASHBOARD — Actualización en tiempo real
 // ══════════════════════════════════════════════════════════════════════
 function renderDashboard() {
-  const el=document.getElementById('page-dashboard');
+  const el = document.getElementById('page-dashboard');
   if (!el) return;
-  const tv=DB.ventas.reduce((s,v)=>s+v.total,0);
-  const tc=DB.compras.reduce((s,c)=>s+c.total,0);
-  const sb=DB.productos.filter(p=>p.tipo==='accesorio'?(p.stockUnidades||0)<=(p.stockMinUnidades||0):(p.stockLitros||0)<=(p.stockMinLitros||0)).length;
-  const meses=[];
-  for(let i=5;i>=0;i--){const d=new Date();d.setMonth(d.getMonth()-i);meses.push({label:d.toLocaleString('es-AR',{month:'short'}),year:d.getFullYear(),month:d.getMonth()});}
-  const vm=meses.map(m=>({label:m.label,val:DB.ventas.filter(v=>{const d=new Date(v.fecha);return d.getMonth()===m.month&&d.getFullYear()===m.year;}).reduce((s,v)=>s+v.total,0)}));
-  const maxV=Math.max(...vm.map(m=>m.val),1);
-  const ult=[...DB.ventas].sort((a,b)=>a.fecha-b.fecha).map((v,i)=>({...v,num:i+1})).sort((a,b)=>b.fecha-a.fecha).slice(0,5);
+  const tv = DB.ventas.reduce((s,v) => s+v.total, 0);
+  const tc = DB.compras.reduce((s,c) => s+c.total, 0);
+  const ganancia = tv - tc;
+  const sb = DB.productos.filter(p => p.tipo==='accesorio' ? (p.stockUnidades||0)<=(p.stockMinUnidades||0) : (p.stockLitros||0)<=(p.stockMinLitros||0));
+  const meses = [];
+  for (let i=5; i>=0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth()-i);
+    meses.push({ label: d.toLocaleString('es-AR',{month:'short'}), year: d.getFullYear(), month: d.getMonth() });
+  }
+  const vm = meses.map(m => ({
+    label: m.label,
+    val: DB.ventas.filter(v => { const d=new Date(v.fecha); return d.getMonth()===m.month && d.getFullYear()===m.year; }).reduce((s,v) => s+v.total, 0)
+  }));
+  const maxV = Math.max(...vm.map(m => m.val), 1);
+  const ult = [...DB.ventas].sort((a,b) => b.fecha-a.fecha).slice(0,5);
   const lastUpdateStr = typeof getLastUpdateStr === 'function' ? getLastUpdateStr() : '';
-  el.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div></div>
-      <div id="dashLastUpdate" style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
-        <span style="width:6px;height:6px;border-radius:50%;background:var(--accent-dark);animation:pulse 2s infinite;"></span>
-        Actualizado ${lastUpdateStr}
-      </div>
-    </div>
-    <div class="grid-4 mb-16">
-      <div class="stat-card dash-stat" data-stat="ventas"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-label">Ventas totales</div><div class="stat-value">${fmt(tv)}</div><div class="stat-sub">${DB.ventas.length} transacc.</div></div></div>
-      <div class="stat-card dash-stat" data-stat="productos"><div class="stat-icon violet">📦</div><div class="stat-info"><div class="stat-label">Productos</div><div class="stat-value">${DB.productos.length}</div></div></div>
-      <div class="stat-card dash-stat" data-stat="clientes"><div class="stat-icon blue">👥</div><div class="stat-info"><div class="stat-label">Clientes</div><div class="stat-value">${DB.clientes.length}</div></div></div>
-      <div class="stat-card dash-stat" data-stat="stock"><div class="stat-icon ${sb>0?'red':'green'}">${sb>0?'⚠️':'✅'}</div><div class="stat-info"><div class="stat-label">Stock bajo</div><div class="stat-value">${sb}</div></div></div>
-    </div>
-    <div class="grid-2 mb-16">
-      <div class="card"><div class="section-header"><div class="section-title">Ventas por mes</div></div>
-        <div class="mini-chart">${vm.map(m=>`<div class="bar-wrap"><div class="bar" style="height:${Math.round((m.val/maxV)*90)}px" title="${fmt(m.val)}"></div><div class="bar-label">${m.label}</div></div>`).join('')}</div>
-      </div>
-      <div class="card"><div class="section-header"><div class="section-title">Financiero</div></div>
-        <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
-          <div class="cost-row"><span>Ventas</span><span class="fw-700" style="color:var(--accent-dark)">${fmt(tv)}</span></div>
-          <div class="cost-row"><span>Compras</span><span class="fw-700" style="color:var(--danger)">${fmt(tc)}</span></div>
-          <div class="cost-row total"><span>Ganancia est.</span><span>${fmt(tv-tc)}</span></div>
-        </div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="section-header"><div class="section-title">Últimas ventas</div><button class="btn btn-secondary btn-sm" onclick="navigate('ventas')">Ver todas →</button></div>
-      ${ult.length===0?`<div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas aún</p></div>`:dashVentas(ult)}
-    </div>`;
-}
 
-function dashVentas(items) {
-  const tbl=`<div class="table-wrap hide-mobile" style="margin-top:10px;"><table><thead><tr><th>Trans.</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead><tbody>
-    ${items.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<tr><td><span class="badge badge-blue">#${v.num}</span></td><td>${fmtDate(v.fecha)}</td><td>${cl?cl.nombre:v.clienteNombre||'—'}</td><td class="fw-700">${fmt(v.total)}</td><td><span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></td></tr>`;}).join('')}
-    </tbody></table></div>`;
-  const cards=`<div class="mobile-card-list" style="margin-top:10px;">
-    ${items.map(v=>{const cl=DB.clientes.find(c=>c.id===v.clienteId);return`<div class="m-card"><div class="m-card-header"><div><div class="m-card-title"><span class="badge badge-blue" style="margin-right:6px;">#${v.num}</span> ${cl?cl.nombre:v.clienteNombre||'Sin cliente'}</div><div class="m-card-subtitle">${fmtDate(v.fecha)}</div></div><span class="badge badge-${v.estado==='pagado'?'green':v.estado==='pendiente'?'orange':'red'}">${v.estado}</span></div><div style="font-family:var(--font-display);font-size:20px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div></div>`;}).join('')}
-  </div>`;
-  return tbl+cards;
+  el.innerHTML = `
+    <div class="dash-topbar">
+      <div></div>
+      <div id="dashLastUpdate" class="dash-live-dot">
+        <span></span> Actualizado ${lastUpdateStr}
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-icon" style="background:var(--accent-soft);color:var(--accent);">💰</div><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(tv)}</div><div class="kpi-sub">${DB.ventas.length} ventas</div></div>
+      <div class="kpi-card"><div class="kpi-icon" style="background:var(--teal-soft);color:var(--teal);">📈</div><div class="kpi-label">Ganancia</div><div class="kpi-value" style="color:${ganancia>=0?'var(--teal)':'var(--red)'}">${fmt(ganancia)}</div><div class="kpi-sub">${tc>0?Math.round((ganancia/tv)*100)+'% margen':'—'}</div></div>
+      <div class="kpi-card"><div class="kpi-icon" style="background:var(--violet-soft);color:var(--violet);">👥</div><div class="kpi-label">Clientes</div><div class="kpi-value">${DB.clientes.length}</div></div>
+      <div class="kpi-card"><div class="kpi-icon" style="background:${sb.length?'var(--red-soft)':'var(--green-soft)'};color:${sb.length?'var(--red)':'var(--green)'};">${sb.length?'⚠️':'✅'}</div><div class="kpi-label">Stock bajo</div><div class="kpi-value">${sb.length}</div><div class="kpi-sub">${sb.length?sb.slice(0,2).map(p=>p.nombre).join(', ')+((sb.length>2)?'...':''):'Todo OK'}</div></div>
+    </div>
+
+    <div class="card mb-16">
+      <div class="section-title mb-12">Ventas por mes</div>
+      <div class="bar-chart">
+        ${vm.map(m => `<div class="bar-col"><div class="bar-track"><div class="bar-fill" style="height:${Math.round((m.val/maxV)*100)}%" title="${fmt(m.val)}"></div></div><div class="bar-label">${m.label}</div><div class="bar-val">${fmt(m.val)}</div></div>`).join('')}
+      </div>
+    </div>
+
+    <div class="card mb-16">
+      <div class="section-title mb-12">Últimas ventas</div>
+      ${ult.length===0 ? `<div class="empty-state"><p>Sin ventas aún</p></div>` :
+        `<ul class="activity-list">
+          ${ult.map(v => {
+            const cl = DB.clientes.find(c => c.id===v.clienteId);
+            const estadoClass = v.estado==='pagado' ? 'pagado' : v.estado==='pendiente' ? 'pendiente' : 'adeuda';
+            return `<li class="activity-item" onclick="navigate('ventas')">
+              <div class="activity-dot ${estadoClass}"></div>
+              <div class="activity-body">
+                <div class="activity-title">${cl?cl.nombre:v.clienteNombre||'Sin cliente'}</div>
+                <div class="activity-time">${fmtDate(v.fecha)}</div>
+              </div>
+              <div class="activity-amount">${fmt(v.total)}</div>
+            </li>`;
+          }).join('')}
+        </ul>`}
+    </div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════

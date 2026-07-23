@@ -42,6 +42,12 @@ document.getElementById('logoutBtn').onclick = () => {
 // ── Init ─────────────────────────────────────────────────────────────
 console.log('🌿 NURA — Supabase + PWA + Módulos');
 
+// ── FAB → Nueva Venta ────────────────────────────────────────────────
+const fab = document.getElementById('fab');
+if (fab) {
+  fab.onclick = () => navigate('ventas');
+}
+
 // ── Actualizar timestamp "Última actualización" cada 10s ──────────────
 setInterval(() => {
   const el = document.getElementById('dashLastUpdate');
