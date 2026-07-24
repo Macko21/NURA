@@ -738,7 +738,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
 
 /* ── FAB (Floating Action Button) ───────────────────────────────────── */
 .fab {
-  display: none; /* hidden on PC */
+  display: flex; /* show on all screens */
   position: fixed; bottom: calc(var(--bottom-nav-h) + 16px + var(--safe-bottom));
   right: 20px;
   width: 56px; height: 56px;
@@ -821,7 +821,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
 
   /* Bottom nav + FAB */
   .bottom-nav { display: block; }
-  .fab { display: flex; }
+  .fab { bottom: calc(var(--bottom-nav-h) + 12px + var(--safe-bottom)); }
 
   #logoutBtn { order: 10; font-size: 10.5px; padding: 5px 8px; }
 
@@ -833,10 +833,11 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
   .grid-4 { grid-template-columns: 1fr 1fr; }
 }
 
-/* PC: ≥701px */
+/* Desktop: ≥701px */
 @media (min-width: 701px) {
   .hamburger { display: none !important; }
   #sidebarClose { display: none; }
+  .fab { bottom: 24px; }
 }
 
 /* Desktop: ≥768px — deudas 2 cols */

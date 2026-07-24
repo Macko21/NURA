@@ -63,6 +63,10 @@ function closeModal() { document.getElementById('modalOverlay').classList.remove
 
 // ── Notas de versión ──────────────────────────────────────────────────
 const NOTAS_VERSION = [
+  { v: '2.5', fecha: '2026-07-23', notas: [
+    'Fix: FAB ahora visible en desktop',
+    'Fix: posición FAB ajustada en desktop (sin bottom nav)',
+  ]},
   { v: '2.4', fecha: '2026-07-23', notas: [
     'Fix: tablas no se veían en desktop',
     'Fix: .hide-mobile ocultaba todo en todos los tamaños',
