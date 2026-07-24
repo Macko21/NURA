@@ -63,6 +63,10 @@ function closeModal() { document.getElementById('modalOverlay').classList.remove
 
 // ── Notas de versión ──────────────────────────────────────────────────
 const NOTAS_VERSION = [
+  { v: '2.4', fecha: '2026-07-23', notas: [
+    'Fix: tablas no se veían en desktop',
+    'Fix: .hide-mobile ocultaba todo en todos los tamaños',
+  ]},
   { v: '2.3', fecha: '2026-07-23', notas: [
     'Fix: vistas vacías en desktop (session check diferido)',
     'Fix: logo "artículos de limpieza" debajo de NURA',
