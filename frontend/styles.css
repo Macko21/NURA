@@ -832,7 +832,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 }
 /* Hot con skin: ya no se usa — JS setea fondo dorado + box-shadow inline */
 .die.hot[class*="die-skin-"]{}
-.die.dead{opacity:.65;filter:grayscale(1);transform:scale(.95)}
+.die.dead{}
 
 /* ── Efectos visuales por skin de dados ──────────────── */
 .die[class*="die-skin-"]::after{content:'';position:absolute;inset:-8px;border-radius:18px;pointer-events:none;z-index:0;opacity:0;transition:opacity .3s}
@@ -1409,8 +1409,8 @@ body.ultra-dark .game-table{background:linear-gradient(180deg, #060610 0%, #0202
 
 /* Entry Banner Toast (non-blocking) */
 .entry-banner-toast{
-  position:fixed;left:50%;top:max(12px,env(safe-area-inset-top,0px)+4px);
-  transform:translateX(-50%) translateY(-30px);
+  position:fixed;left:50%;bottom:max(100px,env(safe-area-inset-bottom,0px)+80px);
+  transform:translateX(-50%) translateY(30px);
   z-index:600;opacity:0;transition:opacity .35s ease,transform .35s ease;
   pointer-events:none;
 }

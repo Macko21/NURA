@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.5.0";
+const GAME_VERSION = "4.5.1";
 
 const CHANGELOG = [
+  {
+    version: "4.5.1",
+    date: "2026-07-23",
+    title: "🎲 Fix: rotaciones 3D correctas + entrada termina el turno",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "dice-renderer.js", "diceManager.js", "version.js", "index.html"],
+    changes: [
+      "🎲 3D FIX: targetQuaternion corregido (rotaciones de caras apuntaban a valores incorrectos)",
+      "🎲 3D GLOW: materialsFor restaurado con brillo emissivo verde/dorado según estado",
+      "🎲 CACHE: _3D_CACHE_BUST para forzar recarga del módulo 3D",
+      "🎮 ENTRY: al entrar el turno termina y pasa al siguiente (vuelve _advanceTurn)",
+      "📢 BANNER: mensaje cambiado a 'en tu próximo turno sumás'",
+      "📦 VERSION: bump a 4.5.1 para limpiar cache del navegador"
+    ]
+  },
   {
     version: "4.5.0",
     date: "2026-07-23",

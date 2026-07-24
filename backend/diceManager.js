@@ -378,6 +378,8 @@ function handleEntryRoll(roomId, playerId, broadcast) {
   cur.entryAttemptsUsed++;
   const attemptsLeft = maxAttempts - cur.entryAttemptsUsed;
 
+  console.log('🎲 ENTRY_ROLL - player:', playerId.slice(0,8), 'dice:', JSON.stringify(dice), 'TOTAL_DICE:', TOTAL_DICE, 'entryAttemptsUsed:', cur.entryAttemptsUsed, 'entered:', cur.entered);
+
   if (isInstantWin(dice, cur.score)) {
     cur.fiveOnes++;
     cur.score   = MAX_SCORE;
@@ -392,27 +394,44 @@ function handleEntryRoll(roomId, playerId, broadcast) {
     return { ok: true, event: "INSTANT_WIN", dice };
   }
 
-  const { score: rollScore } = calculateScore(dice);
+  const { score: rollScore, scoringDice, allDiceScoring } = calculateScore(dice);
+  console.log('📊 ENTRY_SCORE - player:', playerId.slice(0,8), 'dice:', JSON.stringify(dice), 'rollScore:', rollScore, 'scoringDice:', scoringDice, 'allDiceScoring:', allDiceScoring, 'canEnter:', rollScore >= 1000, 'attemptsLeft:', attemptsLeft);
 
   if (canEnterGame(rollScore)) {
     const gained   = getEntryScore(rollScore);
-    cur.score      = gained;
+    console.log('✅ ENTRY_SUCCESS - player:', playerId.slice(0,8), 'gained:', gained, 'remainingDice:', TOTAL_DICE - scoringDice, 'allDiceScoring:', allDiceScoring);
+    cur.score      = gained;       // los pts de entrada se bankean automáticamente
     cur.entered    = true;
     cur.turnPoints = 0;
+    cur.remainingDice = TOTAL_DICE - scoringDice;
+    cur.canContinue = cur.remainingDice > 0;
+    cur.mustStop    = false;
+
+    // Si todos los dados puntuaron → dados calientes (se puede tirar todo de nuevo)
+    if (allDiceScoring) {
+      cur.remainingDice = TOTAL_DICE;
+      cur.canContinue = true;
+      cur.isHotDiceTurn = true;
+    }
 
     pushHistory(match, "PLAYER_ENTERED", { playerId, dice, rollScore, gained });
     broadcast(roomId, "PLAYER_ENTERED", {
       playerId, playerName: cur.name, dice, rollScore, gained,
       totalScore: cur.score,
+      turnPoints: 0,
+      remainingDice: cur.remainingDice,
+      canContinue: cur.canContinue,
       entryAttemptsUsed: cur.entryAttemptsUsed,
       entryAttempts: maxAttempts,
       match: snapshotMatch(match)
     });
 
+    // Entró al juego → el turno termina y pasa al siguiente jugador
     _advanceTurn(match, roomId, broadcast);
     return { ok: true, event: "PLAYER_ENTERED", dice, gained };
   }
 
+  console.log('❌ ENTRY_FAILED - player:', playerId.slice(0,8), 'rollScore:', rollScore, 'attemptsLeft:', attemptsLeft);
   pushHistory(match, "ENTRY_FAILED", { playerId, dice, rollScore, attemptsLeft });
 
   if (attemptsLeft > 0) {

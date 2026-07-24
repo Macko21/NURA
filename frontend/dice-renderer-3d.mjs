@@ -162,44 +162,69 @@ function createNeutralFaceMap(quality) {
 function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
   const isSimple = quality !== 'high';
+  const isDead = state === 'dead';
+  // Sin glow emissivo — el borde LED 3D (addEdgeGlow) marca dados scoring/hot
   return FACE_VALUES.map(value => {
-    const hot = state === 'hot', scoring = state === 'scoring', dead = state === 'dead';
-    // Para estado 'dead' (antes de entrar), usar la textura del skin pero grisada
-    const faceMap = dead ? faceTexture(value, skinId, quality) : faceTexture(value, skinId, quality);
-    const baseColor = dead ? '#777777' : '#ffffff';
-    const emissive = hot ? '#d89100' : scoring ? '#00cc55' : dead ? '#222222' : '#000000';
-    const emissiveIntensity = dead ? 0.15 : hot ? .35 : scoring ? .4 : 0;
+    const faceMap = faceTexture(value, skinId, quality);
+    const baseColor = isDead ? '#999999' : '#ffffff';
     if (isSimple) {
       return new THREE.MeshStandardMaterial({
         map: faceMap, color: baseColor,
-        roughness: .7, metalness: 0,
-        emissive: new THREE.Color(emissive), emissiveIntensity,
-        transparent: !!skin.opacity, opacity: dead ? 1 : (skin.opacity || 1)
+        roughness: isDead ? .8 : .7, metalness: 0,
+        transparent: !!skin.opacity, opacity: isDead ? .5 : (skin.opacity || 1)
       });
     }
     return new THREE.MeshPhysicalMaterial({
       map: faceMap,
       color: baseColor,
-      roughness: dead ? .9 : skin.roughness,
-      metalness: dead ? 0 : skin.metalness,
-      emissive: new THREE.Color(emissive),
-      emissiveMap: dead ? undefined : faceMap,
-      emissiveIntensity,
+      roughness: isDead ? .85 : skin.roughness,
+      metalness: isDead ? 0 : skin.metalness,
       transparent: !!skin.opacity,
-      opacity: dead ? .7 : (skin.opacity || 1),
-      transmission: dead ? 0 : (['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0),
+      opacity: isDead ? .5 : (skin.opacity || 1),
+      transmission: isDead ? 0 : (['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0),
       thickness: .35,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
-      clearcoat: dead ? 0 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25,
+      clearcoat: isDead ? 0 : (['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25),
       clearcoatRoughness: skin.effect === 'diamond' ? .05 : .2
     });
   });
 }
 
+/* ── Borde LED 3D para dados scoring/hot ────────────────── */
+// Geometría de cubo simple para líneas de borde (12 aristas limpias, sin subdivisión)
+const _edgeBoxGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.34, 1.34, 1.34));
+
+function addEdgeGlow(stage, color, index, initialX) {
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const edgeLine = new THREE.LineSegments(_edgeBoxGeo, edgeMat);
+  // Se posiciona en la posición inicial del dado; el animate loop lo seguirá
+  edgeLine.position.set(initialX, 2.2, 0);
+  edgeLine.userData = { parentIndex: index, phase: Math.random() * Math.PI * 2 };
+  stage.scene.add(edgeLine);
+  stage.objects.push(edgeLine);
+  return edgeLine;
+}
+
 function targetQuaternion(value) {
+  // Cara frontal del dado es +Z según la cámara.
+  // FACE_VALUES = [3,4,1,6,2,5] → [+X,-X,+Y,-Y,+Z,-Z]
+  // Rotamos la cara que tiene el valor pedido hacia +Z.
+  // Regla mano derecha para rotaciones:
+  //   +X: +Y→+Z  |  -X: +Y→-Z (mirando desde +X)
+  //   +Y: +Z→+X  |  -Y: +Z→-X (mirando desde +Y)
   const rotations = {
-    1:[0,0,0], 6:[Math.PI,0,0], 2:[-Math.PI/2,0,0],
-    5:[Math.PI/2,0,0], 3:[0,0,Math.PI/2], 4:[0,0,-Math.PI/2]
+    1: [ Math.PI/2, 0, 0],    // +Y → +Z  (+90° alrededor de X)
+    2: [0, 0, 0],              // +Z ya visible (sin rotación)
+    3: [0, -Math.PI/2, 0],    // +X → +Z  (-90° alrededor de Y)
+    4: [0,  Math.PI/2, 0],    // -X → +Z  (+90° alrededor de Y)
+    5: [0,  Math.PI,  0],     // -Z → +Z  (180° alrededor de Y)
+    6: [-Math.PI/2, 0, 0]     // -Y → +Z  (-90° alrededor de X)
   };
   return new THREE.Quaternion().setFromEuler(new THREE.Euler(...(rotations[value] || rotations[1])));
 }
@@ -212,7 +237,7 @@ function configureRenderer(container, quality, preview) {
   if (!renderer.getContext() || renderer.getContext().isContextLost()) { renderer.dispose(); return null; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1.3;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -232,7 +257,7 @@ function makeStage(container, quality, preview=false) {
   const camera = new THREE.PerspectiveCamera(preview ? 26 : 23,width/height,.1,50);
   camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
   camera.lookAt(0,preview ? .25 : .55,0);
-  const lightMul = quality === 'high' ? 1 : .6;
+  const lightMul = quality === 'high' ? 1 : .8;
   scene.add(new THREE.HemisphereLight(0xffffff,0x666688,1.0 * lightMul));
   const key = new THREE.DirectionalLight(0xfff5d4,1.2 * lightMul);
   key.position.set(-3,6,4); scene.add(key);
@@ -304,11 +329,39 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));
   const particles=addParticles(stage,skinId,quality==='high'?(effectBoost?30:18):(effectBoost?12:8)),start=performance.now(),duration=reducedMotion()?60:460,linger=quality==='high'?420:260;
   let impacted=false;
+  // Bordes LED 3D para dados scoring/hot (EdgesGeometry, siguen al dado)
+  dice.forEach((_, index) => {
+    const st = states[index] || 'normal';
+    if (st !== 'scoring' && st !== 'hot') return;
+    const targetX = index * spacing - total / 2;
+    addEdgeGlow(stage, st === 'hot' ? 0xffdd00 : 0x00ff66, index, targetX);
+  });
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
     if(stage.contextLost||!stage.renderer.getContext()||stage.renderer.getContext().isContextLost()){clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return;}
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
-    stage.objects.forEach((mesh,i)=>{mesh.position.lerpVectors(starts[i].position,targets[i].position,ease);mesh.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);mesh.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);});
+    // Animar dados y bordes LED
+    stage.objects.forEach((obj,i)=>{
+      if (obj.type === 'LineSegments') {
+        // Borde LED: sigue al dado padre, pulsa opacidad
+        const pIdx = obj.userData.parentIndex;
+        if (pIdx !== undefined && pIdx < starts.length) {
+          const targetPos = targets[pIdx].position;
+          const lerpedPos = new THREE.Vector3().lerpVectors(starts[pIdx].position, targetPos, ease);
+          lerpedPos.y += Math.sin(Math.PI*t)*1.2 + Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);
+          obj.position.copy(lerpedPos);
+          obj.quaternion.slerpQuaternions(starts[pIdx].quaternion, targets[pIdx].quaternion, ease);
+        }
+        const phase = obj.userData.phase || 0;
+        obj.material.opacity = 0.5 + 0.4 * Math.sin(now * 0.003 + phase);
+        return;
+      }
+      // Dado normal
+      if (i >= starts.length) return;
+      obj.position.lerpVectors(starts[i].position,targets[i].position,ease);
+      obj.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);
+      obj.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);
+    });
     if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
     stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?3:2)*(1+.06*Math.sin(now*.005));

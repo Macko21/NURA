@@ -2295,8 +2295,15 @@ wss.on("connection", socket => {
 
         const player = match.players.find(p => p.id === playerId);
         let result;
-        if (!player || !player.entered)
+        if (!player || !player.entered) {
           result = handleEntryRoll(roomId, playerId, broadcastRoom);
+          // DEBUG temporal: ver qué dados y puntaje se generaron en entrada
+          if (result.ok && result.dice) {
+            const { calculateScore } = require('./gameEngine');
+            const calc = calculateScore(result.dice);
+            console.log('🔍 ENTRY DEBUG - player:', playerId.slice(0,8), 'dice:', result.dice, 'rollScore:', calc.score, 'scoringDice:', calc.scoringDice, 'event:', result.event, 'gained:', result.gained);
+          }
+        }
         else
           result = handleRoll(roomId, playerId, broadcastRoom);
 

@@ -1395,17 +1395,22 @@ function handle(type, data) {
       S.banking = false;
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
-      showDice(data.dice,'all');
-      setMsg(`Sacó ${data.rollScore} pts → Costo 1000 → Queda con ${data.gained} pts`, 'good');
+      showDice(data.dice,'scored');
+      setMsg(`Sacó ${data.rollScore} pts → Costo 1000 → Ganaste ${data.gained} pts`, 'good');
+      $('turn-points').textContent = '0';
+      $('roll-count').textContent  = '— / 3';
+      $('bank-pts').textContent    = '';
+      $('btn-bank').disabled = true;
       updateTurnUI(data.match);
       if (data.playerId===S.id) {
         S.entered=true;
-        showEntryBanner(data.gained);
         stopTimer();
+        showEntryBanner(data.gained);
         SFX.enter();
+        if (data.canContinue) startTimer(TURN_SECS);
       }
       renderSB(data.match);
-      sys(`✅ ${data.playerName} entró al juego — queda con ${data.gained} pts`);
+      sys(`✅ ${data.playerName} entró al juego — ganó ${data.gained} pts`);
       break;
 
     case 'ENTRY_FAILED':

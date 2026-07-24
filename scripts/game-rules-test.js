@@ -176,6 +176,7 @@ async function run() {
     assert.equal(typeof cosmetics.equippedAvatar, 'string');
     assert.ok(cosmetics.equippedAvatar.length > 1);
     assert.ok(SHOP_CATALOG.some(item => item.id === cosmetics.equippedDice));
+    assert.ok(SHOP_CATALOG.some(item => item.id === cosmetics.equippedSpecial));
   });
 
   check("bot dificil adapta riesgo y packs premium tienen contenido fijo", () => {

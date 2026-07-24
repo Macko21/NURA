@@ -18,12 +18,14 @@ const DOT_POSITIONS = {
 let _dice3DPromise = null;
 let _diceRenderRequest = 0;
 let _lastDiceView = null;
+// Incrementar cuando se modifique dice-renderer-3d.mjs para forzar recarga del cache
+const _3D_CACHE_BUST = '2';
 
 function loadDice3D() {
   if (window.MackoDice3D) return Promise.resolve(window.MackoDice3D);
   if (!_dice3DPromise) {
     const version = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : 'current';
-    _dice3DPromise = import(`/dice-renderer-3d.mjs?v=${encodeURIComponent(version)}`)
+    _dice3DPromise = import(`/dice-renderer-3d.mjs?v=${encodeURIComponent(version)}&b=${_3D_CACHE_BUST}`)
       .then(() => window.MackoDice3D)
       .catch(err => {
         console.warn('Dados 3D no disponibles; usando renderer 2D:', err.message);
@@ -83,7 +85,6 @@ function makeDieSVG(value, state='normal', skinId=null, dotColor=null) {
   if (!finalDotColor) {
     if (state === 'scoring')      finalDotColor = '#103808';
     else if (state === 'hot')     finalDotColor = '#6b3400';
-    else if (state === 'dead')    finalDotColor = '#666666';
     else                          finalDotColor = '#1a1a2e';
   }
 
@@ -106,22 +107,22 @@ function makeDie(value, state='normal', skinId=null) {
     let dotColor;
 
     if (state === 'dead') {
-      // Mostrar la skin grisada en vez de dados genéricos grises
-      const skinBg0 = shadeColor(skin.bg[0], -40);
-      const skinBg1 = shadeColor(skin.bg[1], -40);
-      el.style.background = `linear-gradient(145deg,${skinBg0},${skinBg1})`;
-      el.style.boxShadow = `2px 2px 0 ${shadeColor(skin.sh, -30)}, 3px 3px 0 ${shadeColor(skin.sh, -40)}, 0 4px 12px rgba(0,0,0,.4), inset 0 1px 2px rgba(200,200,200,.3)`;
-      dotColor = '#666666';
+      // Dead: misma skin con colores normales
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)`;
+      dotColor = skin.dot || '#1a1a2e';
       el.classList.add('die-skin-' + skinId);
     } else if (state === 'scoring') {
-      el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
-      el.style.boxShadow = `2px 2px 0 #206808, 3px 3px 0 #005000, 0 6px 20px rgba(38,140,20,.5), 0 0 16px rgba(118,200,88,.3), inset 0 1px 2px rgba(180,255,160,.5)`;
-      dotColor = '#103808';
+      // Scoring: dado NORMAL + borde LED verde neón brillante
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9), 0 0 0 2.5px rgba(0,255,100,.75), 0 0 14px 6px rgba(0,255,100,.45)`;
+      dotColor = skin.dot || '#1a1a2e';
       el.classList.add('die-skin-' + skinId);
     } else if (state === 'hot') {
-      el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
-      el.style.boxShadow = `2px 2px 0 #A06008, 3px 3px 0 #784000, 0 6px 24px rgba(200,110,0,.6), 0 0 20px rgba(240,220,88,.3), inset 0 1px 2px rgba(255,230,110,.5)`;
-      dotColor = '#6b3400';
+      // Hot: dado NORMAL + borde LED dorado intenso
+      el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
+      el.style.boxShadow = `2px 2px 0 ${skin.sh}, 3px 3px 0 ${skin.sh}, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9), 0 0 0 3px rgba(255,220,50,.85), 0 0 18px 8px rgba(255,220,50,.55)`;
+      dotColor = skin.dot || '#1a1a2e';
       el.classList.add('die-skin-' + skinId);
     } else {
       el.style.background = `linear-gradient(145deg,${skin.bg[0]},${skin.bg[1]})`;
@@ -132,13 +133,19 @@ function makeDie(value, state='normal', skinId=null) {
 
     el.innerHTML = `<span class="die-icon-bg">${skin.icon}</span>` + makeDieSVG(value, state, skinId, dotColor);
   } else if (state === 'scoring') {
-    el.style.background = 'linear-gradient(145deg,#B8E8AC,#76C858)';
+    // Sin skin: fondo default + borde LED verde neón + dots scoring
+    el.style.background = 'linear-gradient(145deg,#F8F4EE,#E8E0D0)';
+    el.style.boxShadow = '2px 2px 0 #C4BAA2, 3px 3px 0 #A49470, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9), 0 0 0 2.5px rgba(0,255,100,.75), 0 0 14px 6px rgba(0,255,100,.45)';
     el.innerHTML = makeDieSVG(value, state, skinId);
   } else if (state === 'hot') {
-    el.style.background = 'linear-gradient(145deg,#F0DC58,#D08000)';
+    // Sin skin: fondo default + borde LED dorado intenso + dots hot
+    el.style.background = 'linear-gradient(145deg,#F8F4EE,#E8E0D0)';
+    el.style.boxShadow = '2px 2px 0 #C4BAA2, 3px 3px 0 #A49470, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9), 0 0 0 3px rgba(255,220,50,.85), 0 0 18px 8px rgba(255,220,50,.55)';
     el.innerHTML = makeDieSVG(value, state, skinId);
   } else if (state === 'dead') {
-    el.innerHTML = makeDieSVG(value, state, skinId);
+    el.style.background = 'linear-gradient(145deg,#F8F4EE,#E8E0D0)';
+    el.style.boxShadow = '2px 2px 0 #C4BAA2, 3px 3px 0 #A49470, 0 6px 16px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3), inset 0 1px 2px rgba(255,255,255,.9)';
+    el.innerHTML = makeDieSVG(value, 'normal', skinId, '#1a1a2e');
   } else {
     el.innerHTML = makeDieSVG(value, state, skinId);
   }
@@ -352,8 +359,8 @@ function showEntryBanner(gained) {
       <span class="entry-banner-icon">🎉</span>
       <span class="entry-banner-title">¡ENTRASTE!</span>
       <span class="entry-banner-sub">${gained > 0
-        ? `<strong>${gained} pts</strong> — próximo turno sumás`
-        : '0 pts — próximo turno empezás a sumar'
+        ? `<strong>${gained} pts</strong> — en tu próximo turno sumás`
+        : '0 pts — en tu próximo turno sumás'
       }</span>
     </div>
   `;
@@ -442,18 +449,6 @@ function createDicePreviewDiv(skinId, size = 'small') {
   container.appendChild(label);
 
   return container;
-}
-
-/* Helper para oscurecer colores (usado en estado 'dead' con skin activa) */
-function shadeColor(hex, percent) {
-  if (!hex) return '#666666';
-  hex = hex.replace('#','');
-  if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
-  const num = parseInt(hex, 16);
-  const r = Math.min(255, Math.max(0, (num >> 16) + percent));
-  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent));
-  const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent));
-  return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
