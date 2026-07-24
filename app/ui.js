@@ -63,13 +63,18 @@ function closeModal() { document.getElementById('modalOverlay').classList.remove
 
 // ── Notas de versión ──────────────────────────────────────────────────
 const NOTAS_VERSION = [
+  { v: '2.1', fecha: '2026-07-23', notas: [
+    'Fix: vistas en blanco después del login',
+    'Fix: sesión se re-verifica después de cargar datos',
+    'Fix: variables CSS aliases (--surface2, --radius-sm, etc.)',
+    'Notas de versión (solo admin)',
+  ]},
   { v: '2.0', fecha: '2026-07-22', notas: [
     'Rediseño completo UI v2.0 — mobile-first',
     'Bottom nav + FAB para nueva venta',
     'Dashboard con gráfico de barras y actividad reciente',
     'Filtros mes/año en Reportes',
     'Top combos en Reportes',
-    'Notas de versión (solo admin)',
   ]},
   { v: '1.5', fecha: '2026-07-20', notas: [
     'Supabase realtime + debounce',
