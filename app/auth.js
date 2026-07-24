@@ -230,15 +230,6 @@ window.eliminarUsuario = async function(id) {
   document.getElementById('loginUser').onkeydown = e => { if (e.key === 'Enter') login(); };
   document.getElementById('loginRole').onkeydown = e => { if (e.key === 'Enter') login(); };
 
-  if (Sesion.verificar()) {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = '';
-    buildMenu();
-    currentPage = Sesion.esAdmin() ? 'dashboard' : 'catalogo';
-    navigate(currentPage);
-    iniciarControlInactividad();
-  } else {
-    document.getElementById('loginScreen').style.display = '';
-    document.getElementById('app').style.display = 'none';
-  }
+  // Session check deferred to after data loads (suscribirColecciones in db.js)
+  // At IIFE time, DB.usuarios is empty so verificar() always fails
 })();

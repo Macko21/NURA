@@ -158,20 +158,17 @@ async function suscribirColecciones() {
   console.log('nura: data loaded, DB.ventas:', DB.ventas.length, 'DB.productos:', DB.productos.length);
   hideSplash();
 
-  // Auth runs at script load time BEFORE data loads — re-check session now
-  if (Sesion.user && Sesion.esAdmin()) {
-    buildMenu();
-    currentPage = 'dashboard';
-    navigate(currentPage);
-  } else if (Sesion.user && Sesion.esVendedor()) {
-    buildMenu();
-    currentPage = 'catalogo';
-    navigate(currentPage);
-  } else if (typeof Sesion !== 'undefined' && Sesion.verificar()) {
+  // Auth IIFE runs before data loads — session check deferred here
+  if (Sesion.verificar()) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = '';
     buildMenu();
     currentPage = Sesion.esAdmin() ? 'dashboard' : 'catalogo';
     navigate(currentPage);
     iniciarControlInactividad();
+  } else {
+    document.getElementById('loginScreen').style.display = '';
+    document.getElementById('app').style.display = 'none';
   }
 
   try {
