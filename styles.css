@@ -625,7 +625,6 @@ textarea { resize: vertical; min-height: 70px; }
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .w-full { width: 100%; }
-.hide-mobile { display: none !important; }
 
 /* ── LOGIN ──────────────────────────────────────────────────────────── */
 #loginScreen {
