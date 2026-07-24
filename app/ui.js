@@ -63,10 +63,10 @@ function closeModal() { document.getElementById('modalOverlay').classList.remove
 
 // ── Notas de versión ──────────────────────────────────────────────────
 const NOTAS_VERSION = [
-  { v: '2.2', fecha: '2026-07-23', notas: [
-    'Fix: vistas vacías (stock, compras, ventas, clientes, usuarios)',
-    'Fix: sesión se verifica después de cargar datos',
-    'Fix: logo "artículos de limpieza" ahora debajo de NURA',
+  { v: '2.3', fecha: '2026-07-23', notas: [
+    'Fix: vistas vacías en desktop (session check diferido)',
+    'Fix: logo "artículos de limpieza" debajo de NURA',
+    'Auth IIFE ya no verifica sesión (DB vacío al cargar)',
   ]},
   { v: '2.1', fecha: '2026-07-23', notas: [
     'Fix: vistas en blanco después del login',
