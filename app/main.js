@@ -45,7 +45,7 @@ console.log('🌿 NURA — Supabase + PWA + Módulos');
 // ── FAB → Nueva Venta ────────────────────────────────────────────────
 const fab = document.getElementById('fab');
 if (fab) {
-  fab.onclick = () => navigate('ventas');
+  fab.onclick = () => formVenta();
 }
 
 // ── Actualizar timestamp "Última actualización" cada 10s ──────────────
