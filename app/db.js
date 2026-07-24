@@ -158,6 +158,22 @@ async function suscribirColecciones() {
   console.log('nura: data loaded, DB.ventas:', DB.ventas.length, 'DB.productos:', DB.productos.length);
   hideSplash();
 
+  // Auth runs at script load time BEFORE data loads — re-check session now
+  if (Sesion.user && Sesion.esAdmin()) {
+    buildMenu();
+    currentPage = 'dashboard';
+    navigate(currentPage);
+  } else if (Sesion.user && Sesion.esVendedor()) {
+    buildMenu();
+    currentPage = 'catalogo';
+    navigate(currentPage);
+  } else if (typeof Sesion !== 'undefined' && Sesion.verificar()) {
+    buildMenu();
+    currentPage = Sesion.esAdmin() ? 'dashboard' : 'catalogo';
+    navigate(currentPage);
+    iniciarControlInactividad();
+  }
+
   try {
     _realtimeChannel = _sb().channel('nura-changes');
     COLS_LIST.forEach(col => {
