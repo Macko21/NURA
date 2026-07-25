@@ -58,6 +58,26 @@ function supportsWebGL() {
 
 function skinFor(id) { return SKINS_3D[String(id)] || SKINS_3D.default; }
 
+function colorDistance(a, b) {
+  const ca = new THREE.Color(a);
+  const cb = new THREE.Color(b);
+  return Math.hypot(ca.r - cb.r, ca.g - cb.g, ca.b - cb.b);
+}
+
+function accentForState(skin, state) {
+  if (state !== 'scoring' && state !== 'hot') return skin.pip;
+  // Casos donde el color semántico normal se perdería contra la propia skin.
+  if (state === 'scoring' && ['emerald','zombie','toxic'].includes(skin.effect)) return '#ff35d3';
+  if (state === 'hot' && ['gold','rainbow'].includes(skin.effect)) return '#ff334f';
+  const candidates = state === 'hot'
+    ? ['#ffc400', '#ff334f', '#00eaff']
+    : ['#00ed79', '#ff35d3', '#00d9ff'];
+  return candidates.reduce((best, candidate) => {
+    const distance = Math.min(...skin.colors.map(color => colorDistance(candidate, color)));
+    return distance > best.distance ? { color:candidate, distance } : best;
+  }, { color:candidates[0], distance:-1 }).color;
+}
+
 function roundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
   if (typeof ctx.roundRect === 'function') {
@@ -104,8 +124,8 @@ function drawSkinIcon(ctx, skin, size) {
   ctx.restore();
 }
 
-function faceTexture(value, skinId, quality) {
-  const key = `${skinId || 'default'}:${value}:${quality}`;
+function faceTexture(value, skinId, quality, state='normal') {
+  const key = `${skinId || 'default'}:${value}:${quality}:${state}`;
   if (textureCache.has(key)) return textureCache.get(key);
   const skin = skinFor(skinId);
   const size = quality === 'high' ? 256 : 128;
@@ -119,14 +139,21 @@ function faceTexture(value, skinId, quality) {
   drawMotif(ctx, skin, size);
   drawSkinIcon(ctx, skin, size);
   const scale = size / 128;
+  const stateAccent = accentForState(skin, state);
+  const highlighted = state === 'scoring' || state === 'hot';
   for (const [x,y] of PIPS[value]) {
     ctx.save();
-    ctx.shadowColor = skin.emissive || skin.pip;
-    ctx.shadowBlur = (skin.emissive ? 10 : 4) * scale;
-    ctx.fillStyle = skin.pip;
-    ctx.strokeStyle = 'rgba(255,255,255,.65)';
-    ctx.lineWidth = 1.6 * scale;
-    ctx.beginPath(); ctx.arc(x*size,y*size,10*scale,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.shadowColor = highlighted ? stateAccent : (skin.emissive || skin.pip);
+    ctx.shadowBlur = (highlighted ? 18 : skin.emissive ? 10 : 4) * scale;
+    ctx.fillStyle = highlighted ? stateAccent : skin.pip;
+    ctx.strokeStyle = highlighted ? 'rgba(5,10,18,.88)' : 'rgba(255,255,255,.65)';
+    ctx.lineWidth = (highlighted ? 3 : 1.6) * scale;
+    ctx.beginPath(); ctx.arc(x*size,y*size,(highlighted ? 10.8 : 10)*scale,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    if (highlighted) {
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.beginPath(); ctx.arc((x*size)-3*scale,(y*size)-3*scale,2.2*scale,0,Math.PI*2); ctx.fill();
+    }
     ctx.restore();
   }
   const texture = new THREE.CanvasTexture(canvas);
@@ -162,18 +189,11 @@ function createNeutralFaceMap(quality) {
 function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
   const isSimple = quality !== 'high';
-  const isDead = state === 'dead';
-  const stateColor = state === 'hot' ? new THREE.Color('#ffd83d')
-    : state === 'scoring' ? new THREE.Color('#25ff9a')
-    : null;
   const emissiveColor = new THREE.Color(skin.emissive || skin.colors?.[0] || '#ffffff');
-  if (stateColor) emissiveColor.lerp(stateColor, state === 'hot' ? .52 : .42);
-  const emissiveIntensity = state === 'hot' ? 1.55 : state === 'scoring' ? 1.28 : .34;
+  const emissiveIntensity = state === 'hot' || state === 'scoring' ? .42 : .34;
   return FACE_VALUES.map(value => {
-    const faceMap = faceTexture(value, skinId, quality);
-    const baseColor = state === 'hot' ? '#ffe46b'
-      : state === 'scoring' ? '#8dffc3'
-      : '#ffffff';
+    const faceMap = faceTexture(value, skinId, quality, state);
+    const baseColor = '#ffffff';
     if (isSimple) {
       return new THREE.MeshStandardMaterial({
         map: faceMap, color: baseColor,
@@ -200,69 +220,49 @@ function materialsFor(skinId, state, quality) {
       transmission: 0,
       thickness: 0,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
-      clearcoat: state === 'hot' ? 1 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .9 : .52,
+      clearcoat: ['gold','diamond','elite','emerald'].includes(skin.effect) ? .9 : .52,
       clearcoatRoughness: skin.effect === 'diamond' ? .08 : .12
     });
   });
 }
 
-/* ── Marco LED 3D clásico para dados scoring/hot ────────── */
-const _neonBarGeo = new THREE.BoxGeometry(1, 1, 1);
-
-function addEdgeGlow(stage, color, index, initialX) {
-  const coreMat = new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity: 1,
-    depthWrite: false,
-    toneMapped: false
-  });
+/* ── Indicador inferior: conserva intacta la silueta del dado ── */
+function addStatusMarker(stage, color, index, initialX) {
   const haloMat = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: .24,
+    opacity: .11,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    toneMapped: false
+    toneMapped: false,
+    side: THREE.DoubleSide
   });
-  const frame = new THREE.Group();
-  const half = .675;
-  const length = 1.39;
-  const core = .038;
-  const halo = .085;
-  const edges = [];
-  for (const y of [-half, half]) for (const z of [-half, half]) {
-    edges.push({ position:[0,y,z], scale:[length,core,core], haloScale:[length,halo,halo] });
-  }
-  for (const x of [-half, half]) for (const z of [-half, half]) {
-    edges.push({ position:[x,0,z], scale:[core,length,core], haloScale:[halo,length,halo] });
-  }
-  for (const x of [-half, half]) for (const y of [-half, half]) {
-    edges.push({ position:[x,y,0], scale:[core,core,length], haloScale:[halo,halo,length] });
-  }
-  edges.forEach(edge => {
-    const haloBar = new THREE.Mesh(_neonBarGeo, haloMat);
-    haloBar.position.set(...edge.position);
-    haloBar.scale.set(...edge.haloScale);
-    haloBar.renderOrder = 3;
-    frame.add(haloBar);
-    const coreBar = new THREE.Mesh(_neonBarGeo, coreMat);
-    coreBar.position.set(...edge.position);
-    coreBar.scale.set(...edge.scale);
-    coreBar.renderOrder = 4;
-    frame.add(coreBar);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: .78,
+    depthWrite: false,
+    toneMapped: false,
+    side: THREE.DoubleSide
   });
-  frame.position.set(initialX, 2.2, 0);
-  frame.userData = {
-    edgeGlow: true,
+  const marker = new THREE.Group();
+  const halo = new THREE.Mesh(new THREE.CircleGeometry(.72, 40), haloMat);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.52, .65, 40), ringMat);
+  halo.rotation.x = ring.rotation.x = -Math.PI / 2;
+  halo.renderOrder = 1;
+  ring.renderOrder = 2;
+  marker.add(halo, ring);
+  marker.position.set(initialX, -.31, 0);
+  marker.userData = {
+    statusMarker: true,
     parentIndex: index,
     phase: Math.random() * Math.PI * 2,
-    coreMat,
+    ringMat,
     haloMat
   };
-  stage.scene.add(frame);
-  stage.objects.push(frame);
-  return frame;
+  stage.scene.add(marker);
+  stage.statusMarkers.push(marker);
+  return marker;
 }
 
 function targetQuaternion(value) {
@@ -319,7 +319,7 @@ function makeStage(container, quality, preview=false) {
   const fill = new THREE.DirectionalLight(0xcfd4ff,1.02 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.3 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=-.35;ground.receiveShadow=true;scene.add(ground);
-  const stage = {renderer,scene,camera,width,height,rim,objects:[],stateLights:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
+  const stage = {renderer,scene,camera,width,height,rim,objects:[],stateLights:[],statusMarkers:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
   const onLost = () => {
     stage.contextLost = true;
     if (stage.disposed) return;
@@ -383,15 +383,15 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));
   const particles=addParticles(stage,skinId,quality==='high'?(effectBoost?30:18):(effectBoost?12:8)),start=performance.now(),duration=reducedMotion()?60:460,linger=quality==='high'?420:260;
   let impacted=false;
-  // Marcos LED 3D sólidos para dados scoring/hot.
+  // Puntos adaptativos + una base inferior discreta para scoring/hot.
   dice.forEach((_, index) => {
     const st = states[index] || 'normal';
     if (st !== 'scoring' && st !== 'hot') return;
     const targetX = index * spacing - total / 2;
-    const glowColor = st === 'hot' ? 0xffc400 : 0x00ff7b;
-    addEdgeGlow(stage, glowColor, index, targetX);
-    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 5.8 : 4.8, 4.8, 1.55);
-    stateLight.position.set(targetX, 1.25, 1.25);
+    const glowColor = accentForState(skinFor(skinId), st);
+    addStatusMarker(stage, glowColor, index, targetX);
+    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 1.7 : 1.45, 2.7, 1.8);
+    stateLight.position.set(targetX, .08, .3);
     stateLight.userData = { parentIndex:index, baseIntensity:stateLight.intensity, phase:index * .8 };
     stage.scene.add(stateLight);
     stage.stateLights.push(stateLight);
@@ -400,37 +400,29 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     if(stage.disposed||currentRequest!==requestId)return;
     if(stage.contextLost||!stage.renderer.getContext()||stage.renderer.getContext().isContextLost()){clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return;}
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
-    // Animar dados y bordes LED
+    // Animar dados.
     stage.objects.forEach((obj,i)=>{
-      if (obj.userData.edgeGlow) {
-        // Marco LED: sigue al dado y conserva un color sólido sin quemarse a blanco.
-        const pIdx = obj.userData.parentIndex;
-        if (pIdx !== undefined && pIdx < starts.length) {
-          const targetPos = targets[pIdx].position;
-          const lerpedPos = new THREE.Vector3().lerpVectors(starts[pIdx].position, targetPos, ease);
-          lerpedPos.y += Math.sin(Math.PI*t)*1.2 + Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);
-          obj.position.copy(lerpedPos);
-          obj.quaternion.slerpQuaternions(starts[pIdx].quaternion, targets[pIdx].quaternion, ease);
-        }
-        const phase = obj.userData.phase || 0;
-        const pulse = .5 + .5 * Math.sin(now * .0045 + phase);
-        obj.userData.coreMat.opacity = .94 + .06 * pulse;
-        obj.userData.haloMat.opacity = .18 + .12 * pulse;
-        return;
-      }
-      // Dado normal
       if (i >= starts.length) return;
       obj.position.lerpVectors(starts[i].position,targets[i].position,ease);
       obj.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);
       obj.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);
     });
+    stage.statusMarkers.forEach(marker => {
+      const pIdx = marker.userData.parentIndex;
+      const position = new THREE.Vector3().lerpVectors(starts[pIdx].position, targets[pIdx].position, ease);
+      marker.position.x = position.x;
+      marker.position.z = position.z;
+      const pulse = .5 + .5 * Math.sin(now * .004 + marker.userData.phase);
+      marker.userData.ringMat.opacity = .68 + .18 * pulse;
+      marker.userData.haloMat.opacity = .08 + .08 * pulse;
+    });
     stage.stateLights.forEach(light => {
       const pIdx = light.userData.parentIndex;
       if (pIdx == null || pIdx >= starts.length) return;
-      light.position.lerpVectors(starts[pIdx].position, targets[pIdx].position, ease);
-      light.position.y += .55 + Math.sin(Math.PI*t)*1.2;
-      light.position.z += 1.05;
-      light.intensity = light.userData.baseIntensity * (.88 + .18 * Math.sin(now * .004 + light.userData.phase));
+      light.position.x = THREE.MathUtils.lerp(starts[pIdx].position.x, targets[pIdx].position.x, ease);
+      light.position.y = .08;
+      light.position.z = THREE.MathUtils.lerp(starts[pIdx].position.z, targets[pIdx].position.z, ease) + .3;
+      light.intensity = light.userData.baseIntensity * (.9 + .16 * Math.sin(now * .004 + light.userData.phase));
     });
     if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;

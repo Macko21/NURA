@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.6.3";
+const GAME_VERSION = "4.6.4";
 
 const CHANGELOG = [
+  {
+    version: "4.6.4",
+    date: "2026-07-25",
+    title: "🎯 Puntos adaptativos sin alterar las skins",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "dice-renderer.js"],
+    changes: [
+      "🎨 SKINS: los dados conservan su color y diseño original, sin tintes opacos ni marcos",
+      "🎯 PUNTOS: los puntos que suman cambian a un color luminoso de alto contraste",
+      "🧟 ADAPTATIVO: una skin verde usa puntos magenta; las skins doradas calientes usan rojo",
+      "💡 SEÑAL: una base luminosa fina debajo del dado ayuda a identificarlo sin taparlo"
+    ]
+  },
   {
     version: "4.6.3",
     date: "2026-07-25",

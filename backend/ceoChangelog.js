@@ -2,6 +2,30 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.6.4": {
+    title: "🎯 Pips adaptativos y marcador inferior discreto",
+    scope: "ceo",
+    files: [
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/dice-renderer.js",
+      "frontend/version.js",
+      "frontend/sw.js",
+      "frontend/index.html",
+      "frontend/ceo-panel.html",
+      "backend/ceoChangelog.js",
+      "android/app/build.gradle",
+      "ios/App/App.xcodeproj/project.pbxproj"
+    ],
+    changes: [
+      "VISUAL REDESIGN: se elimina por completo el marco de 12 barras LED de scoring/hot.",
+      "ADAPTIVE ACCENT: selección por distancia RGB contra todos los colores de la skin, con excepciones semánticas para verdes y dorados.",
+      "PIP TEXTURES: cache de caras ahora incluye estado; pips scoring/hot llevan relleno adaptativo, borde oscuro, brillo y reflejo.",
+      "SKIN FIDELITY: baseColor vuelve a blanco y la emisión de estados baja a 0.42; se eliminan tintes verde/dorado que lavaban la textura.",
+      "STATUS MARKER: RingGeometry y halo inferior siguen cada dado sin rotar ni cubrir sus caras.",
+      "LIGHTING: PointLight de estado reducido y movido debajo del dado para evitar sobreexposición.",
+      "VERSIONING: web, PWA, npm, CEO panel, Android (40604/4.6.4) e iOS (40604/4.6.4) sincronizados."
+    ]
+  },
   "4.6.3": {
     title: "💡 Marco LED sólido y paridad visual pre-entry",
     scope: "ceo",
