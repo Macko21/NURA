@@ -163,29 +163,42 @@ function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
   const isSimple = quality !== 'high';
   const isDead = state === 'dead';
-  // Sin glow emissivo — el borde LED 3D (addEdgeGlow) marca dados scoring/hot
+  const stateColor = state === 'hot' ? new THREE.Color('#ffd83d')
+    : state === 'scoring' ? new THREE.Color('#25ff9a')
+    : null;
+  const emissiveColor = new THREE.Color(skin.emissive || skin.colors?.[0] || '#ffffff');
+  if (stateColor) emissiveColor.lerp(stateColor, state === 'hot' ? .52 : .42);
+  const emissiveIntensity = isDead ? 0 : state === 'hot' ? 1.28 : state === 'scoring' ? .82 : .2;
   return FACE_VALUES.map(value => {
     const faceMap = faceTexture(value, skinId, quality);
     const baseColor = isDead ? '#999999' : '#ffffff';
     if (isSimple) {
       return new THREE.MeshStandardMaterial({
         map: faceMap, color: baseColor,
-        roughness: isDead ? .8 : .7, metalness: 0,
-        transparent: !!skin.opacity, opacity: isDead ? .5 : (skin.opacity || 1)
+        emissive: emissiveColor,
+        emissiveMap: faceMap,
+        emissiveIntensity,
+        roughness: isDead ? .72 : Math.min(.46, skin.roughness + .12),
+        metalness: isDead ? 0 : Math.min(.28, skin.metalness),
+        transparent: !!skin.opacity || isDead,
+        opacity: isDead ? .72 : (skin.opacity || 1)
       });
     }
     return new THREE.MeshPhysicalMaterial({
       map: faceMap,
       color: baseColor,
-      roughness: isDead ? .85 : skin.roughness,
+      emissive: emissiveColor,
+      emissiveMap: faceMap,
+      emissiveIntensity,
+      roughness: isDead ? .76 : Math.min(.44, skin.roughness),
       metalness: isDead ? 0 : skin.metalness,
-      transparent: !!skin.opacity,
-      opacity: isDead ? .5 : (skin.opacity || 1),
-      transmission: isDead ? 0 : (['ghost','diamond','ice'].includes(skin.effect) ? .12 : 0),
+      transparent: !!skin.opacity || isDead,
+      opacity: isDead ? .72 : (skin.opacity || 1),
+      transmission: isDead ? 0 : (['ghost','diamond','ice'].includes(skin.effect) ? .06 : 0),
       thickness: .35,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
-      clearcoat: isDead ? 0 : (['gold','diamond','elite','emerald'].includes(skin.effect) ? .8 : .25),
-      clearcoatRoughness: skin.effect === 'diamond' ? .05 : .2
+      clearcoat: isDead ? 0 : (state === 'hot' ? 1 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .9 : .52),
+      clearcoatRoughness: skin.effect === 'diamond' ? .04 : .14
     });
   });
 }
@@ -208,6 +221,20 @@ function addEdgeGlow(stage, color, index, initialX) {
   edgeLine.userData = { parentIndex: index, phase: Math.random() * Math.PI * 2 };
   stage.scene.add(edgeLine);
   stage.objects.push(edgeLine);
+  const haloMat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: .34,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false
+  });
+  const haloLine = new THREE.LineSegments(_edgeBoxGeo, haloMat);
+  haloLine.position.copy(edgeLine.position);
+  haloLine.scale.setScalar(1.055);
+  haloLine.userData = { parentIndex:index, phase:edgeLine.userData.phase + .9, halo:true };
+  stage.scene.add(haloLine);
+  stage.objects.push(haloLine);
   return edgeLine;
 }
 
@@ -237,7 +264,7 @@ function configureRenderer(container, quality, preview) {
   if (!renderer.getContext() || renderer.getContext().isContextLost()) { renderer.dispose(); return null; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.3;
+  renderer.toneMappingExposure = quality === 'high' ? 1.52 : 1.62;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -257,15 +284,15 @@ function makeStage(container, quality, preview=false) {
   const camera = new THREE.PerspectiveCamera(preview ? 26 : 23,width/height,.1,50);
   camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
   camera.lookAt(0,preview ? .25 : .55,0);
-  const lightMul = quality === 'high' ? 1 : .8;
-  scene.add(new THREE.HemisphereLight(0xffffff,0x666688,1.0 * lightMul));
-  const key = new THREE.DirectionalLight(0xfff5d4,1.2 * lightMul);
+  const lightMul = quality === 'high' ? 1.08 : 1;
+  scene.add(new THREE.HemisphereLight(0xffffff,0x7880a8,1.35 * lightMul));
+  const key = new THREE.DirectionalLight(0xfff5d4,1.65 * lightMul);
   key.position.set(-3,6,4); scene.add(key);
-  const rim = new THREE.PointLight(0x88ddff,2.0 * lightMul,10); rim.position.set(4,2,-2); scene.add(rim);
-  const fill = new THREE.DirectionalLight(0x8888ff,.4 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
+  const rim = new THREE.PointLight(0x88ddff,3.1 * lightMul,11); rim.position.set(4,2,-2); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xb9b9ff,.72 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.3 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=-.35;ground.receiveShadow=true;scene.add(ground);
-  const stage = {renderer,scene,camera,width,height,rim,objects:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
+  const stage = {renderer,scene,camera,width,height,rim,objects:[],stateLights:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
   const onLost = () => {
     stage.contextLost = true;
     if (stage.disposed) return;
@@ -334,7 +361,13 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     const st = states[index] || 'normal';
     if (st !== 'scoring' && st !== 'hot') return;
     const targetX = index * spacing - total / 2;
-    addEdgeGlow(stage, st === 'hot' ? 0xffdd00 : 0x00ff66, index, targetX);
+    const glowColor = st === 'hot' ? 0xffd629 : 0x24ff91;
+    addEdgeGlow(stage, glowColor, index, targetX);
+    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 5.2 : 3.8, 4.2, 1.7);
+    stateLight.position.set(targetX, 1.25, 1.25);
+    stateLight.userData = { parentIndex:index, baseIntensity:stateLight.intensity, phase:index * .8 };
+    stage.scene.add(stateLight);
+    stage.stateLights.push(stateLight);
   });
   const animate=now=>{
     if(stage.disposed||currentRequest!==requestId)return;
@@ -353,7 +386,8 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
           obj.quaternion.slerpQuaternions(starts[pIdx].quaternion, targets[pIdx].quaternion, ease);
         }
         const phase = obj.userData.phase || 0;
-        obj.material.opacity = 0.5 + 0.4 * Math.sin(now * 0.003 + phase);
+        const pulse = .5 + .5 * Math.sin(now * .0045 + phase);
+        obj.material.opacity = obj.userData.halo ? .2 + .28 * pulse : .72 + .28 * pulse;
         return;
       }
       // Dado normal
@@ -362,9 +396,17 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
       obj.position.y+=Math.sin(Math.PI*t)*1.2+Math.abs(Math.sin(t*Math.PI*3))*.18*(1-t);
       obj.quaternion.slerpQuaternions(starts[i].quaternion,targets[i].quaternion,ease);
     });
+    stage.stateLights.forEach(light => {
+      const pIdx = light.userData.parentIndex;
+      if (pIdx == null || pIdx >= starts.length) return;
+      light.position.lerpVectors(starts[pIdx].position, targets[pIdx].position, ease);
+      light.position.y += .55 + Math.sin(Math.PI*t)*1.2;
+      light.position.z += 1.05;
+      light.intensity = light.userData.baseIntensity * (.88 + .18 * Math.sin(now * .004 + light.userData.phase));
+    });
     if(!impacted&&t>.62){impacted=true;window.mackoNativeImpact?.('medium');if(!window.MACKO_NATIVE&&!reducedMotion()&&navigator.vibrate)navigator.vibrate(12);}
     const attr=particles.geometry.attributes.position;particles.userData.velocities.forEach((v,i)=>{attr.array[i*3]+=v.x;attr.array[i*3+1]+=v.y;attr.array[i*3+2]+=v.z;if(attr.array[i*3+1]>2.6)attr.array[i*3+1]=.1;});attr.needsUpdate=true;
-    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?3:2)*(1+.06*Math.sin(now*.005));
+    stage.rim.color.set(skinFor(skinId).edge);stage.rim.intensity=(quality==='high'?3.8:3.25)*(1+.08*Math.sin(now*.005));
     try { stage.renderer.render(stage.scene,stage.camera); } catch(_){ clearGameDice();container.classList.remove('dice-row-3d');window.dispatchEvent(new CustomEvent('macko-dice-3d-lost'));return; }
     if(elapsed<duration+linger)stage.frame=requestAnimationFrame(animate);
   };

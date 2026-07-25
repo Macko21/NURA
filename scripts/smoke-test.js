@@ -75,6 +75,63 @@ function postUrl(path, body) {
   });
 }
 
+function openGameSocket(token, playerName) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://localhost:${PORT}`, { origin: 'https://localhost' });
+    const queued = [];
+    const waiters = [];
+    const openTimeout = setTimeout(() => {
+      ws.terminate();
+      reject(new Error('Timeout identificando WebSocket'));
+    }, 5000);
+
+    ws.waitForType = (type, timeoutMs = 5000) => new Promise((resolveMessage, rejectMessage) => {
+      const queuedIndex = queued.findIndex(message => message.type === type);
+      if (queuedIndex >= 0) {
+        resolveMessage(queued.splice(queuedIndex, 1)[0]);
+        return;
+      }
+      const waiter = { type, resolve: resolveMessage };
+      waiter.timer = setTimeout(() => {
+        const index = waiters.indexOf(waiter);
+        if (index >= 0) waiters.splice(index, 1);
+        rejectMessage(new Error(`Timeout esperando ${type}`));
+      }, timeoutMs);
+      waiters.push(waiter);
+    });
+
+    ws.on('open', () => ws.send(JSON.stringify({
+      type: 'IDENTIFY',
+      data: { token, playerName }
+    })));
+    ws.on('message', raw => {
+      const message = JSON.parse(raw.toString());
+      const waiterIndex = waiters.findIndex(waiter => waiter.type === message.type);
+      if (waiterIndex >= 0) {
+        const waiter = waiters.splice(waiterIndex, 1)[0];
+        clearTimeout(waiter.timer);
+        waiter.resolve(message);
+      } else {
+        queued.push(message);
+      }
+      if (message.type === 'IDENTIFIED') {
+        clearTimeout(openTimeout);
+        resolve(ws);
+      }
+    });
+    ws.on('error', error => {
+      clearTimeout(openTimeout);
+      reject(error);
+    });
+  });
+}
+
+async function createGuest(name) {
+  const res = await postUrl('/api/guest-session', { playerName: name });
+  if (res.status !== 201) throw new Error(`Guest status ${res.status}`);
+  return JSON.parse(res.body);
+}
+
 async function waitForServer() {
   const start = Date.now();
   while (Date.now() - start < TIMEOUT_MS) {
@@ -124,6 +181,8 @@ async function runTests() {
       const data = JSON.parse(res.body);
       assert('Version has version field', !!data.version);
       assert('Version has changelog array', Array.isArray(data.changelog));
+      const sw = await fetchUrl('/sw.js');
+      assert('PWA cache version matches game version', sw.body.includes(`GAME_VERSION = '${data.version}'`));
       console.log(`  📦 v${data.version} — ${data.changelog.length} changelog entries`);
     } catch {
       assert('Version JSON parseable', false, 'Invalid JSON response');
@@ -216,14 +275,83 @@ async function runTests() {
   }
 
   console.log('\n── Sesión invitada y WebSocket ──');
+  let guestSession = null;
   try {
     const res = await postUrl('/api/guest-session', {});
     const data = JSON.parse(res.body);
+    guestSession = data;
     assert('POST /api/guest-session', res.status === 201, `Status ${res.status}`);
     assert('Guest session returns signed token', typeof data.token === 'string' && data.token.split('.').length === 3);
     assert('Guest identity is server-generated', String(data.player?.id || '').startsWith('guest_'));
   } catch (e) {
     assert('POST /api/guest-session', false, e.message);
+  }
+
+  if (guestSession?.token) {
+    try {
+      const res = await fetchUrl('/api/shop/catalog', {
+        Authorization: `Bearer ${guestSession.token}`
+      });
+      const data = JSON.parse(res.body);
+      assert('Shop catalog survives DB fallback', res.status === 200, `Status ${res.status}`);
+      assert('Shop catalog returns items', Array.isArray(data.items) && data.items.length > 0);
+    } catch (e) {
+      assert('Shop catalog survives DB fallback', false, e.message);
+    }
+  }
+
+  try {
+    const first = await createGuest('Smoke Uno');
+    const second = await createGuest('Smoke Dos');
+    const wsOne = await openGameSocket(first.token, 'Smoke Uno');
+    const wsTwo = await openGameSocket(second.token, 'Smoke Dos');
+
+    wsOne.send(JSON.stringify({ type: 'CREATE_ROOM', data: { playerName: 'Smoke Uno' } }));
+    const firstRoomMessage = await wsOne.waitForType('ROOM_CREATED');
+    const firstRoom = firstRoomMessage.data.room;
+
+    wsTwo.send(JSON.stringify({
+      type: 'JOIN_ROOM',
+      data: { code: firstRoom.code, playerName: 'Smoke Dos' }
+    }));
+    await wsTwo.waitForType('JOIN_SUCCESS');
+    assert('Two signed players join the same room', true);
+
+    wsOne.send(JSON.stringify({ type: 'PLAYER_READY', data: { roomId: firstRoom.id } }));
+    wsTwo.send(JSON.stringify({ type: 'PLAYER_READY', data: { roomId: firstRoom.id } }));
+    await Promise.all([
+      wsOne.waitForType('GAME_STARTED', 8000),
+      wsTwo.waitForType('GAME_STARTED', 8000)
+    ]);
+    assert('Real-player room starts after both are ready', true);
+
+    wsOne.send(JSON.stringify({ type: 'LEAVE_CONTEXT', data: {} }));
+    await wsOne.waitForType('LEFT_CONTEXT');
+    wsTwo.send(JSON.stringify({ type: 'LEAVE_CONTEXT', data: {} }));
+    await wsTwo.waitForType('LEFT_CONTEXT');
+
+    wsOne.send(JSON.stringify({ type: 'CREATE_ROOM', data: { playerName: 'Smoke Uno' } }));
+    const secondRoomMessage = await wsOne.waitForType('ROOM_CREATED');
+    const secondRoom = secondRoomMessage.data.room;
+    assert('Same socket creates a fresh room after a completed context', secondRoom.id !== firstRoom.id);
+
+    wsTwo.send(JSON.stringify({
+      type: 'JOIN_ROOM',
+      data: { code: secondRoom.code, playerName: 'Smoke Dos' }
+    }));
+    await wsTwo.waitForType('JOIN_SUCCESS');
+    assert('Second consecutive join succeeds without relogin', true);
+
+    wsOne.send(JSON.stringify({ type: 'LEAVE_CONTEXT', data: {} }));
+    wsTwo.send(JSON.stringify({ type: 'LEAVE_CONTEXT', data: {} }));
+    await Promise.all([
+      wsOne.waitForType('LEFT_CONTEXT'),
+      wsTwo.waitForType('LEFT_CONTEXT')
+    ]);
+    wsOne.close();
+    wsTwo.close();
+  } catch (e) {
+    assert('Consecutive real-player lifecycle', false, e.message);
   }
 
   try {

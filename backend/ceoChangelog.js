@@ -2,6 +2,49 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.6.0": {
+    title: "🎮 Estabilidad multijugador/PWA, tienda resiliente y lectura visual 3D",
+    scope: "ceo",
+    files: [
+      "backend/server.js",
+      "backend/diceManager.js",
+      "frontend/app.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/dice-renderer.js",
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "frontend/ceo-panel.html",
+      "scripts/game-rules-test.js",
+      "scripts/smoke-test.js",
+      "package.json",
+      "package-lock.json",
+      "android/app/build.gradle",
+      "ios/App/App.xcodeproj/project.pbxproj"
+    ],
+    changes: [
+      "WS AUTH: RECONNECTED ahora completa el estado identificado del cliente igual que IDENTIFIED/RECONNECTED_LOBBY; antes la interfaz se restauraba pero las acciones quedaban bloqueadas.",
+      "WS JOIN: IDENTIFIED ya no borra joiningRoom antes de recibir JOIN_SUCCESS; se agregó timeout de 10 segundos con recuperación visible.",
+      "WS ACTIONS: acciones críticas esperan socket abierto e identidad confirmada; dejan de perderse mensajes durante la ventana entre open e IDENTIFY.",
+      "PWA LIFECYCLE: online, pageshow, visibilitychange y resume nativo verifican conexión; reconexión usa backoff 1.2/2.2/4/7/10 segundos.",
+      "AUTH 4003: una caída WebSocket ya no borra automáticamente una sesión válida; primero se valida el token por HTTP y un error de red conserva el login.",
+      "ROOM CONTEXT: LEAVE_CONTEXT elimina sala/partida anterior de forma explícita y CREATE_ROOM/JOIN_ROOM/START_BOT_GAME limpian membresías waiting obsoletas.",
+      "ROOM SAFETY: búsqueda de partida activa separada de salas waiting evita que una membresía vieja oculte un match real.",
+      "REMATCH: solicitud espera conexión identificada y recupera el botón si el servidor no responde en 10 segundos.",
+      "SHOP API: inventario y boosts tienen fallbacks independientes; una consulta secundaria caída ya no convierte todo el catálogo en error 500.",
+      "SHOP UI: listener de preview corregido al modal real, fetch no-cache con timeout, validación de respuesta, cancelación de cargas anteriores y botón Reintentar.",
+      "PLAYER DATA: snapshotMatch incluye level real cargado en sala/partida; las cards muestran Nivel + rango oficial por nivel.",
+      "SCOREBOARD: cards horizontales más anchas, legibles y desplazables en PWA/desktop sin comprimir jugadores.",
+      "3D MATERIALS: exposición e iluminación elevadas, roughness/transmission reducidos y emissiveMap recuperado para alta y ahorro.",
+      "3D STATES: scoring/hot agregan emisión verde/dorada, doble borde LED aditivo y luz puntual pulsante que sigue cada dado.",
+      "DEAD DICE: opacidad aumentada de 0.50 a 0.72 para conservar skin e icono sin confundirlos con dados puntuables.",
+      "ENTRY BANNER: aviso no bloqueante movido al flujo de la mesa debajo de las acciones y se limpia al cambiar de vista.",
+      "PWA CACHE: se corrigió desalineación crítica (web 4.5.1 vs service worker 4.4.0) y se fuerza caché limpia v4.6.0.",
+      "VERSIONING: web, PWA, npm, CEO panel, Android (40600/4.6.0) e iOS (40600/4.6.0) sincronizados.",
+      "QA: 23 pruebas de reglas y 41 smoke tests; incluye tienda sin DB y dos usuarios que juegan, salen y vuelven a unirse sin relogin."
+    ]
+  },
   "4.5.0": {
     title: "🎨 Fix visual integral: dados 3D blancos, skins pre-entry, layout PWA y perfil",
     scope: "ceo",

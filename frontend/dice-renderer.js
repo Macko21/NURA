@@ -19,7 +19,7 @@ let _dice3DPromise = null;
 let _diceRenderRequest = 0;
 let _lastDiceView = null;
 // Incrementar cuando se modifique dice-renderer-3d.mjs para forzar recarga del cache
-const _3D_CACHE_BUST = '2';
+const _3D_CACHE_BUST = '3';
 
 function loadDice3D() {
   if (window.MackoDice3D) return Promise.resolve(window.MackoDice3D);
@@ -281,6 +281,7 @@ function showDice(dice, mode) {
 function clearDice() {
   _diceRenderRequest++;
   _lastDiceView = null;
+  document.querySelector('.entry-banner-toast')?.remove();
   window.MackoDice3D?.clear();
   const el = document.getElementById('dice-row');
   if (el) { el.classList.remove('dice-row-3d'); el.innerHTML = ''; el.closest('.dice-tray')?.classList.add('is-empty'); }
@@ -352,6 +353,8 @@ function setMsg(text, type) {
 
 /* ── Cartelito de entrada ────────────────────────────── */
 function showEntryBanner(gained) {
+  const host = document.getElementById('entry-banner-host');
+  document.querySelector('.entry-banner-toast')?.remove();
   const banner = document.createElement('div');
   banner.className = 'entry-banner-toast';
   banner.innerHTML = `
@@ -364,7 +367,7 @@ function showEntryBanner(gained) {
       }</span>
     </div>
   `;
-  document.body.appendChild(banner);
+  (host || document.body).appendChild(banner);
   requestAnimationFrame(() => banner.classList.add('show'));
   setTimeout(() => {
     banner.classList.remove('show');

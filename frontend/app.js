@@ -828,6 +828,21 @@ const esc = s => String(s)
 const uid = () => 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
 const formatNum = n => Number(n).toLocaleString('es-AR');
 
+function getLevelRankMeta(levelValue) {
+  const level = Math.max(1, Number(levelValue) || 1);
+  const ranks = [
+    { min:0, max:59, title:'Rookie', icon:'🌱' },
+    { min:60, max:149, title:'Aprendiz', icon:'📖' },
+    { min:150, max:499, title:'Profesional', icon:'⚙️' },
+    { min:500, max:1099, title:'Maestro', icon:'🏅' },
+    { min:1100, max:1899, title:'Leyenda', icon:'🌟' },
+    { min:1900, max:3399, title:'Elite', icon:'💎' },
+    { min:3400, max:5899, title:'Mítico', icon:'⚡' },
+    { min:5900, max:Infinity, title:'Dios', icon:'👑' }
+  ];
+  return { level, ...(ranks.find(rank => level >= rank.min && level <= rank.max) || ranks[0]) };
+}
+
 /* Obtener nombre del jugador con fallbacks robustos */
 function getPlayerName() {
   if (S.name && S.name.trim()) return S.name.trim();
@@ -1074,11 +1089,62 @@ let _pingTimer      = null;
 let _allowReconnect = true;
 let _wsIdentified = false;
 let _connectCallbacks = [];
+let _reconnectAttempts = 0;
+let _joinAttemptTimer = null;
+
+function clearJoinAttempt() {
+  if (_joinAttemptTimer) clearTimeout(_joinAttemptTimer);
+  _joinAttemptTimer = null;
+  S.joiningRoom = false;
+  resetJoinBtn();
+}
+
+function scheduleReconnect() {
+  if (!_allowReconnect || (!isLogged() && !sessionStorage.getItem('macko_guest_token'))) return;
+  if (_reconnectTimer) clearTimeout(_reconnectTimer);
+  const delays = [1200, 2200, 4000, 7000, 10000];
+  const delay = delays[Math.min(_reconnectAttempts, delays.length - 1)];
+  _reconnectAttempts++;
+  _reconnectTimer = setTimeout(() => connect(), delay);
+}
+
+async function handleAuthenticationClose() {
+  const token = localStorage.getItem('gameToken');
+  if (!token) {
+    _allowReconnect = false;
+    clearAuth();
+    clearSession();
+    showScreen('screen-auth');
+    toast('Tu sesión venció. Volvé a ingresar.');
+    return;
+  }
+  try {
+    const response = await fetch('/api/user/balance', {
+      headers: { 'Authorization': `Bearer ${token}` },
+      cache: 'no-store'
+    });
+    if (response.status === 401 || response.status === 403) {
+      _allowReconnect = false;
+      clearAuth();
+      clearSession();
+      showScreen('screen-auth');
+      toast('Tu sesión venció. Volvé a ingresar.');
+      return;
+    }
+  } catch (_) {
+    // Una caída de red no debe cerrar una sesión válida.
+  }
+  scheduleReconnect();
+}
 
 function disconnectSocketForIdentityChange() {
   _allowReconnect = false;
   _wsIdentified = false;
+  _reconnectAttempts = 0;
   _connectCallbacks = [];
+  clearJoinAttempt();
+  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  if (_pingTimer)      { clearInterval(_pingTimer);     _pingTimer      = null; }
   const oldSocket = S.ws;
   S.ws = null;
   if (oldSocket && oldSocket.readyState < WebSocket.CLOSING) {
@@ -1118,7 +1184,12 @@ function connect(cb) {
     const wsToken = isLogged()
       ? localStorage.getItem('gameToken')
       : sessionStorage.getItem('macko_guest_token');
-    wsSend('IDENTIFY', { token:wsToken, playerName:getPlayerName(), roomId:S.roomId });
+    try {
+      ws.send(JSON.stringify({
+        type: 'IDENTIFY',
+        data: { token:wsToken, playerName:getPlayerName(), roomId:S.roomId }
+      }));
+    } catch (_) {}
 
     // Ping cada 25s para mantener viva la conexión
     _pingTimer = setInterval(() => {
@@ -1131,8 +1202,9 @@ function connect(cb) {
   S.ws.onmessage = e => {
     try {
       const {type,data}=JSON.parse(e.data);
-      if (['IDENTIFIED', 'RECONNECTED_GAME', 'RECONNECTED_LOBBY'].includes(type)) {
+      if (['IDENTIFIED', 'RECONNECTED', 'RECONNECTED_GAME', 'RECONNECTED_LOBBY'].includes(type)) {
         _wsIdentified = true;
+        _reconnectAttempts = 0;
         const callbacks = _connectCallbacks.splice(0);
         callbacks.forEach(fn => { try { fn(); } catch (_) {} });
       }
@@ -1147,26 +1219,45 @@ function connect(cb) {
     _wsIdentified = false;
     if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
     if (ev.code === 4003) {
-      _allowReconnect = false;
-      clearAuth();
-      clearSession();
-      showScreen('screen-auth');
-      toast('Tu sesión venció. Volvé a ingresar.');
+      handleAuthenticationClose();
       return;
     }
-    // Reconectar en 2s, siempre con el roomId guardado para restaurar sesión
-    if (_allowReconnect && (isLogged() || sessionStorage.getItem('macko_guest_token'))) {
-      _reconnectTimer = setTimeout(() => connect(), 2000);
-    }
+    scheduleReconnect();
   };
 
   S.ws.onerror = () => {};
 }
 
 function wsSend(type, data={}) {
-  if (S.ws?.readyState === WebSocket.OPEN)
+  if (S.ws?.readyState === WebSocket.OPEN && (_wsIdentified || type === 'PING')) {
     S.ws.send(JSON.stringify({type,data}));
+    return true;
+  }
+  return false;
 }
+
+function withSocketReady(action) {
+  if (_wsIdentified && S.ws?.readyState === WebSocket.OPEN) {
+    action();
+    return;
+  }
+  connect(action);
+}
+
+function leaveCurrentServerContext() {
+  withSocketReady(() => wsSend('LEAVE_CONTEXT'));
+}
+
+function ensureRealtimeConnection() {
+  if (!isLogged() && !sessionStorage.getItem('macko_guest_token')) return;
+  if (S.ws?.readyState !== WebSocket.OPEN || !_wsIdentified) connect();
+}
+
+window.addEventListener('online', ensureRealtimeConnection);
+window.addEventListener('pageshow', ensureRealtimeConnection);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') ensureRealtimeConnection();
+});
 
 function sendGameInvite(targetId, targetName) {
   if (!S.roomId) { toast('No estás en una sala'); return; }
@@ -1201,11 +1292,6 @@ function handle(type, data) {
         wsSend('GAME_INVITE_ACCEPT', p);
         toast('Uniéndote a la partida...', 'success');
       }
-      // Si había un joiningRoom pendiente, puede reintentar
-      if (S.joiningRoom) {
-        S.joiningRoom = false;
-        resetJoinBtn();
-      }
       // Cargar items equipados desde el servidor ahora que hay conexión WS
       if (isLogged()) {
         loadEquippedItems();
@@ -1218,8 +1304,7 @@ function handle(type, data) {
       S.roomCode    = data.room?.code || data.match.roomCode || S.roomCode;
       S.match       = data.match;
       S.entered     = data.match.players.find(p=>p.id===S.id)?.entered || false;
-      S.joiningRoom = false;
-      resetJoinBtn();
+      clearJoinAttempt();
       syncEquippedFromMatch(data.match);
       saveSession();
       showScreen('screen-game');
@@ -1233,8 +1318,7 @@ function handle(type, data) {
     case 'RECONNECTED_LOBBY':
       S.roomId      = data.room.id;
       S.roomCode    = data.room.code;
-      S.joiningRoom = false;
-      resetJoinBtn();
+      clearJoinAttempt();
       saveSession();
       renderRoom(data.room);
       showScreen('screen-room');
@@ -1262,7 +1346,7 @@ function handle(type, data) {
       S.match       = data.match;
       S.entered     = false;
       S.isOwner     = false;
-      S.joiningRoom = false;
+      clearJoinAttempt();
       S.banking     = false;
       syncEquippedFromMatch(data.match);
       saveSession();
@@ -1314,7 +1398,7 @@ function handle(type, data) {
 
     case 'JOIN_SUCCESS':
       S.roomId=data.room.id; S.roomCode=data.room.code;
-      S.joiningRoom = false;
+      clearJoinAttempt();
       S.isOwner = false;
       saveSession();
       renderRoom(data.room);
@@ -1837,9 +1921,7 @@ function handle(type, data) {
       break;
 
     case 'ERROR':
-      S.joiningRoom = false;
-      const joinBtn = $('btn-join-confirm');
-      if (joinBtn) { joinBtn.disabled=false; joinBtn.textContent='Entrar →'; }
+      clearJoinAttempt();
       const rematchBtn = $('btn-play-again');
       if (rematchBtn?.disabled) {
         rematchBtn.disabled = false;
@@ -1969,10 +2051,12 @@ function renderSB(match) {
         rachaHtml = `<span class="sc-streak">🔥${streakVal}</span>`;
       }
     }
+    const rankMeta = getLevelRankMeta(p.level);
     chip.innerHTML = `
       <span class="sc-av${hasCustomAvatar ? ' icon' : ''} special-${esc(String(p.equippedSpecial || 'none'))}${p.isBot ? ' bot-avatar' : ''}">${avContent}</span>
       ${yoTag}
-      <span class="sc-nm">${esc(p.name)}</span><span class="sc-lv">Lv.${Number(p.level)||1}</span>
+      <span class="sc-nm">${esc(p.name)}</span>
+      <span class="sc-progress"><span class="sc-lv">Nivel ${rankMeta.level}</span><span class="sc-rank">${rankMeta.icon} ${rankMeta.title}</span></span>
       <span class="sc-sc">${p.score}</span>
       ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
@@ -3192,7 +3276,7 @@ function initUI() {
   };
   $('btn-close-shop').onclick = () => $('modal-shop').classList.add('hidden');
   // Preview al clickear items (event delegation, una sola vez)
-  document.getElementById('shop-items-container')?.addEventListener('click', function shopPreviewClick(ev) {
+  $('modal-shop')?.addEventListener('click', function shopPreviewClick(ev) {
     const itemDiv = ev.target.closest('.shop-item');
     if (!itemDiv || itemDiv.classList.contains('ultra-teaser')) return;
     if (ev.target.closest('.btn-buy')) return;
@@ -3343,9 +3427,15 @@ function initUI() {
   /* Lobby */
   $('btn-create').onclick = () => {
     if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }
-    connect(() => setTimeout(() =>
-      wsSend('CREATE_ROOM', { playerId:S.id, playerName:getPlayerName(), isPrivate:true, maxPlayers:10, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped })
-    , 200));
+    withSocketReady(() => wsSend('CREATE_ROOM', {
+      playerId:S.id,
+      playerName:getPlayerName(),
+      isPrivate:true,
+      maxPlayers:10,
+      equippedDice:S.diceEquipped,
+      equippedAvatar:S.avatarEquipped,
+      equippedSpecial:S.specialEquipped
+    }));
   };
 
   $('btn-join-open').onclick = () => {
@@ -3385,9 +3475,9 @@ function initUI() {
 
   // Start bot game
   $('btn-start-bot-game')?.addEventListener('click', () => {
-    if (S.ws?.readyState !== WebSocket.OPEN) {
+    if (S.ws?.readyState !== WebSocket.OPEN || !_wsIdentified) {
       toast('Conectando al servidor...', 2000);
-      connect(() => { setTimeout(() => $('btn-start-bot-game')?.click(), 500); });
+      withSocketReady(() => $('btn-start-bot-game')?.click());
       return;
     }
     const countEl = document.querySelector('.bot-count-btn.active');
@@ -3905,9 +3995,21 @@ function initUI() {
     S.joiningRoom = true;
     $('btn-join-confirm').disabled    = true;
     $('btn-join-confirm').textContent = 'Entrando...';
-    const doJoin = () => wsSend('JOIN_ROOM', { playerId:S.id, playerName:getPlayerName(), code, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
-    if (!S.ws || S.ws.readyState !== WebSocket.OPEN) connect(() => setTimeout(doJoin, 300));
-    else doJoin();
+    const doJoin = () => wsSend('JOIN_ROOM', {
+      playerId:S.id,
+      playerName:getPlayerName(),
+      code,
+      equippedDice:S.diceEquipped,
+      equippedAvatar:S.avatarEquipped,
+      equippedSpecial:S.specialEquipped
+    });
+    withSocketReady(doJoin);
+    _joinAttemptTimer = setTimeout(() => {
+      if (!S.joiningRoom) return;
+      clearJoinAttempt();
+      toast('No respondió la sala. Revisá la conexión e intentá otra vez.', 4000);
+      ensureRealtimeConnection();
+    }, 10000);
   };
 
   /* Código en partida */
@@ -3927,7 +4029,7 @@ function initUI() {
 
   $('btn-leave-room').onclick = () => {
     if (!S.roomId) return;
-    wsSend('LEAVE_ROOM', { roomId:S.roomId, playerId:S.id });
+    leaveCurrentServerContext();
     goLobby('Saliste de la sala');
   };
 
@@ -3963,7 +4065,7 @@ function initUI() {
   $('btn-leave-game').onclick = () => {
     if (!S.roomId) return;
     showConfirm('¿Seguro que querés salir de la partida?', () => {
-      if (S.roomId) wsSend('LEAVE_GAME', { roomId:S.roomId, playerId:S.id });
+      leaveCurrentServerContext();
       goLobby('Saliste de la partida');
     });
   };
@@ -4011,14 +4113,21 @@ $('btn-play-again').onclick = () => {
   if (S.roomId) {
     btn.disabled = true;
     btn.textContent = 'Preparando revancha...';
-    wsSend('GET_ROOM_STATE', { roomId:S.roomId, immediate: true });
+    withSocketReady(() => wsSend('GET_ROOM_STATE', { roomId:S.roomId, immediate: true }));
+    setTimeout(() => {
+      if (!btn.disabled || !$('modal-win') || $('modal-win').classList.contains('hidden')) return;
+      btn.disabled = false;
+      btn.textContent = '🎲 Revancha';
+      toast('La revancha tardó demasiado. Intentá de nuevo.', 3500);
+      ensureRealtimeConnection();
+    }, 10000);
   } else {
     goLobby(null);
   }
 };
 
   $('btn-new-game').onclick = () => {
-    if (S.roomId) wsSend('LEAVE_ROOM', { roomId:S.roomId, playerId:S.id });
+    if (S.roomId) leaveCurrentServerContext();
     goLobby(null);
   };
 
@@ -4807,6 +4916,9 @@ async function equipShopItem(itemId, category) {
 }
 
 /* ── Cargar tienda por pestaña (dados/avatares/efectos/consumibles) ── */
+let _shopLoadController = null;
+let _shopLoadRequest = 0;
+
 async function loadShopTab(tabName) {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
@@ -4815,14 +4927,33 @@ async function loadShopTab(tabName) {
   const catMap = { dados:'dados', avatares:'avatares', efectos:'especiales', consumibles:'consumibles' };
   const mainCat = catMap[tabName];
   if (!mainCat) { container.innerHTML = ''; return; }
+  const requestId = ++_shopLoadRequest;
+  _shopLoadController?.abort();
+  const controller = new AbortController();
+  _shopLoadController = controller;
+  let timeout = null;
+  container.innerHTML = '<p class="shop-desc shop-loading">Cargando tienda...</p>';
   try {
+    timeout = setTimeout(() => controller.abort(), 10000);
     const res = await fetch('/api/shop/catalog', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token}` },
+      cache: 'no-store',
+      signal: controller.signal
     });
-    if (!res.ok) { container.innerHTML = '<p class="shop-desc">Error al cargar</p>'; return; }
+    clearTimeout(timeout);
+    timeout = null;
+    if (requestId !== _shopLoadRequest) return;
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) {
+        throw new Error('Tu sesión necesita volver a conectarse');
+      }
+      throw new Error(errorData.error || 'No se pudo cargar la tienda');
+    }
     const { items, ownedIds, equipped, boosts } = await res.json();
-    if (!items) { container.innerHTML = ''; return; }
-    const ownedSet = new Set(ownedIds || []);
+    if (requestId !== _shopLoadRequest) return;
+    if (!Array.isArray(items)) throw new Error('El catálogo llegó incompleto');
+    const ownedSet = new Set((ownedIds || []).map(Number));
     window._lastBoosts = window._lastBoosts || {};
     if (boosts) window._lastBoosts = boosts;
     const filtered = items.filter(i => i.category === mainCat);
@@ -4832,7 +4963,7 @@ async function loadShopTab(tabName) {
     grid.className = 'shop-grid';
     container.appendChild(grid);
     filtered.forEach(item => {
-      const isOwned = ownedSet.has(item.id);
+      const isOwned = ownedSet.has(Number(item.id));
       const cat = item.category === 'avatares' || (item.category === 'ultra' && /^Avatar/i.test(item.name)) ? 'avatar'
         : item.category === 'dados' || (item.category === 'ultra' && /^Dados/i.test(item.name)) ? 'dice' : 'special';
       const isEquipped = equipped && equipped[cat] === String(item.id);
@@ -4919,7 +5050,20 @@ async function loadShopTab(tabName) {
       btn.onclick = () => equipShopItem(btn.dataset.id, btn.dataset.cat);
     });
   } catch (err) {
-    container.innerHTML = '<p class="shop-desc">Error al cargar</p>';
+    if (requestId !== _shopLoadRequest) return;
+    const message = err?.name === 'AbortError'
+      ? 'La tienda tardó demasiado en responder'
+      : (err?.message || 'No se pudo cargar la tienda');
+    container.innerHTML = '';
+    const errorBox = document.createElement('div');
+    errorBox.className = 'shop-load-error';
+    errorBox.innerHTML = `<p>⚠ ${esc(message)}</p><button class="btn btn-ghost">Reintentar</button>`;
+    errorBox.querySelector('button').onclick = () => loadShopTab(tabName);
+    container.appendChild(errorBox);
+    ensureRealtimeConnection();
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    if (_shopLoadController === controller) _shopLoadController = null;
   }
 }
 
@@ -5000,7 +5144,7 @@ async function loadCoinPacks() {
 window.addEventListener('macko-native-resume', () => {
   if (!IS_NATIVE_APP || !isLogged()) return;
   loadUserBalance();
-  if (!S.ws || S.ws.readyState >= WebSocket.CLOSING) connect();
+  ensureRealtimeConnection();
 });
 
 /* ════════════════════════════════════════════════════════

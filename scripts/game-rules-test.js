@@ -14,7 +14,8 @@ const {
   getMatch,
   destroyMatch,
   handleEntryRoll,
-  handleRoll
+  handleRoll,
+  snapshotMatch
 } = require("../backend/diceManager");
 const { AUTO_BANK_DELAY_MS } = require("../backend/constants");
 const { DICE_SKINS, SHOP_DICE_PREVIEW } = require("../frontend/dice-renderer");
@@ -107,6 +108,13 @@ async function run() {
     assert.equal(nextScheduledName('Copa 10.000 #2'), 'Copa 10.000 #3');
   });
   console.log("\nReglas de Los 10.000");
+
+  check("snapshot conserva el nivel real del jugador", () => {
+    const match = createMatch(makeRoom("room-level"));
+    match.players[0].level = 14;
+    assert.equal(snapshotMatch(match).players[0].level, 14);
+    destroyMatch("room-level");
+  });
 
   check("1 suelto vale 100 y 5 suelto vale 50", () => {
     const result = calculateScore([1, 5, 2, 2, 3]);

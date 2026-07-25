@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.5.1";
+const GAME_VERSION = "4.6.0";
 
 const CHANGELOG = [
+  {
+    version: "4.6.0",
+    date: "2026-07-25",
+    title: "🎮 Partidas más estables y dados 3D renovados",
+    scope: "game",
+    files: ["app.js", "dice-renderer-3d.mjs", "dice-renderer.js", "styles.css", "index.html"],
+    changes: [
+      "🔄 CONEXIÓN: reconexión más estable al volver a la PWA y entre partidas consecutivas",
+      "🎲 PARTIDAS: ahora podés salir, crear, unirte y jugar otra vez sin reiniciar la app",
+      "🛒 TIENDA: carga más confiable y botón para reintentar si la red tarda",
+      "✨ DADOS 3D: más color, brillo y señales claras para puntos y dados calientes",
+      "👤 JUGADORES: tarjetas más amplias con nivel real y rango",
+      "📢 ENTRADA: el aviso de entrada aparece debajo de las acciones de juego"
+    ]
+  },
   {
     version: "4.5.1",
     date: "2026-07-23",

@@ -235,15 +235,25 @@ app.get("/ranking", requireAuth, async (req, res) => {
 app.get("/api/shop/catalog", requireAuth, async (req, res) => {
   try {
     const items = await getShopCatalog();
-    const inv = await getOwnedItems(req.user.userId);
+    let inv = { owned: [], equipped: {} };
+    let boosts = {};
+    try {
+      inv = await getOwnedItems(req.user.userId);
+    } catch (inventoryError) {
+      console.warn("Shop inventory fallback:", inventoryError.message);
+    }
     const ownedIds = inv.owned.map(i => i.id);
     const equipped = inv.equipped;
-    // Incluir estado de boosts para mostrar timers en consumibles
-    const pRes = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [req.user.userId]);
-    const playerId = pRes.rows[0]?.id;
-    const boosts = playerId ? (await getBoostStatus(playerId)).boosts : {};
+    try {
+      const pRes = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [req.user.userId]);
+      const playerId = pRes.rows[0]?.id;
+      boosts = playerId ? (await getBoostStatus(playerId)).boosts : {};
+    } catch (boostError) {
+      console.warn("Shop boosts fallback:", boostError.message);
+    }
     res.json({ items, ownedIds, equipped, boosts });
   } catch (err) {
+    console.error("Shop catalog error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1976,6 +1986,37 @@ function doReconnect(socket, playerId, room, match) {
   }
 }
 
+function findPlayerRoom(playerId, exceptRoomId = null) {
+  for (const room of rooms.values()) {
+    if (room.id === exceptRoomId) continue;
+    if (room.players.some(player => player.id === playerId)) return room;
+  }
+  return null;
+}
+
+function findActivePlayerRoom(playerId, exceptRoomId = null) {
+  for (const room of rooms.values()) {
+    if (room.id === exceptRoomId || room.status !== "playing" || !getMatch(room.id)) continue;
+    if (room.players.some(player => player.id === playerId)) return room;
+  }
+  return null;
+}
+
+function leaveWaitingRooms(playerId, exceptRoomId = null) {
+  for (const room of [...rooms.values()]) {
+    if (room.id === exceptRoomId || room.status !== "waiting") continue;
+    if (!room.players.some(player => player.id === playerId)) continue;
+    cancelReadyCountdown(room.id);
+    removePlayer(room.id, playerId);
+    if (!room.players.length) {
+      rooms.delete(room.id);
+    } else {
+      broadcastRoom(room.id, "PLAYER_REMOVED", { playerId });
+      broadcastRoomState(room.id);
+    }
+  }
+}
+
 /* ══════════════════════════════════════════════════════════
    CONEXIÓN WS
    ══════════════════════════════════════════════════════════ */
@@ -2175,6 +2216,19 @@ wss.on("connection", socket => {
         return;
       }
 
+      if (type === "LEAVE_CONTEXT") {
+        const playerId = socket.playerId;
+        const activeRoom = findActivePlayerRoom(playerId);
+        if (activeRoom) {
+          eliminatePlayer(activeRoom.id, playerId);
+        } else {
+          leaveWaitingRooms(playerId);
+        }
+        socket.roomId = null;
+        send(socket, "LEFT_CONTEXT", {});
+        return;
+      }
+
       /* ── CREAR SALA ────────────────────────────────────── */
       if (type === "CREATE_ROOM") {
         const playerName = data.playerName || socket.playerName || 'Jugador';
@@ -2183,6 +2237,12 @@ wss.on("connection", socket => {
           send(socket, "ERROR", { message: "No se pudo recuperar tu usuario" });
           return;
         }
+        const activeRoom = findActivePlayerRoom(ownerId);
+        if (activeRoom) {
+          send(socket, "ERROR", { message: "Ya estás en una partida activa" });
+          return;
+        }
+        leaveWaitingRooms(ownerId);
         const room = createRoom({
           ownerId,
           ownerName:  playerName,
@@ -2227,6 +2287,12 @@ wss.on("connection", socket => {
           return;
         }
 
+        const previousRoom = findActivePlayerRoom(joiningPlayerId, room.id);
+        if (previousRoom) {
+          send(socket, "ERROR", { message: "Primero salí de tu partida activa" });
+          return;
+        }
+
         if (room.players.length >= room.maxPlayers) {
           send(socket, "ERROR", { message: "La sala está llena" });
           return;
@@ -2234,6 +2300,7 @@ wss.on("connection", socket => {
 
         // Sala de espera: entrada normal
         if (room.status === "waiting") {
+          leaveWaitingRooms(joiningPlayerId, room.id);
           const player = addPlayer(room.id, joiningPlayerId, joiningPlayerName);
           // Cargar items equipados del jugador para que todos lo vean
           await loadEquippedToRoomPlayer(player, joiningPlayerId);
@@ -2759,6 +2826,12 @@ wss.on("connection", socket => {
             send(socket, "ERROR", { message: "No se pudo identificar al jugador" });
             return;
           }
+          const activeRoom = findActivePlayerRoom(playerId);
+          if (activeRoom) {
+            send(socket, "ERROR", { message: "Ya estás en una partida activa" });
+            return;
+          }
+          leaveWaitingRooms(playerId);
 
           // Crear sala para la partida contra bots
           const room = createRoom({ ownerId: playerId, ownerName: playerName, isPrivate: true, maxPlayers: 10 });
