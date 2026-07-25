@@ -532,22 +532,15 @@ window.addEventListener('appinstalled', () => {
 const SESSION_KEY = 'macko_session';
 const AUTH_KEY = 'macko_auth';
 
-// Cache busting: limpiar localStorage viejo de versiones anteriores
+// Cache busting de assets sin borrar preferencias ni sesión.
 const GAME_CACHE_KEY = 'macko_cache_ver';
 function checkCacheVersion() {
   const appVersion = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : '0.0.0';
   const cachedVersion = localStorage.getItem(GAME_CACHE_KEY);
   if (cachedVersion !== appVersion) {
     if (cachedVersion) sessionStorage.setItem('macko_show_changelog_after_update', '1');
-    // Nueva versión: limpiar todo lo que no sea sesión activa
-    const keptKeys = [AUTH_KEY, 'gameToken', SESSION_KEY, GAME_CACHE_KEY, 'macko_push', 'macko_equipped', 'macko_notifs', 'game_last_seen_version'];
-    for (const key of Object.keys(localStorage)) {
-      if (key && !keptKeys.includes(key)) {
-        localStorage.removeItem(key);
-      }
-    }
     localStorage.setItem(GAME_CACHE_KEY, appVersion);
-    console.log('🧹 Cache local limpiado para versión', appVersion);
+    console.log('Versión local actualizada a', appVersion);
   }
 }
 
@@ -1316,10 +1309,51 @@ function ensureRealtimeConnection() {
   if (S.ws?.readyState !== WebSocket.OPEN || !_wsIdentified) connect();
 }
 
-window.addEventListener('online', ensureRealtimeConnection);
-window.addEventListener('pageshow', ensureRealtimeConnection);
+let _lastForegroundSync = 0;
+let _foregroundSyncPromise = null;
+
+async function refreshAuthenticatedState(force = false) {
+  if (!isLogged() || document.readyState === 'loading') return;
+  const now = Date.now();
+  if (!force && now - _lastForegroundSync < 8000) return _foregroundSyncPromise;
+  if (_foregroundSyncPromise) return _foregroundSyncPromise;
+  _lastForegroundSync = now;
+  _foregroundSyncPromise = (async () => {
+    _authValidationPromise = null;
+    const valid = await validateStoredAuthSession();
+    if (!valid || !isLogged()) return;
+    const auth = loadAuthenticatedIdentity();
+    if (auth?.id) {
+      S.logged = true;
+      S.userId = auth.id;
+      S.id = S.id || auth.id;
+      S.name = auth.username;
+    }
+    await Promise.allSettled([
+      loadUserBalance(),
+      loadEquippedItems(),
+      loadLobbyMissions(),
+      loadChestStatus(),
+      loadServerNotifications()
+    ]);
+  })().finally(() => { _foregroundSyncPromise = null; });
+  return _foregroundSyncPromise;
+}
+
+function resumeAppState() {
+  ensureRealtimeConnection();
+  checkUpdateIndicator();
+  _swRegistration?.update().catch(() => {});
+  void refreshAuthenticatedState();
+}
+
+window.addEventListener('online', () => {
+  ensureRealtimeConnection();
+  void refreshAuthenticatedState(true);
+});
+window.addEventListener('pageshow', resumeAppState);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') ensureRealtimeConnection();
+  if (document.visibilityState === 'visible') resumeAppState();
 });
 
 function sendGameInvite(targetId, targetName) {
@@ -2909,20 +2943,23 @@ function stopNextTournamentTimer() {
 async function loadLobbyMissions() {
   const token = localStorage.getItem('gameToken');
   if (!token) { 
-    $('btn-missions-mobile')?.classList.add('hidden');
+    $('lobby-missions-mobile')?.classList.add('hidden');
     $('lobby-missions-desktop')?.classList.add('hidden');
     return;
   }
   const desktopList = $('lobby-missions-list-desktop');
+  const mobileList = $('lobby-missions-list-mobile');
+  $('lobby-missions-mobile')?.classList.remove('hidden');
   $('lobby-missions-desktop')?.classList.remove('hidden');
   if (desktopList) desktopList.innerHTML = '<div class="lobby-missions-state">Cargando misiones...</div>';
+  if (mobileList) mobileList.innerHTML = '<div class="lobby-missions-state">Cargando misiones...</div>';
   try {
     const res = await authenticatedFetch('/api/user/missions');
     if (!res.ok) throw new Error('No se pudieron cargar las misiones');
     const { missions } = await res.json();
     const dailies = (Array.isArray(missions) ? missions : []).filter(m => m.type === 'daily');
     if (!dailies.length) { 
-      $('btn-missions-mobile')?.classList.add('hidden');
+      $('lobby-missions-mobile')?.classList.add('hidden');
       $('lobby-missions-desktop')?.classList.add('hidden');
       return;
     }
@@ -2936,21 +2973,59 @@ async function loadLobbyMissions() {
         <span class="lm-name">${esc(m.name)}</span>
         <div class="lm-bar"><div class="lm-fill" style="width:${Math.min(pct,100)}%"></div></div>
         <span class="lm-pct">${m.progress}/${m.req}</span>
-        ${claimed ? '<span class="lm-check">✔</span>' : ''}
+        ${claimed ? '<span class="lm-check">✔</span>'
+          : done ? `<button class="lm-claim" data-mid="${esc(m.id)}">Cobrar</button>`
+          : `<span class="lm-reward">+${Number(m.coins) || 0}</span>`}
       </div>`;
-    }).join('');
+    }).join('') + '<button class="missions-view-all" type="button">Ver todas las misiones →</button>';
     
-    // Móvil: mostrar botón que abre modal de misiones
-    $('btn-missions-mobile')?.classList.remove('hidden');
-    // Desktop: poblar tarjeta de misiones
-    if (desktopList) { 
-      desktopList.innerHTML = html;
-      $('lobby-missions-desktop')?.classList.remove('hidden');
+    for (const list of [desktopList, mobileList]) {
+      if (!list) continue;
+      list.innerHTML = html;
+      list.querySelector('.missions-view-all')?.addEventListener('click', openMissionTab);
+      list.querySelectorAll('.lm-claim').forEach(btn => {
+        btn.addEventListener('click', () => claimMission(btn.dataset.mid, btn, loadLobbyMissions));
+      });
     }
-  } catch(e) { 
-    $('btn-missions-mobile')?.classList.remove('hidden');
+    $('lobby-missions-mobile')?.classList.remove('hidden');
     $('lobby-missions-desktop')?.classList.remove('hidden');
-    if (desktopList) desktopList.innerHTML = '<button class="missions-retry" onclick="loadLobbyMissions()">Reintentar</button>';
+  } catch(e) { 
+    $('lobby-missions-mobile')?.classList.remove('hidden');
+    $('lobby-missions-desktop')?.classList.remove('hidden');
+    for (const list of [desktopList, mobileList]) {
+      if (!list) continue;
+      list.innerHTML = '<button class="missions-retry" type="button">Reintentar</button>';
+      list.querySelector('.missions-retry')?.addEventListener('click', loadLobbyMissions);
+    }
+  }
+}
+
+async function claimMission(missionId, button, afterClaim) {
+  if (!missionId || button?.disabled) return;
+  const originalText = button?.textContent || 'Cobrar';
+  if (button) {
+    button.disabled = true;
+    button.textContent = '⏳';
+  }
+  try {
+    const response = await authenticatedFetch('/api/user/missions/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ missionId })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'No se pudo cobrar la misión');
+    toast(`🎉 ${data.missionName}: +${data.coins}🪙 ${data.xp > 0 ? '+'+data.xp+'XP' : ''}`);
+    await Promise.allSettled([
+      loadUserBalance(),
+      typeof afterClaim === 'function' ? afterClaim(data) : Promise.resolve()
+    ]);
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+    toast('⚠ ' + error.message);
   }
 }
 
@@ -3017,10 +3092,6 @@ async function performAppUpdate(version, manual = false) {
   toast(manual ? '🔄 Actualizando la aplicación...' : `🔄 Instalando versión ${version || ''}...`, 5000);
   document.querySelector('#btn-apply-update')?.setAttribute('disabled', 'disabled');
   try {
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.filter(k => k.startsWith('macko-')).map(k => caches.delete(k)));
-    }
     const reg = _swRegistration || await navigator.serviceWorker?.getRegistration();
     if (reg) {
       await reg.update();
@@ -4655,27 +4726,15 @@ async function loadMissions() {
       container.appendChild(section);
     }
 
-    // Handlers de cobro
+    // Cobro puntual: no recarga la tienda completa.
     container.querySelectorAll('.btn-claim').forEach(btn => {
-      btn.onclick = async (e) => {
-        const mid = e.target.dataset.mid;
-        e.target.textContent = '⏳';
-        e.target.disabled = true;
-        try {
-          const r = await authenticatedFetch('/api/user/missions/claim', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ missionId: mid })
-          });
-          const d = await r.json();
-          if (!r.ok) throw new Error(d.error);
-          toast(`🎉 ${d.missionName}: +${d.coins}🪙 ${d.xp > 0 ? '+'+d.xp+'XP' : ''}`);
-          loadMissions(); // Recargar para reflejar cambios
-          loadUserBalance(); // Actualizar monedas
-        } catch (err) {
-          toast('⚠ ' + err.message);
-        }
-      };
+      btn.onclick = () => claimMission(btn.dataset.mid, btn, async () => {
+        const row = btn.closest('.mission-item');
+        row?.classList.add('claimed');
+        const reward = row?.querySelector('.mission-reward');
+        if (reward) reward.textContent = '✅';
+        await loadLobbyMissions();
+      });
     });
   } catch (err) {
     container.innerHTML = '<p style="color:var(--text3)">Error al cargar</p>';

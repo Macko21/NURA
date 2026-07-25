@@ -19,7 +19,7 @@ let _dice3DPromise = null;
 let _diceRenderRequest = 0;
 let _lastDiceView = null;
 // Incrementar cuando se modifique dice-renderer-3d.mjs para forzar recarga del cache
-const _3D_CACHE_BUST = '3';
+const _3D_CACHE_BUST = '4';
 
 function loadDice3D() {
   if (window.MackoDice3D) return Promise.resolve(window.MackoDice3D);

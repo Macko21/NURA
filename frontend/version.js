@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.6.1";
+const GAME_VERSION = "4.6.2";
 
 const CHANGELOG = [
+  {
+    version: "4.6.2",
+    date: "2026-07-25",
+    title: "✨ Dados más vivos, misiones rápidas y PWA estable",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "app.js", "styles.css", "index.html", "sw.js"],
+    changes: [
+      "🎲 DADOS 3D: skins más luminosas, nítidas y sin el aspecto de vidrio oscuro",
+      "🟢 PUNTOS: bordes verdes mucho más visibles; los dados calientes brillan en dorado",
+      "🎯 MISIONES: las diarias se pueden cobrar desde la vista principal y tienen acceso a todas las misiones",
+      "🔄 PWA: al reabrir se sincronizan saldo, inventario y misiones sin cerrar sesión",
+      "📲 ACTUALIZACIÓN: el aviso «Actualizar ahora» aparece al detectar una versión nueva"
+    ]
+  },
   {
     version: "4.6.1",
     date: "2026-07-25",

@@ -480,9 +480,8 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 
 /* Misiones desktop: posicionado absoluto en esquina superior derecha */
 .lobby-missions-desktop{display:none !important}
-/* Botón de misiones en mobile: oculto por defecto, visible al remover .hidden */
-#btn-missions-mobile{margin-top:4px}
-#btn-missions-mobile.hidden{display:none}
+.lobby-missions-mobile{width:100%;margin-top:4px}
+.lobby-missions-mobile.hidden{display:none}
 .lobby-missions-header-dt{
   font-size:12px;font-weight:600;color:var(--gold);
   margin-bottom:8px;letter-spacing:.5px;font-family:'Cinzel',serif;
@@ -509,6 +508,18 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 .lobby-mission.done{opacity:.7}
 .lobby-mission.done .lm-fill{background:linear-gradient(90deg,var(--green),var(--green-lt))}
 .lobby-mission .lm-pct{font-size:9px;color:var(--text3);flex-shrink:0;min-width:24px;text-align:right}
+.lm-claim{
+  flex-shrink:0;border:1px solid rgba(42,196,126,.55);border-radius:7px;
+  padding:4px 7px;background:rgba(42,196,126,.12);color:var(--green-lt);
+  font:700 9px 'Sora',sans-serif;cursor:pointer;
+}
+.lm-claim:disabled{opacity:.65;cursor:wait}
+.lm-reward{font-size:9px;color:var(--gold);flex-shrink:0}
+.missions-view-all{
+  width:100%;margin-top:5px;padding:7px;border:0;border-top:1px solid var(--border2);
+  background:transparent;color:var(--gold);font:700 10px 'Sora',sans-serif;cursor:pointer;
+}
+.missions-view-all:hover{color:var(--gold2);background:var(--bg-hover)}
 .lobby-mission .lm-check{font-size:10px;flex-shrink:0;width:14px;text-align:center}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:2px}
@@ -2356,7 +2367,7 @@ input[type=number]{-moz-appearance:textfield}
     display:flex !important;flex-direction:column;
   }
   .lobby-missions-desktop.hidden{display:none !important}
-  #btn-missions-mobile{display:none !important}
+  .lobby-missions-mobile{display:none !important}
 }
 
 /* Actualización bloqueante: primero instala, luego muestra las notas */

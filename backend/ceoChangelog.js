@@ -2,6 +2,32 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.6.2": {
+    title: "🛠️ Estabilidad visual, misiones y ciclo de actualización",
+    scope: "ceo",
+    files: [
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/app.js",
+      "frontend/styles.css",
+      "frontend/index.html",
+      "frontend/sw.js",
+      "frontend/version.js",
+      "backend/ceoChangelog.js",
+      "android/app/build.gradle",
+      "ios/App/App.xcodeproj/project.pbxproj"
+    ],
+    changes: [
+      "WEBGL MATERIALS: transmission desactivado para conservar saturación e iconos; roughness, metalness, exposición e iluminación recalibradas.",
+      "DICE STATES: scoring/hot elevan emisión y PointLight, con tres capas aditivas de borde verde/dorado que siguen cada dado.",
+      "QUICK CLAIM: cobro compartido desde lobby desktop/mobile; actualiza fila, balance y vista rápida sin reconstruir la tienda.",
+      "MISSIONS UX: CTA «Ver todas las misiones» agregado al final de ambas vistas rápidas.",
+      "FOREGROUND SYNC: al volver online, reabrir o regresar al primer plano se revalida JWT y refrescan saldo, inventario, misiones, cofre y notificaciones.",
+      "LOCAL STORAGE: el cambio de versión deja de borrar preferencias y conserva la autenticación completa.",
+      "SERVICE WORKER: el cache nuevo se prepara sin borrar el cache de la versión activa antes de que el usuario confirme.",
+      "UPDATE UX: versión y Service Worker se revisan en pageshow/visibilitychange; el aviso «Actualizar ahora» reaparece al reabrir.",
+      "VERSIONING: web, PWA, npm, CEO panel, Android (40602/4.6.2) e iOS (40602/4.6.2) sincronizados."
+    ]
+  },
   "4.6.1": {
     title: "🔐 Hotfix de JWT vencido y arranque autenticado",
     scope: "ceo",

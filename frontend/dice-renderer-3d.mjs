@@ -168,7 +168,7 @@ function materialsFor(skinId, state, quality) {
     : null;
   const emissiveColor = new THREE.Color(skin.emissive || skin.colors?.[0] || '#ffffff');
   if (stateColor) emissiveColor.lerp(stateColor, state === 'hot' ? .52 : .42);
-  const emissiveIntensity = isDead ? 0 : state === 'hot' ? 1.28 : state === 'scoring' ? .82 : .2;
+  const emissiveIntensity = isDead ? 0 : state === 'hot' ? 1.85 : state === 'scoring' ? 1.38 : .34;
   return FACE_VALUES.map(value => {
     const faceMap = faceTexture(value, skinId, quality);
     const baseColor = isDead ? '#999999' : '#ffffff';
@@ -178,8 +178,8 @@ function materialsFor(skinId, state, quality) {
         emissive: emissiveColor,
         emissiveMap: faceMap,
         emissiveIntensity,
-        roughness: isDead ? .72 : Math.min(.46, skin.roughness + .12),
-        metalness: isDead ? 0 : Math.min(.28, skin.metalness),
+        roughness: isDead ? .72 : Math.min(.4, skin.roughness + .08),
+        metalness: isDead ? 0 : Math.min(.22, skin.metalness),
         transparent: !!skin.opacity || isDead,
         opacity: isDead ? .72 : (skin.opacity || 1)
       });
@@ -190,15 +190,16 @@ function materialsFor(skinId, state, quality) {
       emissive: emissiveColor,
       emissiveMap: faceMap,
       emissiveIntensity,
-      roughness: isDead ? .76 : Math.min(.44, skin.roughness),
-      metalness: isDead ? 0 : skin.metalness,
+      roughness: isDead ? .76 : Math.min(.36, skin.roughness),
+      metalness: isDead ? 0 : Math.min(.42, skin.metalness),
       transparent: !!skin.opacity || isDead,
       opacity: isDead ? .72 : (skin.opacity || 1),
-      transmission: isDead ? 0 : (['ghost','diamond','ice'].includes(skin.effect) ? .06 : 0),
-      thickness: .35,
+      // Evita que la textura parezca estar detrás de un vidrio polarizado.
+      transmission: 0,
+      thickness: 0,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
       clearcoat: isDead ? 0 : (state === 'hot' ? 1 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .9 : .52),
-      clearcoatRoughness: skin.effect === 'diamond' ? .04 : .14
+      clearcoatRoughness: skin.effect === 'diamond' ? .08 : .12
     });
   });
 }
@@ -235,6 +236,20 @@ function addEdgeGlow(stage, color, index, initialX) {
   haloLine.userData = { parentIndex:index, phase:edgeLine.userData.phase + .9, halo:true };
   stage.scene.add(haloLine);
   stage.objects.push(haloLine);
+  const bloomMat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: .18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false
+  });
+  const bloomLine = new THREE.LineSegments(_edgeBoxGeo, bloomMat);
+  bloomLine.position.copy(edgeLine.position);
+  bloomLine.scale.setScalar(1.105);
+  bloomLine.userData = { parentIndex:index, phase:edgeLine.userData.phase + 1.6, bloom:true };
+  stage.scene.add(bloomLine);
+  stage.objects.push(bloomLine);
   return edgeLine;
 }
 
@@ -264,7 +279,7 @@ function configureRenderer(container, quality, preview) {
   if (!renderer.getContext() || renderer.getContext().isContextLost()) { renderer.dispose(); return null; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = quality === 'high' ? 1.52 : 1.62;
+  renderer.toneMappingExposure = quality === 'high' ? 1.68 : 1.74;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -285,11 +300,11 @@ function makeStage(container, quality, preview=false) {
   camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
   camera.lookAt(0,preview ? .25 : .55,0);
   const lightMul = quality === 'high' ? 1.08 : 1;
-  scene.add(new THREE.HemisphereLight(0xffffff,0x7880a8,1.35 * lightMul));
-  const key = new THREE.DirectionalLight(0xfff5d4,1.65 * lightMul);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x8c96c8,1.62 * lightMul));
+  const key = new THREE.DirectionalLight(0xfff8e8,1.92 * lightMul);
   key.position.set(-3,6,4); scene.add(key);
   const rim = new THREE.PointLight(0x88ddff,3.1 * lightMul,11); rim.position.set(4,2,-2); scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xb9b9ff,.72 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
+  const fill = new THREE.DirectionalLight(0xcfd4ff,1.02 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.ShadowMaterial({ color:0x000000,opacity:.3 }));
   ground.rotation.x=-Math.PI/2;ground.position.y=-.35;ground.receiveShadow=true;scene.add(ground);
   const stage = {renderer,scene,camera,width,height,rim,objects:[],stateLights:[],frame:0,disposed:false,contextLost:false,resizeObserver:null};
@@ -361,9 +376,9 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     const st = states[index] || 'normal';
     if (st !== 'scoring' && st !== 'hot') return;
     const targetX = index * spacing - total / 2;
-    const glowColor = st === 'hot' ? 0xffd629 : 0x24ff91;
+    const glowColor = st === 'hot' ? 0xffc400 : 0x00ff7b;
     addEdgeGlow(stage, glowColor, index, targetX);
-    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 5.2 : 3.8, 4.2, 1.7);
+    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 8.4 : 6.4, 5.2, 1.45);
     stateLight.position.set(targetX, 1.25, 1.25);
     stateLight.userData = { parentIndex:index, baseIntensity:stateLight.intensity, phase:index * .8 };
     stage.scene.add(stateLight);
@@ -387,7 +402,9 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
         }
         const phase = obj.userData.phase || 0;
         const pulse = .5 + .5 * Math.sin(now * .0045 + phase);
-        obj.material.opacity = obj.userData.halo ? .2 + .28 * pulse : .72 + .28 * pulse;
+        obj.material.opacity = obj.userData.bloom ? .12 + .2 * pulse
+          : obj.userData.halo ? .34 + .4 * pulse
+          : .86 + .14 * pulse;
         return;
       }
       // Dado normal

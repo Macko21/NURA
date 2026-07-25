@@ -22,9 +22,9 @@ fs.copyFileSync(path.join(root, "mobile/native-entry.js"), path.join(output, "na
 
 const indexPath = path.join(output, "index.html");
 let index = fs.readFileSync(indexPath, "utf8");
-const marker = /<script>\r?\n\/\/ Cache-busting/;
+const marker = /(<div id="toast" class="toast hidden"><\/div>\r?\n)/;
 if (!marker.test(index)) throw new Error("No se encontró el punto de inserción del runtime nativo");
-index = index.replace(marker, '<script src="/native-runtime.js"></script>\n<script>\n// Cache-busting');
+index = index.replace(marker, '$1\n<script src="/native-runtime.js"></script>\n');
 fs.writeFileSync(indexPath, index);
 
 console.log("Mobile web bundle preparado en mobile-dist");

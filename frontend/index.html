@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.6.1"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.6.2"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -98,7 +98,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v4.6.1</p>
+      <p class="app-version">v4.6.2</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -118,8 +118,11 @@
       <button class="btn btn-link" id="btn-feedback">💬 Feedback</button>
       <button class="btn btn-link" id="btn-rules">📖 ¿Cómo se juega?</button>
 
-      <!-- Misiones diarias (MÓVIL: botón que abre el modal) -->
-      <button id="btn-missions-mobile" class="btn btn-ghost hidden" onclick="openMissionTab()">🎯 Misiones diarias</button>
+      <!-- Misiones diarias (MÓVIL: vista rápida con cobro directo) -->
+      <div id="lobby-missions-mobile" class="lobby-missions lobby-missions-mobile hidden">
+        <div class="lobby-missions-header">🎯 Misiones diarias</div>
+        <div id="lobby-missions-list-mobile" class="lobby-missions-list"></div>
+      </div>
 
       <button id="btn-logout" class="btn btn-danger-link hidden" style="display:none">Cerrar sesión</button>
       <button id="btn-back-to-auth" class="btn btn-link">← Volver al login</button>
@@ -801,31 +804,18 @@
 <div id="toast" class="toast hidden"></div>
 
 <script>
-// Cache-busting: si la versión del SW no coincide, limpiar todo y recargar
+// La app/SW muestra "Actualizar ahora"; nunca borrar sesión ni recargar a escondidas.
 (function(){
-  if ('caches' in window) {
-    fetch('/api/version').then(function(r){return r.json()}).then(function(d){
-      if (!d.version) return;
-      var v = localStorage.getItem('macko_sw_ver');
-      if (v && v !== d.version) {
-        caches.keys().then(function(keys){
-          return Promise.all(keys.map(function(k){ 
-            if (k.startsWith('macko-')) return caches.delete(k);
-          }));
-        }).then(function(){
-          localStorage.setItem('macko_sw_ver', d.version);
-          window.location.reload(true);
-        });
-      }
-      if (!v) localStorage.setItem('macko_sw_ver', d.version);
-    }).catch(function(){});
-  }
+  fetch('/api/version?ts=' + Date.now(), {cache:'no-store'})
+    .then(function(r){return r.json()})
+    .then(function(d){ if (d.version) window.MACKO_SERVER_VERSION = d.version; })
+    .catch(function(){});
 })();
 </script>
-<script src="/version.js?v=4.6.1"></script>
-  <script src="/dice-renderer.js?v=4.6.1"></script>
-  <script src="/audio.js?v=4.6.1"></script>
-  <script src="/app.js?v=4.6.1"></script>
+<script src="/version.js?v=4.6.2"></script>
+  <script src="/dice-renderer.js?v=4.6.2"></script>
+  <script src="/audio.js?v=4.6.2"></script>
+  <script src="/app.js?v=4.6.2"></script>
 <!-- FIN ⚠️ -->
 
 

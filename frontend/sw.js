@@ -11,7 +11,7 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '4.6.1';
+const GAME_VERSION = '4.6.2';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [
@@ -43,21 +43,12 @@ const ASSETS = [
   'https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap'
 ];
 
-/* Instalar — cachear todos los assets */
+/* Instalar: preparar el cache nuevo sin borrar el de la versión activa. */
 self.addEventListener('install', event => {
-  // Antes de instalar, limpiar TODOS los caches viejos
   event.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
-        keys
-          .filter(key => key.startsWith('macko-') && key !== CACHE_NAME)
-          .map(key => caches.delete(key))
-      );
-    }).then(() => {
-      return caches.open(CACHE_NAME).then(cache => {
-        return cache.addAll(ASSETS).catch(() => {
-          // Si algún asset falla (ej: fonts offline), seguir igual
-        });
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(ASSETS).catch(() => {
+        // Si algún asset falla (ej: fonts offline), seguir igual.
       });
     })
   );
