@@ -2,6 +2,32 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.6.1": {
+    title: "🔐 Hotfix de JWT vencido y arranque autenticado",
+    scope: "ceo",
+    files: [
+      "frontend/app.js",
+      "frontend/version.js",
+      "frontend/sw.js",
+      "frontend/index.html",
+      "frontend/ceo-panel.html",
+      "package.json",
+      "package-lock.json",
+      "android/app/build.gradle",
+      "ios/App/App.xcodeproj/project.pbxproj"
+    ],
+    changes: [
+      "ROOT CAUSE: isLogged() sólo comprobaba la existencia de gameToken; un JWT expirado o firmado con una clave anterior dejaba el lobby visible pero todos los endpoints devolvían 403.",
+      "BOOTSTRAP: DOMContentLoaded ahora valida el token una sola vez contra /api/user/balance antes de initUI y antes de lanzar inventario, misiones y WebSocket.",
+      "TOKEN LOCAL: se decodifica exp para descartar inmediatamente JWT vencidos sin generar solicitudes innecesarias.",
+      "AUTH FETCH: helper central agrega Authorization y detecta únicamente respuestas de sesión inválida/expirada, sin confundir otros 403 funcionales.",
+      "SESSION RESET: el cierre por expiración es idempotente, detiene reconexión WS, limpia sala/auth y muestra el ingreso una sola vez.",
+      "PROTECTED LOADERS: balance, inventario, perfil, misiones, cofre y notificaciones usan el manejo autenticado central.",
+      "OFFLINE SAFETY: un fallo de red no destruye una sesión; sólo 401/403 confirmado o exp local provoca logout.",
+      "PUSH: checkPushStatus espera la validación inicial para no registrar una suscripción con JWT inválido.",
+      "PWA: bump 4.6.1 sincronizado para reemplazar app.js 4.6.0 en instalaciones existentes."
+    ]
+  },
   "4.6.0": {
     title: "🎮 Estabilidad multijugador/PWA, tienda resiliente y lectura visual 3D",
     scope: "ceo",

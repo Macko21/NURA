@@ -219,10 +219,7 @@ function _handleNotifAction(notifId, action) {
 async function loadServerNotifications() {
   if (!isLogged()) return;
   try {
-    const token = localStorage.getItem('gameToken');
-    const res = await fetch('/api/notifications', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
+    const res = await authenticatedFetch('/api/notifications');
     if (!res.ok) return;
     const data = await res.json();
     const notifications = data.notifications || [];
@@ -452,6 +449,7 @@ async function unsubscribeFromPush() {
 
 async function checkPushStatus() {
   if (!isLogged()) return false;
+  if (!(await validateStoredAuthSession())) return false;
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') {
       _pushSubscribed = false;
@@ -579,6 +577,9 @@ function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 function saveAuth(user, token) {
+  _authExpiredHandled = false;
+  _authValidationPromise = null;
+  _validatedBalance = null;
   localStorage.setItem(AUTH_KEY, JSON.stringify({
     id: user.id,
     username: user.alias || user.username
@@ -619,10 +620,83 @@ function loadAuthenticatedIdentity() {
   }
 }
 
+let _authValidationPromise = null;
+let _authExpiredHandled = false;
+let _validatedBalance = null;
+
 function clearAuth() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem('gameToken');
   sessionStorage.removeItem('macko_guest_token');
+  _authValidationPromise = null;
+  _validatedBalance = null;
+}
+
+function expireAuthenticatedSession(message = 'Tu sesión venció. Volvé a ingresar.') {
+  if (_authExpiredHandled) return;
+  _authExpiredHandled = true;
+  disconnectSocketForIdentityChange();
+  clearAuth();
+  clearSession();
+  S.logged = false;
+  S.userId = null;
+  S.id = null;
+  S.name = null;
+  S.roomId = null;
+  S.roomCode = null;
+  if (document.readyState !== 'loading') {
+    showScreen('screen-auth');
+    toast(message, 4500);
+  }
+}
+
+async function authenticatedFetch(input, options = {}) {
+  const token = localStorage.getItem('gameToken');
+  const headers = new Headers(options.headers || {});
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(input, { ...options, headers });
+  if (token && (response.status === 401 || response.status === 403)) {
+    const payload = await response.clone().json().catch(() => ({}));
+    const errorText = String(payload.error || payload.message || '');
+    if (/sesi[oó]n expirada|sesi[oó]n inv[aá]lida|debe(?:s|rías|rÃ­as) iniciar sesi[oó]n/i.test(errorText)) {
+      expireAuthenticatedSession();
+    }
+  }
+  return response;
+}
+
+function tokenIsLocallyExpired(token) {
+  try {
+    let encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    encoded += '='.repeat((4 - encoded.length % 4) % 4);
+    const payload = JSON.parse(atob(encoded));
+    return !payload.exp || payload.exp * 1000 <= Date.now();
+  } catch (_) {
+    return true;
+  }
+}
+
+function validateStoredAuthSession() {
+  if (_authValidationPromise) return _authValidationPromise;
+  _authValidationPromise = (async () => {
+    const token = localStorage.getItem('gameToken');
+    if (!token) return false;
+    if (tokenIsLocallyExpired(token)) {
+      expireAuthenticatedSession();
+      return false;
+    }
+    try {
+      const response = await authenticatedFetch('/api/user/balance', { cache: 'no-store' });
+      if (response.status === 401 || response.status === 403) return false;
+      if (!response.ok) return true;
+      _validatedBalance = await response.json().catch(() => null);
+      return true;
+    } catch (_) {
+      // Sin red se conserva la sesión; al volver online se validará con el servidor.
+      return true;
+    }
+  })();
+  return _authValidationPromise;
 }
 
 function pushKeysMatch(subscription, expectedKey) {
@@ -1111,24 +1185,13 @@ function scheduleReconnect() {
 async function handleAuthenticationClose() {
   const token = localStorage.getItem('gameToken');
   if (!token) {
-    _allowReconnect = false;
-    clearAuth();
-    clearSession();
-    showScreen('screen-auth');
-    toast('Tu sesión venció. Volvé a ingresar.');
+    expireAuthenticatedSession();
     return;
   }
   try {
-    const response = await fetch('/api/user/balance', {
-      headers: { 'Authorization': `Bearer ${token}` },
-      cache: 'no-store'
-    });
+    _authValidationPromise = null;
+    const response = await authenticatedFetch('/api/user/balance', { cache: 'no-store' });
     if (response.status === 401 || response.status === 403) {
-      _allowReconnect = false;
-      clearAuth();
-      clearSession();
-      showScreen('screen-auth');
-      toast('Tu sesión venció. Volvé a ingresar.');
       return;
     }
   } catch (_) {
@@ -2077,7 +2140,7 @@ function updateGameCoins() {
     $('game-coins-display').classList.add('hidden');
     return;
   }
-  fetch('/api/user/balance', { headers: { 'Authorization': `Bearer ${token}` } })
+  authenticatedFetch('/api/user/balance')
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (data) {
@@ -2854,9 +2917,7 @@ async function loadLobbyMissions() {
   $('lobby-missions-desktop')?.classList.remove('hidden');
   if (desktopList) desktopList.innerHTML = '<div class="lobby-missions-state">Cargando misiones...</div>';
   try {
-    const res = await fetch('/api/user/missions', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authenticatedFetch('/api/user/missions');
     if (!res.ok) throw new Error('No se pudieron cargar las misiones');
     const { missions } = await res.json();
     const dailies = (Array.isArray(missions) ? missions : []).filter(m => m.type === 'daily');
@@ -4148,8 +4209,8 @@ async function loadProfile() {
 
   try {
     const [profileRes, invRes] = await Promise.all([
-      fetch('/api/user/profile', { headers: { 'Authorization': `Bearer ${token}` } }),
-      fetch('/api/user/inventory', { headers: { 'Authorization': `Bearer ${token}` } })
+      authenticatedFetch('/api/user/profile'),
+      authenticatedFetch('/api/user/inventory')
     ]);
     if (!profileRes.ok) throw new Error('Error al cargar perfil');
     const p = await profileRes.json();
@@ -4511,9 +4572,7 @@ async function loadBadges() {
   const container = $('profile-badges');
   if (!container) return;
   try {
-    const res = await fetch('/api/user/missions', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authenticatedFetch('/api/user/missions');
     if (!res.ok) { container.innerHTML = ''; return; }
     const { missions } = await res.json();
     const achievements = missions.filter(m => m.type === 'achievement');
@@ -4548,9 +4607,7 @@ async function loadMissions() {
   container.innerHTML = '<p style="color:var(--text3);text-align:center;padding:20px">Cargando misiones...</p>';
 
   try {
-    const res = await fetch('/api/user/missions', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authenticatedFetch('/api/user/missions');
     if (!res.ok) { container.innerHTML = '<p style="color:var(--text3)">Error al cargar</p>'; return; }
     const { missions } = await res.json();
     if (!missions?.length) { container.innerHTML = '<p style="color:var(--text3)">Sin misiones disponibles</p>'; return; }
@@ -4605,9 +4662,9 @@ async function loadMissions() {
         e.target.textContent = '⏳';
         e.target.disabled = true;
         try {
-          const r = await fetch('/api/user/missions/claim', {
+          const r = await authenticatedFetch('/api/user/missions/claim', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ missionId: mid })
           });
           const d = await r.json();
@@ -4630,9 +4687,7 @@ async function checkPendingMissions() {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
   try {
-    const res = await fetch('/api/user/missions', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authenticatedFetch('/api/user/missions');
     if (!res.ok) return;
     const { missions } = await res.json();
     const completed = missions.filter(m => m.completed === 1 && m.claimed === 0);
@@ -4698,9 +4753,7 @@ async function loadChestStatus() {
   const btn = $('btn-chest');
   if (!btn) return;
   try {
-    const res = await fetch('/api/user/chest-status', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authenticatedFetch('/api/user/chest-status');
     if (!res.ok) return;
     const d = await res.json();
     if (d.canClaim) {
@@ -4821,9 +4874,7 @@ async function loadEquippedItems() {
   const token = localStorage.getItem('gameToken');
   if (!token) return;
   try {
-    const invRes = await fetch('/api/user/inventory', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const invRes = await authenticatedFetch('/api/user/inventory');
     if (!invRes.ok) {
       // Fallback: cargar del cache local
       loadEquippedCache();
@@ -4878,9 +4929,7 @@ async function loadUserBalance() {
   if (!token) return;
   
   try {
-    const res = await fetch('/api/user/balance', { 
-      headers: { 'Authorization': `Bearer ${token}` } 
-    });
+    const res = await authenticatedFetch('/api/user/balance');
     if (res.ok) {
       const data = await res.json();
       updateUserPanel(S.name, data.coins);
@@ -5354,7 +5403,8 @@ document.removeEventListener('keydown', _tourKeydown);
 document.addEventListener('keydown', _tourKeydown);
 
 /* ── Arranque ────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const authSessionValid = await validateStoredAuthSession();
   initRulesTabs();
   // Detectar primer ingreso para tour guiado
   checkFirstTimeTutorial();
@@ -5398,13 +5448,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const auth = loadAuthenticatedIdentity();
 
-  if(isLogged() && auth?.id){
+  if(isLogged() && authSessionValid && auth?.id){
     S.logged = true;
     S.userId = auth.id;
     S.id = auth.id;
     S.name = auth.username;
     // LLAMADA CLAVE: Al cargar, pedimos el saldo al backend
-    loadUserBalance();
+    if (_validatedBalance) updateUserPanel(S.name, _validatedBalance.coins || 0);
+    else loadUserBalance();
     loadEquippedItems();
   } else if (isLogged()) {
     clearAuth();

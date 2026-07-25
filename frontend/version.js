@@ -10,9 +10,21 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.6.0";
+const GAME_VERSION = "4.6.1";
 
 const CHANGELOG = [
+  {
+    version: "4.6.1",
+    date: "2026-07-25",
+    title: "🔐 Corrección de sesión al abrir el juego",
+    scope: "game",
+    files: ["app.js", "version.js", "sw.js", "index.html"],
+    changes: [
+      "🔐 SESIÓN: el juego comprueba el acceso antes de cargar el lobby",
+      "🪙 DATOS: monedas, misiones, inventario, cofre y notificaciones dejan de fallar en cadena",
+      "🔄 RECUPERACIÓN: una sesión vencida vuelve al ingreso una sola vez, sin bucles de reconexión"
+    ]
+  },
   {
     version: "4.6.0",
     date: "2026-07-25",
