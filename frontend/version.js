@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.6.2";
+const GAME_VERSION = "4.6.3";
 
 const CHANGELOG = [
+  {
+    version: "4.6.3",
+    date: "2026-07-25",
+    title: "💡 Marcos LED clásicos y skins siempre brillantes",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "dice-renderer.js"],
+    changes: [
+      "🟢 PUNTOS: los dados que suman ahora llevan un marco LED verde sólido, sin bordes blancos",
+      "🟡 CALIENTES: el marco cambia a dorado intenso y el dado toma un tono cálido",
+      "🎨 COLOR: el dado puntuable también recibe color, manteniendo visible el icono de su skin",
+      "✨ SIN ENTRAR: los dados conservan el mismo brillo y color antes de que el jugador entre"
+    ]
+  },
   {
     version: "4.6.2",
     date: "2026-07-25",

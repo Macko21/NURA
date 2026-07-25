@@ -168,20 +168,22 @@ function materialsFor(skinId, state, quality) {
     : null;
   const emissiveColor = new THREE.Color(skin.emissive || skin.colors?.[0] || '#ffffff');
   if (stateColor) emissiveColor.lerp(stateColor, state === 'hot' ? .52 : .42);
-  const emissiveIntensity = isDead ? 0 : state === 'hot' ? 1.85 : state === 'scoring' ? 1.38 : .34;
+  const emissiveIntensity = state === 'hot' ? 1.55 : state === 'scoring' ? 1.28 : .34;
   return FACE_VALUES.map(value => {
     const faceMap = faceTexture(value, skinId, quality);
-    const baseColor = isDead ? '#999999' : '#ffffff';
+    const baseColor = state === 'hot' ? '#ffe46b'
+      : state === 'scoring' ? '#8dffc3'
+      : '#ffffff';
     if (isSimple) {
       return new THREE.MeshStandardMaterial({
         map: faceMap, color: baseColor,
         emissive: emissiveColor,
         emissiveMap: faceMap,
         emissiveIntensity,
-        roughness: isDead ? .72 : Math.min(.4, skin.roughness + .08),
-        metalness: isDead ? 0 : Math.min(.22, skin.metalness),
-        transparent: !!skin.opacity || isDead,
-        opacity: isDead ? .72 : (skin.opacity || 1)
+        roughness: Math.min(.4, skin.roughness + .08),
+        metalness: Math.min(.22, skin.metalness),
+        transparent: !!skin.opacity,
+        opacity: skin.opacity || 1
       });
     }
     return new THREE.MeshPhysicalMaterial({
@@ -190,67 +192,77 @@ function materialsFor(skinId, state, quality) {
       emissive: emissiveColor,
       emissiveMap: faceMap,
       emissiveIntensity,
-      roughness: isDead ? .76 : Math.min(.36, skin.roughness),
-      metalness: isDead ? 0 : Math.min(.42, skin.metalness),
-      transparent: !!skin.opacity || isDead,
-      opacity: isDead ? .72 : (skin.opacity || 1),
+      roughness: Math.min(.36, skin.roughness),
+      metalness: Math.min(.42, skin.metalness),
+      transparent: !!skin.opacity,
+      opacity: skin.opacity || 1,
       // Evita que la textura parezca estar detrás de un vidrio polarizado.
       transmission: 0,
       thickness: 0,
       ior: skin.effect === 'diamond' ? 2.2 : 1.45,
-      clearcoat: isDead ? 0 : (state === 'hot' ? 1 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .9 : .52),
+      clearcoat: state === 'hot' ? 1 : ['gold','diamond','elite','emerald'].includes(skin.effect) ? .9 : .52,
       clearcoatRoughness: skin.effect === 'diamond' ? .08 : .12
     });
   });
 }
 
-/* ── Borde LED 3D para dados scoring/hot ────────────────── */
-// Geometría de cubo simple para líneas de borde (12 aristas limpias, sin subdivisión)
-const _edgeBoxGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.34, 1.34, 1.34));
+/* ── Marco LED 3D clásico para dados scoring/hot ────────── */
+const _neonBarGeo = new THREE.BoxGeometry(1, 1, 1);
 
 function addEdgeGlow(stage, color, index, initialX) {
-  const edgeMat = new THREE.LineBasicMaterial({
-    color: color,
-    transparent: true,
-    opacity: 0.9,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
-  const edgeLine = new THREE.LineSegments(_edgeBoxGeo, edgeMat);
-  // Se posiciona en la posición inicial del dado; el animate loop lo seguirá
-  edgeLine.position.set(initialX, 2.2, 0);
-  edgeLine.userData = { parentIndex: index, phase: Math.random() * Math.PI * 2 };
-  stage.scene.add(edgeLine);
-  stage.objects.push(edgeLine);
-  const haloMat = new THREE.LineBasicMaterial({
+  const coreMat = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: .34,
-    blending: THREE.AdditiveBlending,
+    opacity: 1,
     depthWrite: false,
-    depthTest: false
+    toneMapped: false
   });
-  const haloLine = new THREE.LineSegments(_edgeBoxGeo, haloMat);
-  haloLine.position.copy(edgeLine.position);
-  haloLine.scale.setScalar(1.055);
-  haloLine.userData = { parentIndex:index, phase:edgeLine.userData.phase + .9, halo:true };
-  stage.scene.add(haloLine);
-  stage.objects.push(haloLine);
-  const bloomMat = new THREE.LineBasicMaterial({
+  const haloMat = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: .18,
+    opacity: .24,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    depthTest: false
+    toneMapped: false
   });
-  const bloomLine = new THREE.LineSegments(_edgeBoxGeo, bloomMat);
-  bloomLine.position.copy(edgeLine.position);
-  bloomLine.scale.setScalar(1.105);
-  bloomLine.userData = { parentIndex:index, phase:edgeLine.userData.phase + 1.6, bloom:true };
-  stage.scene.add(bloomLine);
-  stage.objects.push(bloomLine);
-  return edgeLine;
+  const frame = new THREE.Group();
+  const half = .675;
+  const length = 1.39;
+  const core = .038;
+  const halo = .085;
+  const edges = [];
+  for (const y of [-half, half]) for (const z of [-half, half]) {
+    edges.push({ position:[0,y,z], scale:[length,core,core], haloScale:[length,halo,halo] });
+  }
+  for (const x of [-half, half]) for (const z of [-half, half]) {
+    edges.push({ position:[x,0,z], scale:[core,length,core], haloScale:[halo,length,halo] });
+  }
+  for (const x of [-half, half]) for (const y of [-half, half]) {
+    edges.push({ position:[x,y,0], scale:[core,core,length], haloScale:[halo,halo,length] });
+  }
+  edges.forEach(edge => {
+    const haloBar = new THREE.Mesh(_neonBarGeo, haloMat);
+    haloBar.position.set(...edge.position);
+    haloBar.scale.set(...edge.haloScale);
+    haloBar.renderOrder = 3;
+    frame.add(haloBar);
+    const coreBar = new THREE.Mesh(_neonBarGeo, coreMat);
+    coreBar.position.set(...edge.position);
+    coreBar.scale.set(...edge.scale);
+    coreBar.renderOrder = 4;
+    frame.add(coreBar);
+  });
+  frame.position.set(initialX, 2.2, 0);
+  frame.userData = {
+    edgeGlow: true,
+    parentIndex: index,
+    phase: Math.random() * Math.PI * 2,
+    coreMat,
+    haloMat
+  };
+  stage.scene.add(frame);
+  stage.objects.push(frame);
+  return frame;
 }
 
 function targetQuaternion(value) {
@@ -371,14 +383,14 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
   const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));
   const particles=addParticles(stage,skinId,quality==='high'?(effectBoost?30:18):(effectBoost?12:8)),start=performance.now(),duration=reducedMotion()?60:460,linger=quality==='high'?420:260;
   let impacted=false;
-  // Bordes LED 3D para dados scoring/hot (EdgesGeometry, siguen al dado)
+  // Marcos LED 3D sólidos para dados scoring/hot.
   dice.forEach((_, index) => {
     const st = states[index] || 'normal';
     if (st !== 'scoring' && st !== 'hot') return;
     const targetX = index * spacing - total / 2;
     const glowColor = st === 'hot' ? 0xffc400 : 0x00ff7b;
     addEdgeGlow(stage, glowColor, index, targetX);
-    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 8.4 : 6.4, 5.2, 1.45);
+    const stateLight = new THREE.PointLight(glowColor, st === 'hot' ? 5.8 : 4.8, 4.8, 1.55);
     stateLight.position.set(targetX, 1.25, 1.25);
     stateLight.userData = { parentIndex:index, baseIntensity:stateLight.intensity, phase:index * .8 };
     stage.scene.add(stateLight);
@@ -390,8 +402,8 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     const elapsed=now-start,t=Math.min(1,elapsed/duration),ease=1-Math.pow(1-t,3);
     // Animar dados y bordes LED
     stage.objects.forEach((obj,i)=>{
-      if (obj.type === 'LineSegments') {
-        // Borde LED: sigue al dado padre, pulsa opacidad
+      if (obj.userData.edgeGlow) {
+        // Marco LED: sigue al dado y conserva un color sólido sin quemarse a blanco.
         const pIdx = obj.userData.parentIndex;
         if (pIdx !== undefined && pIdx < starts.length) {
           const targetPos = targets[pIdx].position;
@@ -402,9 +414,8 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
         }
         const phase = obj.userData.phase || 0;
         const pulse = .5 + .5 * Math.sin(now * .0045 + phase);
-        obj.material.opacity = obj.userData.bloom ? .12 + .2 * pulse
-          : obj.userData.halo ? .34 + .4 * pulse
-          : .86 + .14 * pulse;
+        obj.userData.coreMat.opacity = .94 + .06 * pulse;
+        obj.userData.haloMat.opacity = .18 + .12 * pulse;
         return;
       }
       // Dado normal

@@ -2,6 +2,29 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.6.3": {
+    title: "💡 Marco LED sólido y paridad visual pre-entry",
+    scope: "ceo",
+    files: [
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/dice-renderer.js",
+      "frontend/version.js",
+      "frontend/sw.js",
+      "frontend/index.html",
+      "frontend/ceo-panel.html",
+      "backend/ceoChangelog.js",
+      "android/app/build.gradle",
+      "ios/App/App.xcodeproj/project.pbxproj"
+    ],
+    changes: [
+      "ROOT CAUSE: tres EdgesGeometry con AdditiveBlending y alta exposición saturaban el RGB hasta blanco en skins claras.",
+      "NEON FRAME: EdgesGeometry reemplazado por 12 barras MeshBasicMaterial; núcleo sólido toneMapped:false y halo del mismo color.",
+      "COLOR FIDELITY: núcleo usa NormalBlending y profundidad real; evita líneas traseras visibles y conserva verde/dorado puro.",
+      "STATE TINT: scoring aplica tinte menta y hot aplica tinte dorado sobre la textura, sin tapar pips ni iconos.",
+      "PRE-ENTRY: estado dead comparte baseColor, emisión, roughness, metalness, opacity y clearcoat con estado normal.",
+      "VERSIONING: web, PWA, npm, CEO panel, Android (40603/4.6.3) e iOS (40603/4.6.3) sincronizados."
+    ]
+  },
   "4.6.2": {
     title: "🛠️ Estabilidad visual, misiones y ciclo de actualización",
     scope: "ceo",
