@@ -480,8 +480,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 
 /* Misiones desktop: posicionado absoluto en esquina superior derecha */
 .lobby-missions-desktop{display:none !important}
-.lobby-missions-mobile{width:100%;margin-top:4px}
-.lobby-missions-mobile.hidden{display:none}
+#btn-missions-mobile{margin-top:4px}
 .lobby-missions-header-dt{
   font-size:12px;font-weight:600;color:var(--gold);
   margin-bottom:8px;letter-spacing:.5px;font-family:'Cinzel',serif;
@@ -2367,7 +2366,7 @@ input[type=number]{-moz-appearance:textfield}
     display:flex !important;flex-direction:column;
   }
   .lobby-missions-desktop.hidden{display:none !important}
-  .lobby-missions-mobile{display:none !important}
+  #btn-missions-mobile{display:none !important}
 }
 
 /* Actualización bloqueante: primero instala, luego muestra las notas */

@@ -287,6 +287,20 @@ async function runTests() {
     assert('POST /api/guest-session', false, e.message);
   }
 
+  try {
+    const statuses = [];
+    for (let i = 0; i < 12; i++) {
+      statuses.push((await postUrl('/api/guest-session', {})).status);
+    }
+    assert(
+      'Guest access is not blocked by the password-attempt limiter',
+      statuses.every(status => status === 201),
+      `Statuses ${statuses.join(',')}`
+    );
+  } catch (e) {
+    assert('Guest access is not blocked by the password-attempt limiter', false, e.message);
+  }
+
   if (guestSession?.token) {
     try {
       const res = await fetchUrl('/api/shop/catalog', {

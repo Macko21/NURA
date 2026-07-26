@@ -531,6 +531,7 @@ window.addEventListener('appinstalled', () => {
 /* ── Persistencia de sesión ──────────────────────────── */
 const SESSION_KEY = 'macko_session';
 const AUTH_KEY = 'macko_auth';
+const GUEST_TOKEN_KEY = 'macko_guest_token';
 
 // Cache busting de assets sin borrar preferencias ni sesión.
 const GAME_CACHE_KEY = 'macko_cache_ver';
@@ -573,6 +574,7 @@ function saveAuth(user, token) {
   _authExpiredHandled = false;
   _authValidationPromise = null;
   _validatedBalance = null;
+  localStorage.removeItem(GUEST_TOKEN_KEY);
   localStorage.setItem(AUTH_KEY, JSON.stringify({
     id: user.id,
     username: user.alias || user.username
@@ -620,7 +622,8 @@ let _validatedBalance = null;
 function clearAuth() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem('gameToken');
-  sessionStorage.removeItem('macko_guest_token');
+  localStorage.removeItem(GUEST_TOKEN_KEY);
+  sessionStorage.removeItem(GUEST_TOKEN_KEY);
   _authValidationPromise = null;
   _validatedBalance = null;
 }
@@ -667,6 +670,49 @@ function tokenIsLocallyExpired(token) {
   } catch (_) {
     return true;
   }
+}
+
+function loadGuestIdentity() {
+  const token = localStorage.getItem(GUEST_TOKEN_KEY) || sessionStorage.getItem(GUEST_TOKEN_KEY);
+  if (!token || tokenIsLocallyExpired(token)) {
+    localStorage.removeItem(GUEST_TOKEN_KEY);
+    sessionStorage.removeItem(GUEST_TOKEN_KEY);
+    return null;
+  }
+  try {
+    let encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    encoded += '='.repeat((4 - encoded.length % 4) % 4);
+    const payload = JSON.parse(atob(encoded));
+    if (!payload.playerId) return null;
+    if (!localStorage.getItem(GUEST_TOKEN_KEY)) {
+      localStorage.setItem(GUEST_TOKEN_KEY, token);
+      sessionStorage.removeItem(GUEST_TOKEN_KEY);
+    }
+    return { id:payload.playerId, username:payload.username || '' };
+  } catch (_) {
+    localStorage.removeItem(GUEST_TOKEN_KEY);
+    sessionStorage.removeItem(GUEST_TOKEN_KEY);
+    return null;
+  }
+}
+
+function hasGuestSession() {
+  return !!loadGuestIdentity();
+}
+
+function expireGuestSession(message = 'Tu sesión de invitado venció. Entrá nuevamente.') {
+  disconnectSocketForIdentityChange();
+  localStorage.removeItem(GUEST_TOKEN_KEY);
+  sessionStorage.removeItem(GUEST_TOKEN_KEY);
+  clearSession();
+  S.logged = false;
+  S.userId = null;
+  S.id = null;
+  S.name = null;
+  S.roomId = null;
+  S.roomCode = null;
+  showScreen('screen-auth');
+  toast(message, 4500);
 }
 
 function validateStoredAuthSession() {
@@ -1167,7 +1213,7 @@ function clearJoinAttempt() {
 }
 
 function scheduleReconnect() {
-  if (!_allowReconnect || (!isLogged() && !sessionStorage.getItem('macko_guest_token'))) return;
+  if (!_allowReconnect || (!isLogged() && !hasGuestSession())) return;
   if (_reconnectTimer) clearTimeout(_reconnectTimer);
   const delays = [1200, 2200, 4000, 7000, 10000];
   const delay = delays[Math.min(_reconnectAttempts, delays.length - 1)];
@@ -1178,7 +1224,7 @@ function scheduleReconnect() {
 async function handleAuthenticationClose() {
   const token = localStorage.getItem('gameToken');
   if (!token) {
-    expireAuthenticatedSession();
+    if (hasGuestSession()) expireGuestSession();
     return;
   }
   try {
@@ -1239,7 +1285,7 @@ function connect(cb) {
     // Siempre mandar roomId para reconexión automática
     const wsToken = isLogged()
       ? localStorage.getItem('gameToken')
-      : sessionStorage.getItem('macko_guest_token');
+      : localStorage.getItem(GUEST_TOKEN_KEY);
     try {
       ws.send(JSON.stringify({
         type: 'IDENTIFY',
@@ -1305,7 +1351,7 @@ function leaveCurrentServerContext() {
 }
 
 function ensureRealtimeConnection() {
-  if (!isLogged() && !sessionStorage.getItem('macko_guest_token')) return;
+  if (!isLogged() && !hasGuestSession()) return;
   if (S.ws?.readyState !== WebSocket.OPEN || !_wsIdentified) connect();
 }
 
@@ -2943,23 +2989,20 @@ function stopNextTournamentTimer() {
 async function loadLobbyMissions() {
   const token = localStorage.getItem('gameToken');
   if (!token) { 
-    $('lobby-missions-mobile')?.classList.add('hidden');
+    $('btn-missions-mobile')?.classList.add('hidden');
     $('lobby-missions-desktop')?.classList.add('hidden');
     return;
   }
   const desktopList = $('lobby-missions-list-desktop');
-  const mobileList = $('lobby-missions-list-mobile');
-  $('lobby-missions-mobile')?.classList.remove('hidden');
+  $('btn-missions-mobile')?.classList.remove('hidden');
   $('lobby-missions-desktop')?.classList.remove('hidden');
   if (desktopList) desktopList.innerHTML = '<div class="lobby-missions-state">Cargando misiones...</div>';
-  if (mobileList) mobileList.innerHTML = '<div class="lobby-missions-state">Cargando misiones...</div>';
   try {
     const res = await authenticatedFetch('/api/user/missions');
     if (!res.ok) throw new Error('No se pudieron cargar las misiones');
     const { missions } = await res.json();
     const dailies = (Array.isArray(missions) ? missions : []).filter(m => m.type === 'daily');
     if (!dailies.length) { 
-      $('lobby-missions-mobile')?.classList.add('hidden');
       $('lobby-missions-desktop')?.classList.add('hidden');
       return;
     }
@@ -2979,7 +3022,7 @@ async function loadLobbyMissions() {
       </div>`;
     }).join('') + '<button class="missions-view-all" type="button">Ver todas las misiones →</button>';
     
-    for (const list of [desktopList, mobileList]) {
+    for (const list of [desktopList]) {
       if (!list) continue;
       list.innerHTML = html;
       list.querySelector('.missions-view-all')?.addEventListener('click', openMissionTab);
@@ -2987,12 +3030,12 @@ async function loadLobbyMissions() {
         btn.addEventListener('click', () => claimMission(btn.dataset.mid, btn, loadLobbyMissions));
       });
     }
-    $('lobby-missions-mobile')?.classList.remove('hidden');
+    $('btn-missions-mobile')?.classList.remove('hidden');
     $('lobby-missions-desktop')?.classList.remove('hidden');
   } catch(e) { 
-    $('lobby-missions-mobile')?.classList.remove('hidden');
+    $('btn-missions-mobile')?.classList.remove('hidden');
     $('lobby-missions-desktop')?.classList.remove('hidden');
-    for (const list of [desktopList, mobileList]) {
+    for (const list of [desktopList]) {
       if (!list) continue;
       list.innerHTML = '<button class="missions-retry" type="button">Reintentar</button>';
       list.querySelector('.missions-retry')?.addEventListener('click', loadLobbyMissions);
@@ -3968,7 +4011,8 @@ function initUI() {
       const data = await res.json();
       if (!res.ok || !data.token || !data.player?.id) throw new Error(data.error || 'No se pudo crear la sesión');
       S.id = data.player.id;
-      sessionStorage.setItem('macko_guest_token', data.token);
+      localStorage.setItem(GUEST_TOKEN_KEY, data.token);
+      saveSession();
       showScreen('screen-lobby');
       updateUserPanel(null, 0);
       connect();
@@ -5521,6 +5565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const session = loadSession();
+  const guest = !isLogged() ? loadGuestIdentity() : null;
   if (session?.id && session?.roomId) {
     S.id     = session.id;
     S.name   = session.name;
@@ -5532,11 +5577,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(isLogged()){
       loadEquippedCache(); // Carga instantánea desde localStorage
       showScreen('screen-lobby');
+    } else if (guest) {
+      S.id = guest.id;
+      showScreen('screen-lobby');
+      updateUserPanel(null, 0);
     } else {
       showScreen('screen-auth');
     }
-    toast('🔄 Restaurando sesión...', 2000);
-    connect();
+    if (isLogged() || guest) {
+      toast('🔄 Restaurando sesión...', 2000);
+      connect();
+    }
   } else if (session?.id) {
     S.id   = session.id;
     S.name = session.name;
@@ -5548,6 +5599,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadLobbyMissions();
       updateUserPanel(S.name, 0);
       connect();
+    } else if (guest) {
+      S.id = guest.id;
+      showScreen('screen-lobby');
+      updateUserPanel(null, 0);
+      connect();
     }
   } else if (isLogged()) {
     // Usuario logueado sin sesion de sala: mostrar lobby directamente
@@ -5555,6 +5611,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     showScreen('screen-lobby');
     loadLobbyMissions();
     updateUserPanel(S.name, 0);
+    connect();
+  } else if (guest) {
+    S.id = guest.id;
+    S.name = guest.username || '';
+    const inp = $('input-name');
+    if (inp) inp.value = S.name;
+    showScreen('screen-lobby');
+    updateUserPanel(null, 0);
+    saveSession();
     connect();
   }
 });
@@ -5569,6 +5634,10 @@ function navigateToLobbyOrAuth() {
       const coins = parseInt($('lobby-coins')?.textContent) || 0;
       updateUserPanel(S.name, coins);
     }).catch(() => {});
+  } else if (hasGuestSession()) {
+    showScreen('screen-lobby');
+    updateUserPanel(null, 0);
+    ensureRealtimeConnection();
   } else {
     clearAuth();
     clearSession();
@@ -5577,7 +5646,9 @@ function navigateToLobbyOrAuth() {
 }
 
 $('btn-back-to-auth').onclick = () => {
-  clearSession(); 
+  disconnectSocketForIdentityChange();
+  clearAuth();
+  clearSession();
   showScreen('screen-auth');
 };
 

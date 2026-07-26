@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.6.4"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=4.6.5"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -98,7 +98,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v4.6.4</p>
+      <p class="app-version">v4.6.5</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -118,11 +118,8 @@
       <button class="btn btn-link" id="btn-feedback">💬 Feedback</button>
       <button class="btn btn-link" id="btn-rules">📖 ¿Cómo se juega?</button>
 
-      <!-- Misiones diarias (MÓVIL: vista rápida con cobro directo) -->
-      <div id="lobby-missions-mobile" class="lobby-missions lobby-missions-mobile hidden">
-        <div class="lobby-missions-header">🎯 Misiones diarias</div>
-        <div id="lobby-missions-list-mobile" class="lobby-missions-list"></div>
-      </div>
+      <!-- En móvil se conserva el acceso compacto; el cobro rápido queda en desktop. -->
+      <button id="btn-missions-mobile" class="btn btn-ghost hidden" onclick="openMissionTab()">🎯 Misiones diarias</button>
 
       <button id="btn-logout" class="btn btn-danger-link hidden" style="display:none">Cerrar sesión</button>
       <button id="btn-back-to-auth" class="btn btn-link">← Volver al login</button>
@@ -812,10 +809,10 @@
     .catch(function(){});
 })();
 </script>
-<script src="/version.js?v=4.6.4"></script>
-  <script src="/dice-renderer.js?v=4.6.4"></script>
-  <script src="/audio.js?v=4.6.4"></script>
-  <script src="/app.js?v=4.6.4"></script>
+<script src="/version.js?v=4.6.5"></script>
+  <script src="/dice-renderer.js?v=4.6.5"></script>
+  <script src="/audio.js?v=4.6.5"></script>
+  <script src="/app.js?v=4.6.5"></script>
 <!-- FIN ⚠️ -->
 
 

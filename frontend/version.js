@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.6.4";
+const GAME_VERSION = "4.6.5";
 
 const CHANGELOG = [
+  {
+    version: "4.6.5",
+    date: "2026-07-26",
+    title: "🎲 Skins nítidas y acceso sin bloqueos",
+    scope: "game",
+    files: ["dice-renderer-3d.mjs", "app.js", "styles.css", "index.html"],
+    changes: [
+      "🎨 DADOS 3D: iconos más grandes, colores vivos y el mismo brillo antes y después de entrar",
+      "🟢 PUNTOS: los dados que suman usan puntos verdes; los calientes, puntos dorados bien contrastados",
+      "✨ SEÑAL: el brillo de estado queda pegado debajo del dado y ya no parece un aro flotante",
+      "📱 MISIONES: en PWA vuelve el botón compacto; el cobro rápido permanece en desktop",
+      "🔐 ACCESO: invitados e inicio de sesión dejan de compartir bloqueos por intentos",
+      "🔄 PWA: una sesión invitada se recupera automáticamente al cerrar y volver a abrir"
+    ]
+  },
   {
     version: "4.6.4",
     date: "2026-07-25",

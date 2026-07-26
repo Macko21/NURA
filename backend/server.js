@@ -100,19 +100,48 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting para endpoints de auth
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 10,                  // máximo 10 intentos
-  message: { error: "Demasiados intentos. Esperá 15 minutos." },
+const authAttemptKey = req => {
+  const identifier = String(req.body?.identifier || '').trim().toLowerCase();
+  const identifierHash = identifier
+    ? crypto.createHash('sha256').update(identifier).digest('hex').slice(0, 16)
+    : 'empty';
+  return `${ipKeyGenerator(req.ip)}:${identifierHash}`;
+};
+
+// Sólo protege contraseñas: los accesos correctos no consumen intentos y
+// jamás comparte contador con invitados, registro, recuperación o CEO.
+const loginLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  keyGenerator: authAttemptKey,
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (_req, res) => ![400, 401].includes(res.statusCode),
+  message: { error: "Demasiados intentos de contraseña fallidos. Esperá 5 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const guestSessionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: { error: "Demasiadas sesiones nuevas. Esperá un minuto." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const accountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: "Demasiadas solicitudes de cuenta. Esperá unos minutos." },
   standardHeaders: true,
   legacyHeaders: false
 });
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 600,
   skip: req => req.path === '/version',
   message: { error: "Demasiadas solicitudes. Esperá un momento." },
   standardHeaders: true,
@@ -195,12 +224,12 @@ app.get('/vendor/RoundedBoxGeometry.js', (req, res) => {
   res.type('application/javascript').send(source);
 });
 // Aplicar rate limiters a rutas sensibles
-app.use("/api/login", authLimiter);
-app.use("/api/register", authLimiter);
-app.use("/api/guest-session", authLimiter);
-app.use("/api/forgot-password", authLimiter);
-app.use("/api/reset-password", authLimiter);
-app.use("/ceo-panel/api/login", authLimiter);
+app.use("/api/login", loginLimiter);
+app.use("/api/register", accountLimiter);
+app.use("/api/guest-session", guestSessionLimiter);
+app.use("/api/forgot-password", accountLimiter);
+app.use("/api/reset-password", accountLimiter);
+app.use("/ceo-panel/api/login", accountLimiter);
 app.use("/api", generalLimiter);
 // Aplicar limitadores específicos a rutas sensibles
 app.use("/api/shop/buy", shopBuyLimiter);

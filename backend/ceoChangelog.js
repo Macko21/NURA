@@ -2,6 +2,35 @@
 
 // Detalle operativo visible únicamente desde el endpoint autenticado del CEO.
 module.exports = {
+  "4.6.5": {
+    title: "🔐 Rate limits aislados, invitado persistente y fidelidad 3D",
+    scope: "ceo",
+    files: [
+      "backend/server.js",
+      "frontend/app.js",
+      "frontend/dice-renderer-3d.mjs",
+      "frontend/index.html",
+      "frontend/styles.css",
+      "scripts/smoke-test.js",
+      "frontend/version.js",
+      "frontend/sw.js",
+      "frontend/ceo-panel.html",
+      "backend/ceoChangelog.js",
+      "android/app/build.gradle",
+      "ios/App/App.xcodeproj/project.pbxproj"
+    ],
+    changes: [
+      "ROOT CAUSE AUTH: login, registro, recuperación, CEO e invitados compartían un límite de 10 solicitudes por IP que también contaba éxitos.",
+      "RATE LIMITS: login queda aislado por IP+identificador, sólo cuenta credenciales fallidas, usa ventana de 5 minutos y no afecta invitados.",
+      "GUEST ACCESS: endpoint invitado tiene límite propio de 60/min; límite API general sube de 100 a 600/15min para el tráfico real de la PWA.",
+      "GUEST PERSISTENCE: token invitado firmado migra a almacenamiento persistente, valida vencimiento y restaura lobby/WebSocket tras reabrir.",
+      "MISSIONS RESPONSIVE: móvil recupera CTA compacto a la vista completa; quick claim se limita al panel desktop sin recargar tienda.",
+      "DICE MATERIALS: texturas totalmente opacas, iconos a 64% con alpha 0.98, emisión/exposición recalibradas para evitar lavado.",
+      "DICE STATES: semántica fija verde/dorado con pips más grandes y borde oscuro; CircleGeometry de contacto reemplaza el aro separado.",
+      "REGRESSION: smoke test crea 12 invitados consecutivos y valida que el limitador de contraseñas no los bloquee.",
+      "VERSIONING: web, PWA, npm, CEO panel, Android (40605/4.6.5) e iOS (40605/4.6.5) sincronizados."
+    ]
+  },
   "4.6.4": {
     title: "🎯 Pips adaptativos y marcador inferior discreto",
     scope: "ceo",
