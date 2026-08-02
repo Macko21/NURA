@@ -300,7 +300,7 @@ function syncDiceQualityUI() {
   select.disabled = false;
   select.value = renderer3D.getQuality();
   const resolved = renderer3D.getResolvedQuality();
-  const labels = { high:'3D alta activa', low:'3D ahorro activo', off:'2D clásica activa' };
+  const labels = { high:'3D mejorado activo', off:'2D clásico activo' };
   status.textContent = renderer3D.isSupported() ? labels[resolved] : '2D clásica · WebGL no disponible';
 }
 
@@ -335,7 +335,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     const select = document.getElementById('dice-quality-select');
     if (select) {
-      select.value = localStorage.getItem('macko_dice_quality') || 'auto';
+      select.value = localStorage.getItem('macko_dice_quality') === 'off' ? 'off' : 'high';
       select.addEventListener('change', () => loadDice3D().then(renderer3D => renderer3D?.setQuality(select.value)));
     }
     const warmRenderer = () => loadDice3D().then(syncDiceQualityUI);

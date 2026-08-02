@@ -10,9 +10,33 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.6.5";
+const GAME_VERSION = "4.7.0";
 
 const CHANGELOG = [
+  {
+    version: "4.7.0",
+    date: "2026-08-02",
+    title: "🔄 Partidas estables, acceso seguro y dados renovados",
+    scope: "game",
+    files: [
+      "authManager.js", "emailManager.js", "database.js", "server.js",
+      "roomManager.js", "matchState.js", "diceManager.js", "playerManager.js",
+      "botManager.js", "botGameHandler.js", "app.js", "index.html",
+      "reset-password.html", "dice-renderer.js", "dice-renderer-3d.mjs",
+      "styles.css", "sw.js"
+    ],
+    changes: [
+      "🔄 CONEXIÓN: las partidas conservan el lugar durante suspensiones largas y permiten volver sin quedar afuera",
+      "🎲 REVANCHA: el botón vuelve a responder siempre y la sala se recupera sin depender de una segunda respuesta de red",
+      "➕ INGRESO TARDÍO: cualquier jugador puede entrar a una partida empezada mientras todavía haya cupo",
+      "🔐 REGISTRO: la cuenta sólo se crea después de validar el código de 6 dígitos enviado por email",
+      "📧 RECUPERACIÓN: el enlace para cambiar la contraseña vuelve a enviarse, vence en una hora y reporta fallos reales del correo",
+      "🛡️ SESIÓN: el acceso registrado dura 30 días y la configuración de email quedó unificada y protegida",
+      "✨ DADOS: el selector ahora ofrece sólo 2D clásico o 3D mejorado, con animación más rápida, más brillo y colores vivos",
+      "🤖 BOTS: los rivales automáticos eligen avatares visuales válidos de forma estable",
+      "🧪 CALIDAD: reglas, servidor, sintaxis y empaquetado móvil fueron verificados automáticamente"
+    ]
+  },
   {
     version: "4.6.5",
     date: "2026-07-26",

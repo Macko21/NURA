@@ -1,20 +1,20 @@
 "use strict";
 
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const { 
-  createUserTransaction, 
-  getUserByEmailOrUsername, 
+const {
+  createUserTransaction,
+  getUserByEmailOrUsername,
   getPlayerByUserId,
   checkIfBanned,
-  pool 
+  pool
 } = require("./database");
+const { isEmailReady, sendEmail } = require("./emailManager");
 
-// Usar exclusivamente variable de entorno. Si no está definida, fallar explícitamente.
 const JWT_SECRET = process.env.JWT_SECRET;
-
 if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET, "utf8") < 32) {
-  console.error("❌ JWT_SECRET debe estar definido y tener al menos 32 bytes");
+  console.error("JWT_SECRET debe estar definido y tener al menos 32 bytes");
   process.exit(1);
 }
 
@@ -24,221 +24,251 @@ function verifyGameToken(token) {
 }
 
 function createGuestSession(req, res) {
-  const playerId = `guest_${require("crypto").randomUUID()}`;
+  const playerId = `guest_${crypto.randomUUID()}`;
   const token = jwt.sign(
     { guest: true, playerId, username: "Jugador" },
     JWT_SECRET,
-    { algorithm: "HS256", expiresIn: "12h" }
+    { algorithm: "HS256", expiresIn: "24h" }
   );
   res.status(201).json({ token, player: { id: playerId, alias: "Jugador" } });
 }
 
-async function register(req, res) {
-  const { email, username, password } = req.body;
+function normalizeRegistration(body = {}) {
+  return {
+    email: String(body.email || "").trim().toLowerCase(),
+    username: String(body.username || "").trim(),
+    password: body.password
+  };
+}
 
-  if (!email || !username || !password) {
-    return res.status(400).json({ error: "Faltan datos requeridos" });
+function registrationValidation({ email, username, password }) {
+  if (!email || !username || !password) return "Faltan datos requeridos";
+  if (!/^[\p{L}][\p{L}\p{N}_.-]{2,23}$/u.test(username)) {
+    return "El usuario debe tener 3 a 24 caracteres y comenzar con una letra";
   }
-  const normalizedUsername = String(username).trim();
-  const normalizedEmail = String(email).trim().toLowerCase();
-  if (!/^[\p{L}][\p{L}\p{N}_.-]{2,23}$/u.test(normalizedUsername)) {
-    return res.status(400).json({ error: "El usuario debe tener 3 a 24 caracteres y comenzar con una letra" });
-  }
-  if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    return res.status(400).json({ error: "Correo electrónico inválido" });
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "Correo electronico invalido";
   }
   if (typeof password !== "string" || password.length < 10 || password.length > 128) {
-    return res.status(400).json({ error: "La contraseña debe tener entre 10 y 128 caracteres" });
+    return "La contraseña debe tener entre 10 y 128 caracteres";
+  }
+  return null;
+}
+
+async function register(req, res) {
+  const input = normalizeRegistration(req.body);
+  const validationError = registrationValidation(input);
+  if (validationError) return res.status(400).json({ error: validationError });
+  if (!isEmailReady()) {
+    return res.status(503).json({ error: "El servicio de email no esta disponible. Intenta nuevamente mas tarde." });
   }
 
   try {
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-
-    await createUserTransaction(normalizedEmail, normalizedUsername, passwordHash);
-    
-    res.status(201).json({ message: "Usuario registrado con éxito" });
-  } catch (error) {
-    console.error("Error en registro:", error);
-    if (error.code === "23505") { // Código de PostgreSQL para UNIQUE violation
+    const existing = await pool.query(
+      `SELECT 1 FROM users WHERE email = $1 OR LOWER(username) = LOWER($2) LIMIT 1`,
+      [input.email, input.username]
+    );
+    if (existing.rows.length) {
       return res.status(400).json({ error: "El email o usuario ya existe" });
     }
-    res.status(500).json({ error: "Error interno del servidor" });
+
+    const passwordHash = await bcrypt.hash(input.password, 12);
+    const code = String(crypto.randomInt(100000, 1000000));
+    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await pool.query(
+      `INSERT INTO pending_registrations
+       (email, username, password_hash, code_hash, expires_at, attempts, created_at)
+       VALUES ($1,$2,$3,$4,$5,0,$6)
+       ON CONFLICT (email) DO UPDATE SET
+         username = EXCLUDED.username,
+         password_hash = EXCLUDED.password_hash,
+         code_hash = EXCLUDED.code_hash,
+         expires_at = EXCLUDED.expires_at,
+         attempts = 0,
+         created_at = EXCLUDED.created_at`,
+      [input.email, input.username, passwordHash, codeHash, expiresAt, Date.now()]
+    );
+
+    try {
+      await sendEmail({
+        to: input.email,
+        subject: "Tu codigo de verificacion - Los 10.000",
+        text: `Tu codigo de verificacion es ${code}. Vence en 10 minutos.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;color:#172033">
+            <h2 style="color:#C8961E">Los 10.000 de Macko</h2>
+            <p>Usa este codigo para confirmar tu cuenta:</p>
+            <p style="font-size:34px;font-weight:800;letter-spacing:8px;margin:24px 0">${code}</p>
+            <p>Vence en 10 minutos. Si no pediste esta cuenta, ignora el mensaje.</p>
+          </div>`
+      });
+    } catch (mailError) {
+      await pool.query(`DELETE FROM pending_registrations WHERE email = $1`, [input.email]);
+      console.error("Error enviando verificacion:", mailError.message);
+      return res.status(503).json({ error: "No pudimos enviar el codigo. Intenta nuevamente." });
+    }
+
+    return res.status(202).json({
+      message: "Te enviamos un codigo de 6 digitos",
+      verificationRequired: true,
+      email: input.email
+    });
+  } catch (error) {
+    console.error("Error en registro:", error);
+    if (error.code === "23505") {
+      return res.status(400).json({ error: "El email o usuario ya existe o esta pendiente de verificacion" });
+    }
+    return res.status(500).json({ error: "Error interno del servidor" });
+  }
+}
+
+async function verifyRegistration(req, res) {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const code = String(req.body?.code || "").replace(/\D/g, "");
+  if (!email || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ error: "Ingresa el codigo de 6 digitos" });
+  }
+
+  try {
+    const pendingResult = await pool.query(
+      `SELECT * FROM pending_registrations WHERE email = $1`,
+      [email]
+    );
+    const pending = pendingResult.rows[0];
+    if (!pending || new Date(pending.expires_at).getTime() <= Date.now()) {
+      await pool.query(`DELETE FROM pending_registrations WHERE email = $1`, [email]);
+      return res.status(400).json({ error: "El codigo vencio. Solicita uno nuevo." });
+    }
+    if (Number(pending.attempts) >= 5) {
+      await pool.query(`DELETE FROM pending_registrations WHERE email = $1`, [email]);
+      return res.status(429).json({ error: "Demasiados intentos. Solicita un codigo nuevo." });
+    }
+
+    const submittedHash = crypto.createHash("sha256").update(code).digest("hex");
+    const expected = Buffer.from(pending.code_hash, "hex");
+    const submitted = Buffer.from(submittedHash, "hex");
+    if (expected.length !== submitted.length || !crypto.timingSafeEqual(expected, submitted)) {
+      await pool.query(
+        `UPDATE pending_registrations SET attempts = attempts + 1 WHERE email = $1`,
+        [email]
+      );
+      return res.status(400).json({ error: "Codigo incorrecto" });
+    }
+
+    await createUserTransaction(email, pending.username, pending.password_hash);
+    await pool.query(`DELETE FROM pending_registrations WHERE email = $1`, [email]);
+    return res.status(201).json({ message: "Cuenta verificada y creada" });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(400).json({ error: "El email o usuario ya existe" });
+    }
+    console.error("Error verificando registro:", error);
+    return res.status(500).json({ error: "No se pudo verificar la cuenta" });
   }
 }
 
 async function login(req, res) {
-  const { identifier, password } = req.body; // identifier puede ser email o username
-
+  const { identifier, password } = req.body;
   if (typeof identifier !== "string" || typeof password !== "string" || !identifier.trim() || !password) {
     return res.status(400).json({ error: "Faltan credenciales" });
   }
-
   try {
     const user = await getUserByEmailOrUsername(identifier.trim());
-    if (!user) {
+    if (!user || !await bcrypt.compare(password, user.password_hash)) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
-
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    if (!isValid) {
-      return res.status(401).json({ error: "Credenciales incorrectas" });
-    }
-
-    // Verificar si el usuario está baneado
     const banStatus = await checkIfBanned(user.id);
     if (banStatus.banned) {
-      if (banStatus.reason === 'permanente') {
-        return res.status(403).json({ error: '🚫 Tu cuenta ha sido baneada permanentemente' });
-      } else {
-        return res.status(403).json({ error: `🚫 Tu cuenta está ${banStatus.reason}` });
-      }
+      return res.status(403).json({
+        error: banStatus.reason === "permanente"
+          ? "Tu cuenta ha sido baneada permanentemente"
+          : `Tu cuenta esta ${banStatus.reason}`
+      });
     }
-
     const player = await getPlayerByUserId(user.id);
-
-    // Generar el Token
+    if (!player) return res.status(500).json({ error: "No se encontro el perfil del jugador" });
     const token = jwt.sign(
       { userId: user.id, playerId: player.id, username: user.username },
       JWT_SECRET,
-      { algorithm: "HS256", expiresIn: "7d" }
+      { algorithm: "HS256", expiresIn: "30d" }
     );
-
-    res.json({
+    return res.json({
       message: "Login exitoso",
       token,
-      player: {
-        id: player.id,
-        alias: player.alias,
-        coins: player.coins
-      }
+      player: { id: player.id, alias: player.alias, coins: player.coins }
     });
   } catch (error) {
     console.error("Error en login:", error);
-    res.status(500).json({ error: "Error interno del servidor" });
+    return res.status(500).json({ error: "Error interno del servidor" });
   }
 }
 
-// Middleware para proteger rutas (como el ranking)
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Debes iniciar sesión para ver esto" });
+    return res.status(401).json({ error: "Debes iniciar sesion para ver esto" });
   }
-
-  const token = authHeader.split(" ")[1];
-
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    req.user = decoded;
+    req.user = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ["HS256"] });
     next();
-  } catch (error) {
-    return res.status(403).json({ error: "Sesión expirada o inválida" });
+  } catch (_) {
+    return res.status(403).json({ error: "Sesion expirada o invalida" });
   }
-}
-
-const nodemailer = require("nodemailer");
-const crypto = require("crypto");
-
-// Verificar que las credenciales de email estén configuradas
-const hasEmailConfig = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
-
-if (!hasEmailConfig) {
-  console.warn("⚠ EMAIL_USER/EMAIL_PASS no configurados — recuperación de contraseña no disponible");
-}
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  disableFileAccess: true,
-  disableUrlAccess: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
-
-// Verificar conexión SMTP al iniciar (no bloqueante)
-if (hasEmailConfig) {
-  transporter.verify().then(() => {
-    console.log("✅ Conexión SMTP (Gmail) verificada");
-  }).catch(err => {
-    console.warn("⚠ Error verificando SMTP:", err.message);
-    console.warn("  → Si usás Gmail, necesitás una Contraseña de Aplicación");
-    console.warn("  → https://myaccount.google.com/apppasswords");
-  });
 }
 
 async function requestPasswordReset(req, res) {
-  const { email } = req.body;
-
-  if (typeof email !== 'string' || !email.trim()) {
-    return res.status(400).json({ error: "Email requerido" });
-  }
-  const normalizedEmail = email.trim().toLowerCase();
-
-  // Verificar que el email existe antes de hacer cualquier cosa
-  const userCheck = await pool.query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
-  if (userCheck.rows.length === 0) {
-    // No revelar si el email existe o no por seguridad
-    return res.json({ message: "Si el correo está registrado, recibirás instrucciones" });
-  }
-
-  const token = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  const expires = new Date(Date.now() + 3600000); // 1 hora de validez
-
-  // Guardar en Neon
-  await pool.query("UPDATE users SET reset_token = $1, reset_expires = $2 WHERE email = $3", 
-    [tokenHash, expires, normalizedEmail]);
-
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-  const resetLink = `${baseUrl}/reset-password.html?token=${token}`;
-  
-  // Si no hay credenciales de email, ni intentamos enviar
-  if (!hasEmailConfig) {
-    console.warn("No se puede enviar email: EMAIL_USER/EMAIL_PASS no configurados");
-    return res.json({ message: "Si el correo está registrado, recibirás instrucciones" });
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: "Email requerido" });
+  if (!isEmailReady()) {
+    return res.status(503).json({ error: "El servicio de email no esta disponible. Intenta nuevamente mas tarde." });
   }
 
   try {
-    console.log('📧 Enviando correo de recuperación...');
-    // Timeout de 10s para que no se cuelgue si Gmail falla
-    await Promise.race([
-      transporter.sendMail({
-        from: process.env.EMAIL_FROM || `"Macko Juegos" <${process.env.EMAIL_USER}>`,
-        to: normalizedEmail,
-        subject: "Recuperación de cuenta - Los 10.000",
-        html: `
-          <div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-            <h2 style="color: #C8961E; text-align: center;">Los 10.000 de Macko</h2>
-            <p>Hola, recibimos una solicitud para recuperar tu contraseña.</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetLink}" style="background-color: #C8961E; color: #fff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                Cambiar contraseña
-              </a>
-            </div>
-            <p style="font-size: 12px; color: #888;">Si no solicitaste esto, ignora este correo. El enlace caduca en 1 hora.</p>
-          </div>
-        `
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout email 10s")), 10000))
-    ]);
-    console.log('✅ Email de recuperación enviado');
-  } catch (err) {
-    console.error("❌ Error al enviar email de recuperación:", err.message);
-    if (err.code === 'EAUTH') {
-      console.error("   → Credenciales de Gmail incorrectas. Necesitás una Contraseña de Aplicación:");
-      console.error("   → https://myaccount.google.com/apppasswords");
+    const userCheck = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (!userCheck.rows.length) {
+      return res.json({ message: "Si el correo esta registrado, recibiras instrucciones" });
     }
-    // No devolvemos error al cliente por seguridad (no revelar si el email existe)
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const expires = new Date(Date.now() + 60 * 60 * 1000);
+    await pool.query(
+      "UPDATE users SET reset_token = $1, reset_expires = $2 WHERE email = $3",
+      [tokenHash, expires, email]
+    );
+    const baseUrl = String(process.env.BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+    const resetLink = `${baseUrl}/reset-password.html?token=${encodeURIComponent(token)}`;
+    try {
+      await sendEmail({
+        to: email,
+        subject: "Recuperacion de cuenta - Los 10.000",
+        text: `Abri este enlace para cambiar tu contraseña: ${resetLink}. Vence en 1 hora.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;color:#172033">
+            <h2 style="color:#C8961E">Los 10.000 de Macko</h2>
+            <p>Recibimos una solicitud para recuperar tu contraseña.</p>
+            <p style="margin:28px 0"><a href="${resetLink}" style="background:#C8961E;color:#fff;padding:12px 22px;border-radius:7px;text-decoration:none;font-weight:bold">Cambiar contraseña</a></p>
+            <p>El enlace vence en 1 hora. Si no lo pediste, ignora este mensaje.</p>
+          </div>`
+      });
+    } catch (mailError) {
+      await pool.query(
+        "UPDATE users SET reset_token = NULL, reset_expires = NULL WHERE email = $1",
+        [email]
+      );
+      console.error("Error enviando recuperacion:", mailError.message);
+      return res.status(503).json({ error: "No pudimos enviar el email. Intenta nuevamente." });
+    }
+    return res.json({ message: "Si el correo esta registrado, recibiras instrucciones" });
+  } catch (error) {
+    console.error("Error solicitando recuperacion:", error);
+    return res.status(500).json({ error: "No se pudo procesar la solicitud" });
   }
-
-  res.json({ message: "Si el correo está registrado, recibirás instrucciones" });
 }
 
 module.exports = {
   register,
+  verifyRegistration,
   login,
   requireAuth,
   requestPasswordReset,

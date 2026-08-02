@@ -120,12 +120,31 @@ function snapshotMatch(match) {
       equippedAvatar:    p.equippedAvatar || null,
       equippedDice:      p.equippedDice || null,
       equippedSpecial:   p.equippedSpecial || null,
+      equippedSpecials:  Array.isArray(p.equippedSpecials) ? p.equippedSpecials : [],
       winStreak:         p.winStreak || 0,
       level:             Number(p.level) || 1,
       lives:             p.lives != null ? p.lives : 5,
       isBot:             p.isBot || false
+      ,
+      isGuest:           !!p.isGuest,
+      joinedLate:        !!p.joinedLate,
+      turnsPlayed:       Number(p.turnsPlayed) || 0
     }))
   };
+}
+
+function addLatePlayer(roomId, roomPlayer) {
+  const match = matches.get(roomId);
+  if (!match || match.status !== "playing") {
+    return { ok:false, error:"Partida no activa" };
+  }
+  if (match.players.some(player => player.id === roomPlayer.id)) {
+    return { ok:false, error:"El jugador ya pertenece a la partida" };
+  }
+  const player = createPlayerState({ ...roomPlayer, joinedLate:true });
+  const insertAt = Math.min(match.players.length, match.currentPlayerIndex + 1);
+  match.players.splice(insertAt, 0, player);
+  return { ok:true, player, match:snapshotMatch(match) };
 }
 
 /* ── Avanzar turno ───────────────────────────────────────── */
@@ -678,6 +697,6 @@ function removeTurnCallback(roomId) {
 module.exports = {
   createMatch, startFirstTurnTimer, getMatch, destroyMatch,
   handleEntryRoll, handleRoll, handleBank,
-  handleDisconnect, handleReconnect, snapshotMatch, rollDice,
+  handleDisconnect, handleReconnect, snapshotMatch, addLatePlayer, rollDice,
   setTurnCallback, removeTurnCallback
 };

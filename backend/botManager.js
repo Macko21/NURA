@@ -57,7 +57,10 @@ const BOT_COSMETICS = {
 
 function getRandomCosmetics(catalog = []) {
   const dice = catalog.filter(i => i.category === 'dados' || (i.category === 'ultra' && /^Dados\b/i.test(i.name)));
-  const avatars = catalog.filter(i => i.category === 'avatares' || (i.category === 'ultra' && /^Avatar\b/i.test(i.name)));
+  const avatars = catalog.filter(i =>
+    (i.category === 'avatares' || (i.category === 'ultra' && /^Avatar\b/i.test(i.name)))
+    && String(i.icon || '').length > 1
+  );
   const specials = catalog.filter(i => i.category === 'especiales' || (i.category === 'ultra' && !/^(Dados|Avatar)\b/i.test(i.name)));
   const pick = (items, fallback) => items.length ? items[Math.floor(Math.random() * items.length)] : { id: fallback[Math.floor(Math.random() * fallback.length)] };
   const die = pick(dice, BOT_COSMETICS.dice);

@@ -26,9 +26,33 @@ const S = {
 
   avatarEquipped: null, // Icono del avatar equipado
   diceEquipped: null,   // ID del skin de dados equipado
-  specialEquipped: null  // ID del item especial equipado
+  specialEquipped: null, // Compatibilidad con versiones anteriores
+  specialsEquipped: [],
+  specialSlots: 1,
+  joinRequests: [],
+  rematchRoom: null
 };
 const IS_NATIVE_APP = window.MACKO_NATIVE === true;
+
+function normalizeSpecialIds(value, legacy = null) {
+  let ids = Array.isArray(value) ? value : [];
+  if (!ids.length && legacy) ids = [legacy];
+  return [...new Set(ids.map(String).filter(Boolean))].slice(0, 3);
+}
+
+function setEquippedSpecials(value, legacy = null, slots = S.specialSlots) {
+  S.specialSlots = Math.max(1, Math.min(3, Number(slots) || 1));
+  S.specialsEquipped = normalizeSpecialIds(value, legacy).slice(0, S.specialSlots);
+  S.specialEquipped = S.specialsEquipped[0] || null;
+}
+
+function playerSpecials(player) {
+  return normalizeSpecialIds(player?.equippedSpecials, player?.equippedSpecial);
+}
+
+function hasSpecial(id, player = null) {
+  return (player ? playerSpecials(player) : S.specialsEquipped).includes(String(id));
+}
 
 function getInitial(name) {
   const match = String(name || '').trim().match(/[\p{L}\p{N}]/u);
@@ -618,6 +642,7 @@ function loadAuthenticatedIdentity() {
 let _authValidationPromise = null;
 let _authExpiredHandled = false;
 let _validatedBalance = null;
+let _pendingRegistrationEmail = '';
 
 function clearAuth() {
   localStorage.removeItem(AUTH_KEY);
@@ -1048,7 +1073,7 @@ function updateUserPanel(name, coins) {
       lobbyAv.classList.remove('avatar-icon');
     }
     // Marco Premium en avatar del lobby
-    lobbyAv?.classList.toggle('avatar-premium', S.specialEquipped === '15');
+    lobbyAv?.classList.toggle('avatar-premium', hasSpecial('15'));
     
     $('guest-name-field').classList.add('hidden');
     // Mostrar logout en topbar, ocultar volver al login
@@ -1113,6 +1138,7 @@ function goLobby(msg) {
   clearInterval(_playAgainTimer);
   _playAgainTimer = null;
   S.match    = null;
+  S.rematchRoom = null;
   S.roomId   = null;
   S.roomCode = null;
   S.entered  = false;
@@ -1156,6 +1182,7 @@ function goToPlayAgain(room) {
   S.roomId   = room.id;
   S.roomCode = room.code;
   S.match    = null;
+  S.rematchRoom = null;
   S.entered  = false;
   S.myTurn   = false;
   saveSession();
@@ -1483,6 +1510,7 @@ function handle(type, data) {
       break;
 
     /* ── Unirse a partida en curso ───────────────────── */
+    case 'JOIN_ACTIVE_SUCCESS':
     case 'JOINED_ACTIVE_GAME':
       S.roomId      = data.match.roomId;
       S.roomCode    = data.room?.code || data.match.roomCode || null;
@@ -1502,6 +1530,7 @@ function handle(type, data) {
       sys('Entraste a la partida en curso — necesitás 1000+ para entrar al juego');
       break;
 
+    case 'PLAYER_JOINED_LATE':
     case 'PLAYER_JOINED_GAME':
       S.match = data.match;
       syncEquippedFromMatch(data.match);
@@ -1511,6 +1540,31 @@ function handle(type, data) {
       break;
 
     /* ── Sala ────────────────────────────────────────── */
+    case 'JOIN_REQUEST_RECEIVED':
+      S.joinRequests = [
+        ...S.joinRequests.filter(request => request.playerId !== data.playerId),
+        { playerId:data.playerId, playerName:data.playerName, expiresAt:Date.now() + (data.expiresIn || 30000) }
+      ];
+      renderSB(S.match);
+      toast(`${data.playerName} solicita entrar a la partida`, 3500);
+      break;
+
+    case 'JOIN_REQUEST_RESOLVED':
+      S.joinRequests = S.joinRequests.filter(request => request.playerId !== data.playerId);
+      renderSB(S.match);
+      if (data.accepted) toast('Solicitud aceptada', 2500);
+      else if (!data.expired) toast('Solicitud rechazada', 2500);
+      break;
+
+    case 'JOIN_REQUEST_SENT':
+      toast('Solicitud enviada. El creador tiene 30 segundos para responder.', 4000);
+      break;
+
+    case 'JOIN_REQUEST_REJECTED':
+      clearJoinAttempt();
+      toast(data.message || 'La solicitud fue rechazada', 4000);
+      break;
+
     case 'ROOM_CANCELLED':
       goLobby('La sala fue cancelada');
       break;
@@ -1864,6 +1918,7 @@ function handle(type, data) {
       _gameOverShown = true;
       S.banking = false;
       if (data.match) S.match = data.match;
+      if (!data.tournamentMatch && data.room) S.rematchRoom = data.room;
       $('btn-roll').disabled = true;
       stopTimer();
       // Envolver en try/catch para evitar que errores de red arruinen la pantalla de victoria
@@ -2132,16 +2187,16 @@ function syncEquippedFromMatch(match) {
   // (los items del match pueden estar desactualizados si se cambiaron después de unirse)
   if (!S.diceEquipped)    S.diceEquipped    = me.equippedDice || null;
   if (!S.avatarEquipped)  S.avatarEquipped  = me.equippedAvatar || null;
-  if (!S.specialEquipped) S.specialEquipped = me.equippedSpecial || null;
+  if (!S.specialsEquipped.length) setEquippedSpecials(me.equippedSpecials, me.equippedSpecial);
   saveEquippedCache();
   // Aplicar efectos especiales INMEDIATAMENTE (sin esperar loadEquippedItems async)
   // Item 17: Tema Oscuro Ultra
-  applyUltraDarkTheme(S.specialEquipped === '17');
+  applyUltraDarkTheme(hasSpecial('17'));
   // Item 15: Marco Premium - aplicar en todos los avatares visibles
   applyPremiumMarcoToAll();
   // Item 3: Emotes VIP - mostrar/ocultar picker
   const vips = $('vip-emojis');
-  if (vips) vips.classList.toggle('hidden', S.specialEquipped !== '3');
+  if (vips) vips.classList.toggle('hidden', !hasSpecial('3'));
   // Item 31: +50% Monedas - actualizar badge de boost con tiempo restante
   updateBoostBadge();
 }
@@ -2188,26 +2243,56 @@ function renderSB(match) {
     const hasCustomAvatar = avContent.length > 1 && !(/^[A-Z]$/i.test(avContent));
     // Racha Visible (item 30): mostrar racha de victorias en scoreboard
     let rachaHtml = '';
-    if (p.equippedSpecial === '30' && p.entered) {
+    const specials = playerSpecials(p);
+    if (specials.includes('30') && p.entered) {
       const streakVal = p.winStreak || 0;
       if (streakVal > 0) {
         rachaHtml = `<span class="sc-streak">🔥${streakVal}</span>`;
       }
     }
     const rankMeta = getLevelRankMeta(p.level);
+    const progressHtml = p.isBot
+      ? '<span class="sc-progress"><span class="sc-rank">🤖 BOT</span></span>'
+      : p.isGuest
+        ? '<span class="sc-progress"><span class="sc-rank">👤 INVITADO</span></span>'
+        : `<span class="sc-progress"><span class="sc-lv">Nivel ${rankMeta.level}</span><span class="sc-rank">${rankMeta.icon} ${rankMeta.title}</span></span>`;
+    const specialClasses = specials.length
+      ? specials.map(id => ` special-${esc(id)}`).join('')
+      : ' special-none';
     chip.innerHTML = `
-      <span class="sc-av${hasCustomAvatar ? ' icon' : ''} special-${esc(String(p.equippedSpecial || 'none'))}${p.isBot ? ' bot-avatar' : ''}">${avContent}</span>
+      <span class="sc-av${hasCustomAvatar ? ' icon' : ''}${specialClasses}${p.isBot ? ' bot-avatar' : ''}">${avContent}</span>
       ${yoTag}
       <span class="sc-nm">${esc(p.name)}</span>
-      <span class="sc-progress"><span class="sc-lv">Nivel ${rankMeta.level}</span><span class="sc-rank">${rankMeta.icon} ${rankMeta.title}</span></span>
+      ${progressHtml}
       <span class="sc-sc">${p.score}</span>
       ${rachaHtml}
       <span class="sc-sb">${sub}</span>`;
     // Marco Premium: avatar dorado en el jugador que tiene el item equipado
-    if (p.equippedSpecial === '15') {
+    if (specials.includes('15')) {
       const scAv = chip.querySelector('.sc-av');
       if (scAv) scAv.classList.add('avatar-premium');
     }
+    sb.appendChild(chip);
+  });
+
+  S.joinRequests = S.joinRequests.filter(request => request.expiresAt > Date.now());
+  S.joinRequests.forEach(request => {
+    const chip = document.createElement('div');
+    chip.className = 'sc-chip sc-join-request';
+    chip.innerHTML = `
+      <span class="sc-av">?</span>
+      <span class="sc-nm">${esc(request.playerName)}</span>
+      <span class="sc-request-label">Solicita entrar</span>
+      <span class="sc-request-actions">
+        <button type="button" class="sc-request-accept" aria-label="Aceptar">✓</button>
+        <button type="button" class="sc-request-reject" aria-label="Rechazar">✕</button>
+      </span>`;
+    chip.querySelector('.sc-request-accept').onclick = () => wsSend('RESPOND_JOIN_REQUEST', {
+      roomId:S.roomId, requesterId:request.playerId, accept:true
+    });
+    chip.querySelector('.sc-request-reject').onclick = () => wsSend('RESPOND_JOIN_REQUEST', {
+      roomId:S.roomId, requesterId:request.playerId, accept:false
+    });
     sb.appendChild(chip);
   });
 }
@@ -2655,11 +2740,37 @@ async function loadPortalGames() {
       return;
     }
     list.innerHTML = games.map(g => `
-      <div class="portal-game-item">
-        <span class="portal-game-code">${esc(g.code)}</span>
-        <span class="portal-game-players">${g.playerCount}/${g.maxPlayers} 👥</span>
+      <div class="portal-game-item${g.private ? ' is-private' : ''}">
+        <div class="portal-game-info">
+          <span class="portal-game-code">${g.private ? '🔒 Privada' : `Sala ${esc(g.code)}`}</span>
+          <span class="portal-game-players">${g.playerCount}/${g.maxPlayers} 👥${g.isBotGame ? ' · 🤖 Bots' : ''}</span>
+          <span class="portal-game-names">${(g.players || []).map(player => esc(player.name)).join(', ')}</span>
+        </div>
+        <button class="portal-game-join" data-room-id="${esc(g.roomId)}" data-private="${g.private ? 'true' : 'false'}">
+          Unirse
+        </button>
       </div>
     `).join('');
+    list.querySelectorAll('.portal-game-join').forEach(button => {
+      button.onclick = () => {
+        if (!preparePlayerIdentity()) {
+          toast('Ingresá con tu usuario o como invitado');
+          return;
+        }
+        button.disabled = true;
+        button.textContent = 'Entrando...';
+        withSocketReady(() => wsSend('REQUEST_JOIN_ACTIVE', {
+          roomId:button.dataset.roomId,
+          playerName:getPlayerName()
+        }));
+        setTimeout(() => {
+          if (button.isConnected) {
+            button.disabled = false;
+            button.textContent = 'Unirse';
+          }
+        }, 10000);
+      };
+    });
   } catch(e) {
     list.innerHTML = '<p class="portal-empty">Error al cargar</p>';
   }
@@ -3609,7 +3720,8 @@ function initUI() {
       maxPlayers:10,
       equippedDice:S.diceEquipped,
       equippedAvatar:S.avatarEquipped,
-      equippedSpecial:S.specialEquipped
+      equippedSpecial:S.specialEquipped,
+      equippedSpecials:S.specialsEquipped
     }));
   };
 
@@ -4024,6 +4136,7 @@ function initUI() {
 /* Alternar entre Login y Registro */
   $('auth-mode-btn').onclick = () => {
     const isRegistering = !$('login-email').classList.contains('hidden');
+    $('registration-verification')?.classList.add('hidden');
     if (isRegistering) {
       // Pasar a modo Login
       $('login-email').classList.add('hidden');
@@ -4065,9 +4178,14 @@ function initUI() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast('¡Registro exitoso! Ahora iniciá sesión.');
-      $('login-pass').value = ''; 
-      $('auth-mode-btn').click(); // Volver a la vista de login automáticamente
+      if (data.verificationRequired) {
+        _pendingRegistrationEmail = data.email || email.toLowerCase();
+        $('verification-copy').textContent = `Enviamos un código a ${_pendingRegistrationEmail}. Vence en 10 minutos.`;
+        $('registration-code').value = '';
+        $('registration-verification').classList.remove('hidden');
+        $('registration-code').focus();
+        toast('Revisá tu email e ingresá el código.');
+      }
     } catch (err) {
       toast('⚠ ' + err.message);
     } finally {
@@ -4177,7 +4295,8 @@ function initUI() {
       code,
       equippedDice:S.diceEquipped,
       equippedAvatar:S.avatarEquipped,
-      equippedSpecial:S.specialEquipped
+      equippedSpecial:S.specialEquipped,
+      equippedSpecials:S.specialsEquipped
     });
     withSocketReady(doJoin);
     _joinAttemptTimer = setTimeout(() => {
@@ -4216,7 +4335,7 @@ function initUI() {
   };
 
   $('btn-ready').onclick = () => {
-    wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id, equippedDice: S.diceEquipped, equippedAvatar: S.avatarEquipped, equippedSpecial: S.specialEquipped });
+    wsSend('PLAYER_READY', { roomId:S.roomId, playerId:S.id, equippedDice:S.diceEquipped, equippedAvatar:S.avatarEquipped, equippedSpecial:S.specialEquipped, equippedSpecials:S.specialsEquipped });
     $('btn-ready').classList.add('hidden');
     const rs = $('ready-status');
     if (rs) {
@@ -4270,7 +4389,7 @@ function initUI() {
   // Mostrar/ocultar picker VIP según item equipado
   function updateVIPPicker() {
     if (vipEmojis) {
-      vipEmojis.classList.toggle('hidden', S.specialEquipped !== '3');
+      vipEmojis.classList.toggle('hidden', !hasSpecial('3'));
     }
   }
   updateVIPPicker();
@@ -4286,6 +4405,10 @@ $('btn-play-again').onclick = () => {
   _playAgainTimer = null;
   $('play-again-hint')?.classList.add('hidden');
   const btn = $('btn-play-again');
+  if (S.rematchRoom?.id && S.rematchRoom.id === S.roomId) {
+    goToPlayAgain(S.rematchRoom);
+    return;
+  }
   if (S.roomId) {
     btn.disabled = true;
     btn.textContent = 'Preparando revancha...';
@@ -4306,6 +4429,44 @@ $('btn-play-again').onclick = () => {
     if (S.roomId) leaveCurrentServerContext();
     goLobby(null);
   };
+
+  $('registration-code').oninput = function() {
+    this.value = this.value.replace(/\D/g, '').slice(0, 6);
+  };
+  $('registration-code').onkeydown = event => {
+    if (event.key === 'Enter') $('btn-verify-registration').click();
+  };
+
+  $('btn-verify-registration').onclick = async () => {
+    const code = $('registration-code').value.trim();
+    if (!_pendingRegistrationEmail || !/^\d{6}$/.test(code)) {
+      toast('Ingresá el código de 6 dígitos');
+      return;
+    }
+    const btn = $('btn-verify-registration');
+    btn.disabled = true;
+    btn.textContent = 'Verificando...';
+    try {
+      const res = await fetch('/api/register/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email:_pendingRegistrationEmail, code })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      $('registration-verification').classList.add('hidden');
+      $('login-pass').value = '';
+      toast('Cuenta verificada. Ya podés iniciar sesión.');
+      $('auth-mode-btn').click();
+    } catch (err) {
+      toast('⚠ ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Verificar y crear cuenta';
+    }
+  };
+
+  $('btn-resend-registration').onclick = () => $('btn-register').click();
 
   /* Enter en inputs */
   $('input-name').onkeydown = e => { if (e.key==='Enter') $('btn-create').click(); };
@@ -4882,7 +5043,7 @@ function applyUltraDarkTheme(enable) {
 
 /* ── Aplicar marco dorado premium en TODOS los avatares ── */
 function applyPremiumMarcoToAll() {
-  const hasPremium = S.specialEquipped === '15';
+  const hasPremium = hasSpecial('15');
   // Perfil
   const profileAv = $('profile-avatar');
   if (profileAv) profileAv.classList.toggle('premium-marco', hasPremium);
@@ -4950,6 +5111,8 @@ function saveEquippedCache() {
       dice: S.diceEquipped,
       avatar: S.avatarEquipped,
       special: S.specialEquipped,
+      specials: S.specialsEquipped,
+      specialSlots: S.specialSlots,
       ts: Date.now()
     }));
   } catch(e) {}
@@ -4967,7 +5130,7 @@ function loadEquippedCache() {
     }
     if (d.dice && !S.diceEquipped) S.diceEquipped = d.dice;
     if (d.avatar && !S.avatarEquipped) S.avatarEquipped = d.avatar;
-    if (d.special && !S.specialEquipped) S.specialEquipped = d.special;
+    if (!S.specialsEquipped.length) setEquippedSpecials(d.specials, d.special, d.specialSlots);
     return true;
   } catch(e) { return false; }
 }
@@ -4987,7 +5150,7 @@ async function loadEquippedItems() {
     if (!inv || !inv.equipped) return;
     console.log('📦 loadEquippedItems:', JSON.stringify(inv.equipped));
     S.diceEquipped = inv.equipped.dice || null;
-    S.specialEquipped = inv.equipped.special || null;
+    setEquippedSpecials(inv.equipped.specials, inv.equipped.special, inv.equipped.specialSlots);
     // Avatar equipado
     let avatarLoaded = false;
     if (inv.equipped.avatar) {
@@ -5009,13 +5172,13 @@ async function loadEquippedItems() {
       lobbyAv.classList.toggle('avatar-icon', !!S.avatarEquipped);
     }
     // Aplicar Tema Oscuro Ultra (item 17)
-    applyUltraDarkTheme(S.specialEquipped === '17');
+    applyUltraDarkTheme(hasSpecial('17'));
     // Item 15: Marco Premium en todos los avatares
     applyPremiumMarcoToAll();
     // Mostrar/ocultar picker Emotes VIP (item 3)
     const vipEmojis = $('vip-emojis');
     if (vipEmojis) {
-      vipEmojis.classList.toggle('hidden', S.specialEquipped !== '3');
+      vipEmojis.classList.toggle('hidden', !hasSpecial('3'));
     }
     // Actualizar badge de boost +50% con tiempo restante
     updateBoostBadge();
@@ -5743,7 +5906,7 @@ function openInventoryPreview(item, equipCategory, isEquipped) {
     if (cat === 'dados') {
       bodyHtml = buildDicePreviewHTML(String(item.id), item.name || '', item.icon || '');
     } else if (cat === 'avatares') {
-      const isPremium = window.S?.specialEquipped === '15';
+      const isPremium = hasSpecial('15');
       bodyHtml = '<div class="avatar-preview-display' + (isPremium ? ' avatar-premium' : '') + '">' + esc(String(item.icon || '')) + '</div><p style="text-align:center;font-size:12px;color:var(--text3)">Así se ve tu avatar en el juego</p>';
     } else if (cat === 'especiales') {
       const effect = SPECIAL_EFFECTS[String(item.id)];
@@ -5800,7 +5963,7 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
     if (category === 'dados' || category === 'dice') {
       bodyHtml = buildDicePreviewHTML(itemId, itemName, itemIcon);
     } else if (category === 'avatares' || category === 'avatar') {
-      const isPremium = S.specialEquipped === '15';
+      const isPremium = hasSpecial('15');
       bodyHtml = '<div class="avatar-preview-display' + (isPremium ? ' avatar-premium' : '') + '">' + esc(itemIcon) + '</div><p style="text-align:center;font-size:13px;color:var(--text3)">Preview del avatar — así se ve en el juego</p>';
     } else if (category === 'especiales' || category === 'special') {
       const effect = SPECIAL_EFFECTS[itemId];

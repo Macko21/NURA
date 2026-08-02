@@ -42,12 +42,12 @@ const {
   handleEntryRoll, handleRoll, handleBank,
   handleDisconnect: diceDisconnect,
   handleReconnect:  diceReconnect,
-  snapshotMatch,
+  snapshotMatch, addLatePlayer,
   setTurnCallback, removeTurnCallback
 } = require("./diceManager");
 
 const { createPlayerState, setWinner } = require("./matchState");
-const { register, login, requireAuth, requestPasswordReset, createGuestSession, verifyGameToken } = require("./authManager");
+const { register, verifyRegistration, login, requireAuth, requestPasswordReset, createGuestSession, verifyGameToken } = require("./authManager");
 const botManager = require("./botManager");
 const botGameHandler = require("./botGameHandler");
 
@@ -251,6 +251,7 @@ app.get("/favicon.ico", (req, res) => res.status(204).end());
 
 // Nuevas rutas de Autenticación
 app.post("/api/register", register);
+app.post("/api/register/verify", verifyRegistration);
 app.post("/api/login", login);
 app.post("/api/guest-session", createGuestSession);
 
@@ -626,9 +627,13 @@ app.get("/api/games/active", requireAuth, async (req, res) => {
   try {
     const activeGames = [];
     for (const [id, room] of rooms) {
+      const match = getMatch(id);
+      if (room.status !== "playing" || match?.status !== "playing" || !room.players.length) continue;
       activeGames.push({
         roomId: id,
-        code: room.code,
+        code: room.private ? null : room.code,
+        private: !!room.private,
+        isBotGame: !!room.isBotGame,
         status: room.status,
         players: room.players.map(p => ({ id: p.id, name: p.name })),
         playerCount: room.players.length,
@@ -1646,7 +1651,11 @@ console.log("🎲 Iniciando Los 10.000 de Macko...");
 const clients      = new Map(); // playerId → socket
 const reconnTimers = new Map(); // playerId → timeoutId
 const botTurnTimers = new Map(); // timerId → {roomId, playerId} bot turns timeout
-const RECONN_MS    = 120_000;
+const joinRequests = new Map(); // roomId → Map(playerId, request)
+// Las apps móviles pueden quedar suspendidas varios minutos sin cerrar sesión.
+// Se conserva el lugar para permitir una reconexión real, no sólo una reconexión rápida.
+const RECONN_MS    = 15 * 60_000;
+const JOIN_REQUEST_MS = 30_000;
 const XP_PER_GAME   = 25;
 const XP_PER_WIN    = 50;
 const XP_PER_TOP3   = 15;
@@ -1710,6 +1719,14 @@ function resolveAvatarIcon(itemId) {
   return item ? item.icon : '';
 }
 
+function parseSpecialIds(value, legacy = '') {
+  let parsed = [];
+  try { parsed = Array.isArray(value) ? value : JSON.parse(String(value || '[]')); } catch (_) {}
+  if (!Array.isArray(parsed)) parsed = [];
+  if (!parsed.length && legacy) parsed = [legacy];
+  return [...new Set(parsed.map(String).filter(Boolean))].slice(0, 3);
+}
+
 async function resolveDiceSkinId(itemId) {
   if (!itemId) return '';
   const id = String(itemId);
@@ -1730,11 +1747,12 @@ async function resolveDiceSkinId(itemId) {
 /* ── Cargar items equipados a un room player ──────────── */
 async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
   try {
-    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak, level FROM players WHERE id = $1`, [playerId]);
+    const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, equipped_specials, win_streak, level FROM players WHERE id = $1`, [playerId]);
     if (plRes.rows[0]) {
       roomPlayer.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
       roomPlayer.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice);
       roomPlayer.equippedSpecial = plRes.rows[0].equipped_special || '';
+      roomPlayer.equippedSpecials = parseSpecialIds(plRes.rows[0].equipped_specials, plRes.rows[0].equipped_special);
       roomPlayer.winStreak = Number(plRes.rows[0].win_streak) || 0;
       roomPlayer.level = Number(plRes.rows[0].level) || 1;
       console.log(`📦 loadEquipped(${playerId}): dice=${roomPlayer.equippedDice} av=${roomPlayer.equippedAvatar} sp=${roomPlayer.equippedSpecial}`);
@@ -1749,6 +1767,7 @@ async function onMatchWon(match, roomId) {
   const winner = match.winner;
   if (!winner || match.finalizing) return;
   match.finalizing = true;
+  rejectAllJoinRequests(roomId, 'La partida terminó');
 
   const room = getRoom(roomId);
   const isTournamentMatch = !!room?.isTournamentMatch;
@@ -1947,11 +1966,12 @@ async function startMatchForRoom(roomId, triggerData) {
   for (const p of match.players) {
     if (p.id) {
       try {
-        const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, win_streak, level FROM players WHERE id = $1`, [p.id]);
+        const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, equipped_specials, win_streak, level FROM players WHERE id = $1`, [p.id]);
         if (plRes.rows[0]) {
           p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
           p.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice) || null;
           p.equippedSpecial = plRes.rows[0].equipped_special || null;
+          p.equippedSpecials = parseSpecialIds(plRes.rows[0].equipped_specials, plRes.rows[0].equipped_special);
           p.winStreak = plRes.rows[0].win_streak || 0;
           p.level = Number(plRes.rows[0].level) || 1;
         }
@@ -1961,11 +1981,13 @@ async function startMatchForRoom(roomId, triggerData) {
         if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
         if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
         if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
+        if ((!p.equippedSpecials || !p.equippedSpecials.length) && roomP.equippedSpecials) p.equippedSpecials = roomP.equippedSpecials;
       }
       if (triggerData && p.id === triggerData.playerId) {
         if (!p.equippedDice && triggerData.equippedDice) p.equippedDice = triggerData.equippedDice;
         if (!p.equippedAvatar && triggerData.equippedAvatar) p.equippedAvatar = triggerData.equippedAvatar;
         if (!p.equippedSpecial && triggerData.equippedSpecial) p.equippedSpecial = triggerData.equippedSpecial;
+        if ((!p.equippedSpecials || !p.equippedSpecials.length) && triggerData.equippedSpecials) p.equippedSpecials = triggerData.equippedSpecials;
       }
     }
   }
@@ -2046,6 +2068,106 @@ function leaveWaitingRooms(playerId, exceptRoomId = null) {
   }
 }
 
+function clearJoinRequest(roomId, playerId) {
+  const roomRequests = joinRequests.get(roomId);
+  const request = roomRequests?.get(playerId);
+  if (!request) return null;
+  clearTimeout(request.timer);
+  roomRequests.delete(playerId);
+  if (!roomRequests.size) joinRequests.delete(roomId);
+  return request;
+}
+
+function rejectAllJoinRequests(roomId, message = 'La partida ya no acepta ingresos') {
+  const roomRequests = joinRequests.get(roomId);
+  if (!roomRequests) return;
+  for (const request of roomRequests.values()) {
+    clearTimeout(request.timer);
+    send(request.socket, 'JOIN_REQUEST_REJECTED', { message });
+  }
+  joinRequests.delete(roomId);
+}
+
+async function joinActiveMatch(socket, room, playerName) {
+  const playerId = socket.playerId;
+  const match = getMatch(room.id);
+  if (!match || room.status !== 'playing' || match.status !== 'playing') {
+    throw new Error('La partida ya no está activa');
+  }
+  if (room.players.some(player => player.id === playerId)) {
+    doReconnect(socket, playerId, room, match);
+    return;
+  }
+  if (room.players.length >= room.maxPlayers) throw new Error('La partida está llena');
+  const previousRoom = findActivePlayerRoom(playerId, room.id);
+  if (previousRoom) throw new Error('Primero salí de tu partida activa');
+
+  leaveWaitingRooms(playerId, room.id);
+  const roomPlayer = addPlayer(room.id, playerId, playerName, { isGuest:!!socket.isGuest });
+  roomPlayer.joinedLate = true;
+  await loadEquippedToRoomPlayer(roomPlayer, playerId);
+  const joined = addLatePlayer(room.id, roomPlayer);
+  if (!joined.ok) {
+    removePlayer(room.id, playerId);
+    throw new Error(joined.error || 'No se pudo ingresar a la partida');
+  }
+
+  clients.set(playerId, socket);
+  socket.playerName = playerName;
+  socket.roomId = room.id;
+  const payload = { room, match:joined.match, playerId };
+  send(socket, 'JOIN_ACTIVE_SUCCESS', payload);
+  broadcastRoom(room.id, 'PLAYER_JOINED_LATE', {
+    playerId,
+    playerName,
+    match:joined.match
+  });
+}
+
+function requestPrivateJoin(socket, room, playerName) {
+  const playerId = socket.playerId;
+  const match = getMatch(room.id);
+  if (!match || room.status !== 'playing' || match.status !== 'playing') {
+    throw new Error('La partida ya no está activa');
+  }
+  if (room.players.length >= room.maxPlayers) throw new Error('La partida está llena');
+  if (findActivePlayerRoom(playerId, room.id)) throw new Error('Primero salí de tu partida activa');
+  const ownerId = room.players[0]?.id;
+  const ownerSocket = clients.get(ownerId);
+  if (!ownerId || !ownerSocket || ownerSocket.readyState !== WebSocket.OPEN) {
+    throw new Error('El creador no está disponible para aceptar');
+  }
+
+  let roomRequests = joinRequests.get(room.id);
+  if (!roomRequests) {
+    roomRequests = new Map();
+    joinRequests.set(room.id, roomRequests);
+  }
+  clearJoinRequest(room.id, playerId);
+  roomRequests = joinRequests.get(room.id) || new Map();
+  joinRequests.set(room.id, roomRequests);
+  const timer = setTimeout(() => {
+    const expired = clearJoinRequest(room.id, playerId);
+    if (!expired) return;
+    send(expired.socket, 'JOIN_REQUEST_REJECTED', { message:'La solicitud venció' });
+    send(ownerSocket, 'JOIN_REQUEST_RESOLVED', { playerId, accepted:false, expired:true });
+  }, JOIN_REQUEST_MS);
+  roomRequests.set(playerId, {
+    socket,
+    playerId,
+    playerName,
+    isGuest:!!socket.isGuest,
+    createdAt:Date.now(),
+    timer
+  });
+  send(ownerSocket, 'JOIN_REQUEST_RECEIVED', {
+    playerId,
+    playerName,
+    expiresIn:JOIN_REQUEST_MS
+  });
+  send(socket, 'JOIN_REQUEST_SENT', { roomId:room.id, expiresIn:JOIN_REQUEST_MS });
+}
+
 /* ══════════════════════════════════════════════════════════
    CONEXIÓN WS
    ══════════════════════════════════════════════════════════ */
@@ -2067,6 +2189,23 @@ function sanitizeWsPlayerName(value) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 24) || "Jugador";
+}
+
+const PROFANITY_PATTERNS = [
+  /(^|[^\p{L}\p{N}])(hij[oa]s?\s+de\s+put[oa]s?)(?=$|[^\p{L}\p{N}])/giu,
+  /(^|[^\p{L}\p{N}])(put[oa]s?|pelotud[oa]s?|bolud[oa]s?|forr[oa]s?|pajer[oa]s?|soretes?|mierdas?|conch(?:a|udo|uda)s?|imb[eé]ciles?|idiotas?|mog[oó]lic[oa]s?)(?=$|[^\p{L}\p{N}])/giu
+];
+
+function filterChatMessage(value, maxLength = 500) {
+  let message = String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, maxLength);
+  for (const pattern of PROFANITY_PATTERNS) {
+    message = message.replace(pattern, (_full, prefix, insult) => `${prefix}${'•'.repeat(Math.min(10, [...insult].length))}`);
+  }
+  return message;
 }
 
 wss.on("connection", socket => {
@@ -2276,7 +2415,8 @@ wss.on("connection", socket => {
           ownerId,
           ownerName:  playerName,
           isPrivate:  data.isPrivate !== false,
-          maxPlayers: Math.max(2, Math.min(10, Number(data.maxPlayers) || 10))
+          maxPlayers: Math.max(2, Math.min(10, Number(data.maxPlayers) || 10)),
+          ownerIsGuest: !!socket.isGuest
         });
         // Cargar items equipados del owner para que todos lo vean
         try {
@@ -2294,6 +2434,47 @@ wss.on("connection", socket => {
       }
 
       /* ── UNIRSE ────────────────────────────────────────── */
+      if (type === "REQUEST_JOIN_ACTIVE") {
+        const room = getRoom(data.roomId);
+        if (!room) {
+          send(socket, "ERROR", { message:"Partida no encontrada" });
+          return;
+        }
+        const playerName = String(data.playerName || socket.playerName || 'Jugador').trim() || 'Jugador';
+        try {
+          await joinActiveMatch(socket, room, playerName);
+        } catch (error) {
+          send(socket, "ERROR", { message:error.message });
+        }
+        return;
+      }
+
+      if (type === "RESPOND_JOIN_REQUEST") {
+        const room = getRoom(data.roomId);
+        if (!room || room.players[0]?.id !== socket.playerId) {
+          send(socket, "ERROR", { message:"Sólo el creador puede responder" });
+          return;
+        }
+        const request = clearJoinRequest(room.id, String(data.requesterId || ''));
+        if (!request) {
+          send(socket, "JOIN_REQUEST_RESOLVED", { playerId:data.requesterId, accepted:false, expired:true });
+          return;
+        }
+        if (!data.accept) {
+          send(request.socket, "JOIN_REQUEST_REJECTED", { message:"El creador rechazó tu solicitud" });
+          send(socket, "JOIN_REQUEST_RESOLVED", { playerId:request.playerId, accepted:false });
+          return;
+        }
+        try {
+          await joinActiveMatch(request.socket, room, request.playerName);
+          send(socket, "JOIN_REQUEST_RESOLVED", { playerId:request.playerId, accepted:true });
+        } catch (error) {
+          send(request.socket, "JOIN_REQUEST_REJECTED", { message:error.message });
+          send(socket, "JOIN_REQUEST_RESOLVED", { playerId:request.playerId, accepted:false });
+        }
+        return;
+      }
+
       if (type === "JOIN_ROOM") {
         const joiningPlayerId = data.playerId || socket.playerId;
         const joiningPlayerName = String(data.playerName || socket.playerName || 'Jugador').trim() || 'Jugador';
@@ -2330,7 +2511,7 @@ wss.on("connection", socket => {
         // Sala de espera: entrada normal
         if (room.status === "waiting") {
           leaveWaitingRooms(joiningPlayerId, room.id);
-          const player = addPlayer(room.id, joiningPlayerId, joiningPlayerName);
+          const player = addPlayer(room.id, joiningPlayerId, joiningPlayerName, { isGuest:!!socket.isGuest });
           // Cargar items equipados del jugador para que todos lo vean
           await loadEquippedToRoomPlayer(player, joiningPlayerId);
           clients.set(joiningPlayerId, socket);
@@ -2342,9 +2523,12 @@ wss.on("connection", socket => {
           return;
         }
 
-        // Una partida iniciada queda cerrada: sólo se admite reconexión por ID firmado.
         if (room.status === "playing") {
-          send(socket, "ERROR", { message: "La partida ya comenzó" });
+          try {
+            await joinActiveMatch(socket, room, joiningPlayerName);
+          } catch (error) {
+            send(socket, "ERROR", { message:error.message });
+          }
           return;
         }
 
@@ -2667,13 +2851,14 @@ wss.on("connection", socket => {
       /* ── CHAT ──────────────────────────────────────────── */
       if (type === "CHAT_MESSAGE") {
         const chatPlayer = rooms.get(data.roomId)?.players?.find(p => p.id === data.playerId);
-        const message = String(data.message || "").trim().slice(0, 500);
+        const message = filterChatMessage(data.message, 500);
         if (!message) return;
         broadcastRoom(data.roomId, "CHAT_MESSAGE", {
           playerId:   data.playerId,
           playerName: data.playerName,
           message,
           equippedSpecial: chatPlayer?.equippedSpecial || '',
+          equippedSpecials: chatPlayer?.equippedSpecials || [],
           timestamp:  Date.now()
         });
         // Incrementar contador de mensajes de chat para las misiones
@@ -2683,7 +2868,7 @@ wss.on("connection", socket => {
 
       /* ── CHAT PRIVADO (entre amigos) ────────────────── */
       if (type === "PRIVATE_CHAT") {
-        const msg = String(data.message || "").slice(0, 500);
+        const msg = filterChatMessage(data.message, 500);
         if (!msg || !data.toId) return;
         const friendship = await pool.query(
           `SELECT 1 FROM friends WHERE status = 'accepted'
@@ -2738,7 +2923,7 @@ wss.on("connection", socket => {
 
       /* ── CHAT GLOBAL ────────────────────────────────── */
       if (type === "GLOBAL_CHAT") {
-        const msg = String(data.message || "").slice(0, 300);
+        const msg = filterChatMessage(data.message, 300);
         if (!msg) return;
         // Broadcast PRIMERO (instantáneo), luego guardar en DB sin esperar
         for (const [pid, sock] of clients) {
@@ -2827,6 +3012,7 @@ wss.on("connection", socket => {
         if (sock) sock.roomId = null;
       }
       rooms.delete(roomId);
+      rejectAllJoinRequests(roomId, 'La sala fue cancelada');
       // Si se cancela sala, limpiar invitados antiguos de la BD
       try {
         const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24h
@@ -2863,7 +3049,13 @@ wss.on("connection", socket => {
           leaveWaitingRooms(playerId);
 
           // Crear sala para la partida contra bots
-          const room = createRoom({ ownerId: playerId, ownerName: playerName, isPrivate: true, maxPlayers: 10 });
+          const room = createRoom({
+            ownerId: playerId,
+            ownerName: playerName,
+            isPrivate: data.isPrivate !== false,
+            maxPlayers: 10,
+            ownerIsGuest: !!socket.isGuest
+          });
           room.isBotGame = true;
           
           // Vincular socket a la sala
@@ -3027,7 +3219,10 @@ app.post("/api/reset-password", async (req, res) => {
 
   // Si llega aquí, actualizamos
   const hash = await bcrypt.hash(newPassword, 12);
-  await pool.query("UPDATE users SET password_hash = $1, reset_token = NULL WHERE id = $2", [hash, row.id]);
+  await pool.query(
+    "UPDATE users SET password_hash = $1, reset_token = NULL, reset_expires = NULL WHERE id = $2",
+    [hash, row.id]
+  );
   
   res.json({ message: "Contraseña actualizada" });
 });

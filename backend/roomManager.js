@@ -95,7 +95,8 @@ return `${name}#${suffix}`;
   ownerId,
   ownerName,
   isPrivate = true,
-  maxPlayers = 10
+  maxPlayers = 10,
+  ownerIsGuest = false
   }) {
 
 const roomId = randomUUID();
@@ -123,6 +124,8 @@ entered: false,
 connected: true,
 reconnectAttempts: 0,
 inactivityStrikes: 0
+,
+isGuest: !!ownerIsGuest
 });
 
 rooms.set(roomId, room);
@@ -166,7 +169,8 @@ return null;
   function addPlayer(
   roomId,
   playerId,
-  playerName
+  playerName,
+  options = {}
   ) {
 
 const room = rooms.get(roomId);
@@ -189,6 +193,8 @@ const player = {
   connected: true,
   reconnectAttempts: 0,
   inactivityStrikes: 0
+  ,
+  isGuest: !!options.isGuest
 };
 
 room.players.push(player);

@@ -37,6 +37,7 @@ function addBotsToRoom(room, botCount, difficulty) {
         botPlayer.equippedDice = cosmetics.equippedDice;
         botPlayer.equippedAvatar = cosmetics.equippedAvatar;
         botPlayer.equippedSpecial = cosmetics.equippedSpecial;
+        botPlayer.equippedSpecials = cosmetics.equippedSpecial ? [String(cosmetics.equippedSpecial)] : [];
       }
     } catch(e) {
       console.error("Error adding bot:", e.message);

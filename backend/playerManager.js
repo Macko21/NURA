@@ -16,7 +16,8 @@ function completedMatchParticipant(player) {
     player?.id &&
     !player.isBot &&
     !player.disconnected &&
-    !player.eliminated
+    !player.eliminated &&
+    (!player.joinedLate || Number(player.turnsPlayed) >= 1)
   );
 }
 

@@ -88,6 +88,9 @@ function createPlayerState(player) {
     equippedAvatar: player.equippedAvatar || null,
     equippedDice: player.equippedDice || null,
     equippedSpecial: player.equippedSpecial || null,
+    equippedSpecials: Array.isArray(player.equippedSpecials)
+      ? player.equippedSpecials.map(String).slice(0, 3)
+      : (player.equippedSpecial ? [String(player.equippedSpecial)] : []),
 
     /**
      * Racha de victorias (cargada desde BD)
@@ -103,7 +106,9 @@ function createPlayerState(player) {
      * Es un bot (jugador automático)
      */
     isBot: player.isBot || false,
-    botDifficulty: player.botDifficulty || 'normal'
+    botDifficulty: player.botDifficulty || 'normal',
+    isGuest: !!player.isGuest,
+    joinedLate: !!player.joinedLate
   };
 }
 

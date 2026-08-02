@@ -67,6 +67,20 @@ async function initializeDatabase() {
     `);
 
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS pending_registrations (
+        email TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        created_at BIGINT NOT NULL
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pending_registrations_expires ON pending_registrations(expires_at)`);
+    await pool.query(`DELETE FROM pending_registrations WHERE expires_at < NOW()`);
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS payment_events (
         provider TEXT NOT NULL,
         payment_id TEXT NOT NULL,
@@ -109,6 +123,8 @@ async function initializeDatabase() {
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_avatar TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_dice TEXT DEFAULT ''`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_special TEXT DEFAULT ''`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_specials TEXT DEFAULT '[]'`,
+      `ALTER TABLE players ADD COLUMN IF NOT EXISTS special_slots INTEGER DEFAULT 1`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS last_chest BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_expires BIGINT DEFAULT 0`,
       `ALTER TABLE players ADD COLUMN IF NOT EXISTS boost_xp_expires BIGINT DEFAULT 0`,
@@ -381,6 +397,17 @@ async function initializeDatabase() {
     for (const sql of migraciones) {
       try { await pool.query(sql); } catch(e) {}
     }
+    try {
+      await pool.query(`
+        UPDATE players
+        SET equipped_specials = CASE
+          WHEN COALESCE(equipped_specials, '[]') = '[]' AND COALESCE(equipped_special, '') <> ''
+            THEN json_build_array(equipped_special)::text
+          ELSE COALESCE(equipped_specials, '[]')
+        END,
+        special_slots = GREATEST(1, LEAST(3, COALESCE(special_slots, 1)))
+      `);
+    } catch(e) { console.error('Error migrating special effect slots:', e.message); }
     try {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_tournaments_public_status ON tournaments(status, completed_at, cancelled_at)`);
       await pool.query(`
@@ -668,6 +695,10 @@ const SHOP_CATALOG = [
   { id: 52, category: 'consumibles',name: '100% XP x 1d',     icon: '⚡', price: 3000, desc: 'Ganás el doble de XP por 24h' },
   { id: 53, category: 'consumibles',name: '+50% Monedas x 1d',icon: '🪙', price: 2500, desc: 'Ganás 50% más monedas por 24h (al ganar)' },
   { id: 54, category: 'consumibles',name: '+100% Monedas x 1d',icon: '💎', price: 4000, desc: 'Ganás 100% más monedas por 24h (al ganar)' },
+
+  // ── MEJORAS PERMANENTES ──
+  { id: 55, category: 'mejoras', name: 'Segundo espacio de efectos', icon: '✨²', price: 25000, desc: 'Activá hasta 2 efectos especiales a la vez' },
+  { id: 56, category: 'mejoras', name: 'Tercer espacio de efectos',  icon: '✨³', price: 50000, desc: 'Activá hasta 3 efectos especiales a la vez' },
 ];
 
 async function getShopCatalog() {
@@ -818,7 +849,7 @@ async function buyShopItem(userId, itemId) {
 
     // 1. Obtener el jugador y bloquear la fila para evitar compras duplicadas simultáneas
     const playerRes = await client.query(
-      `SELECT id, coins, shop_purchases FROM players WHERE user_id = $1 FOR UPDATE`,
+      `SELECT id, coins, shop_purchases, special_slots FROM players WHERE user_id = $1 FOR UPDATE`,
       [userId]
     );
 
@@ -829,6 +860,9 @@ async function buyShopItem(userId, itemId) {
       [player.id, parseInt(itemId)]
     );
     if (ownedRes.rows.length) throw new Error("Ya posees este item");
+    if (Number(itemId) === 56 && (Number(player.special_slots) || 1) < 2) {
+      throw new Error("Primero comprá el segundo espacio de efectos");
+    }
     if (player.coins < cost) throw new Error("No tienes suficientes monedas 🪙");
 
     // 2. Restar las monedas
@@ -837,6 +871,13 @@ async function buyShopItem(userId, itemId) {
       `UPDATE players SET coins = $1, shop_purchases = COALESCE(shop_purchases, 0) + 1 WHERE user_id = $2`,
       [newBalance, userId]
     );
+    if (Number(itemId) === 55 || Number(itemId) === 56) {
+      const targetSlots = Number(itemId) === 55 ? 2 : 3;
+      await client.query(
+        `UPDATE players SET special_slots = GREATEST(COALESCE(special_slots, 1), $1) WHERE id = $2`,
+        [targetSlots, player.id]
+      );
+    }
 
     // 3. Registrar la compra en redemptions
     const now = Date.now();
@@ -870,6 +911,7 @@ async function getUserProfile(userId) {
     SELECT p.id, p.alias, p.name, p.coins, p.xp, p.level,
            p.games_played, p.games_won, p.total_score, p.highest_score,
            p.win_streak, p.equipped_avatar, p.equipped_dice, p.equipped_special,
+           p.equipped_specials, p.special_slots,
            p.hide_last_seen, p.best_turn, p.best_win_streak, p.tournaments_entered, p.tournaments_won, u.email
     FROM players p
     JOIN users u ON u.id = p.user_id
@@ -900,6 +942,8 @@ async function getUserProfile(userId) {
     equipped_avatar: p.equipped_avatar || '',
     equipped_dice: p.equipped_dice || '',
     equipped_special: p.equipped_special || '',
+    equipped_specials: parseEquippedSpecials(p.equipped_specials, p.equipped_special),
+    special_slots: Math.max(1, Math.min(3, Number(p.special_slots) || 1)),
     hide_last_seen: p.hide_last_seen || false
   };
 }
@@ -1144,6 +1188,16 @@ async function getChestStatus(userId) {
 }
 
 // ── INVENTARIO ────────────────────────────────────────────
+function parseEquippedSpecials(value, legacy = '') {
+  let parsed = [];
+  try {
+    parsed = Array.isArray(value) ? value : JSON.parse(String(value || '[]'));
+  } catch (_) {}
+  if (!Array.isArray(parsed)) parsed = [];
+  if (!parsed.length && legacy) parsed = [legacy];
+  return [...new Set(parsed.map(String).filter(Boolean))].slice(0, 3);
+}
+
 async function getOwnedItems(userId) {
   try {
     const playerRes = await pool.query(`SELECT * FROM players WHERE user_id = $1`, [userId]);
@@ -1201,7 +1255,9 @@ async function getOwnedItems(userId) {
     const equipped = {
       avatar: String(p.equipped_avatar || ''),
       dice: String(p.equipped_dice || ''),
-      special: String(p.equipped_special || '')
+      special: String(p.equipped_special || ''),
+      specials: parseEquippedSpecials(p.equipped_specials, p.equipped_special),
+      specialSlots: Math.max(1, Math.min(3, Number(p.special_slots) || 1))
     };
     return { owned, equipped };
   } catch (err) {
@@ -1215,12 +1271,26 @@ async function equipItem(playerId, itemId, category) {
   const col = colMap[category];
   if (!col) throw new Error('Categoria invalida');
   const parsedId = parseInt(itemId);
-  
-  if (itemId !== 'default') {
-    if (isNaN(parsedId)) throw new Error('ID de item invalido');
-    const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parsedId]);
-    if (!redRes.rows.length) throw new Error('No posees este item');
+
+  if (itemId === 'default') {
+    if (category === 'special') {
+      const cleared = await pool.query(
+        `UPDATE players SET equipped_special = '', equipped_specials = '[]' WHERE id = $1 RETURNING special_slots`,
+        [playerId]
+      );
+      return {
+        success:true,
+        equippedSpecials:[],
+        specialSlots:Math.max(1, Math.min(3, Number(cleared.rows[0]?.special_slots) || 1))
+      };
+    }
+    await pool.query(`UPDATE players SET ${col} = '' WHERE id = $1`, [playerId]);
+    return { success:true };
   }
+
+  if (isNaN(parsedId)) throw new Error('ID de item invalido');
+  const redRes = await pool.query(`SELECT id FROM redemptions WHERE player_id = $1 AND reward_id = $2 AND status = 'completed'`, [playerId, parsedId]);
+  if (!redRes.rows.length) throw new Error('No posees este item');
 
   // Si es consumible, activar boost pero NO borrar de redemptions
   const CONSUMIBLE_IDS = new Set(['31','52','53','54']);
@@ -1247,8 +1317,33 @@ async function equipItem(playerId, itemId, category) {
       ? 'dice'
       : 'special';
   if (expectedCategory !== category) throw new Error('Categoria de item invalida');
+
+  if (category === 'special') {
+    const playerRes = await pool.query(
+      `SELECT equipped_special, equipped_specials, special_slots FROM players WHERE id = $1`,
+      [playerId]
+    );
+    if (!playerRes.rows[0]) throw new Error('Jugador no encontrado');
+    const slots = Math.max(1, Math.min(3, Number(playerRes.rows[0].special_slots) || 1));
+    const specials = parseEquippedSpecials(playerRes.rows[0].equipped_specials, playerRes.rows[0].equipped_special);
+    const id = String(itemId);
+    const activeIndex = specials.indexOf(id);
+    if (activeIndex >= 0) {
+      specials.splice(activeIndex, 1);
+    } else {
+      if (specials.length >= slots) {
+        throw new Error(`Tenés ${slots} espacio${slots === 1 ? '' : 's'} de efectos. Liberá uno o comprá otro espacio.`);
+      }
+      specials.push(id);
+    }
+    await pool.query(
+      `UPDATE players SET equipped_special = $1, equipped_specials = $2 WHERE id = $3`,
+      [specials[0] || '', JSON.stringify(specials), playerId]
+    );
+    return { success:true, equippedSpecials:specials, specialSlots:slots };
+  }
   
-  await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [itemId === 'default' ? '' : String(itemId), playerId]);
+  await pool.query(`UPDATE players SET ${col} = $1 WHERE id = $2`, [String(itemId), playerId]);
   
   return { success: true };
 }

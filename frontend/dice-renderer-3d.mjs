@@ -36,17 +36,13 @@ const geometry = new RoundedBoxGeometry(1.34, 1.34, 1.34, 5, .14);
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function configuredQuality() {
-  const saved = localStorage.getItem(QUALITY_KEY) || 'auto';
-  return ['auto','high','low','off'].includes(saved) ? saved : 'auto';
+  const saved = localStorage.getItem(QUALITY_KEY) || 'high';
+  // Migración de las opciones antiguas: ahora la elección es simplemente 3D o 2D.
+  return saved === 'off' ? 'off' : 'high';
 }
 
 function resolvedQuality() {
-  const configured = configuredQuality();
-  if (configured !== 'auto') return configured;
-  if (innerWidth <= 480) return 'low';
-  const memory = Number(navigator.deviceMemory || 4);
-  const cores = Number(navigator.hardwareConcurrency || 4);
-  return memory <= 4 || cores <= 4 ? 'low' : 'high';
+  return configuredQuality();
 }
 
 function supportsWebGL() {
@@ -100,7 +96,8 @@ function drawMotif(ctx, skin, size) {
 function drawSkinIcon(ctx, skin, size) {
   if (!skin.icon) return;
   ctx.save();
-  ctx.globalAlpha = .98;
+  // Igual que en los dados 2D: el icono acompaña a la skin sin tapar los puntos.
+  ctx.globalAlpha = .52;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = `${Math.round(size*.64)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
@@ -178,7 +175,7 @@ function materialsFor(skinId, state, quality) {
   const skin = skinFor(skinId);
   const isSimple = quality !== 'high';
   const emissiveColor = new THREE.Color(skin.emissive || skin.colors?.[0] || '#ffffff');
-  const emissiveIntensity = state === 'hot' || state === 'scoring' ? .28 : .22;
+  const emissiveIntensity = state === 'hot' || state === 'scoring' ? .42 : .32;
   return FACE_VALUES.map(value => {
     const faceMap = faceTexture(value, skinId, quality, state);
     const baseColor = '#ffffff';
@@ -279,8 +276,8 @@ function configureRenderer(container, quality, preview) {
   if (!renderer.getContext() || renderer.getContext().isContextLost()) { renderer.dispose(); return null; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = quality === 'high' ? 1.5 : 1.56;
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 1.5 : 1));
+  renderer.toneMappingExposure = 1.82;
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = preview ? 'dice-3d-preview-canvas' : 'dice-3d-canvas';
@@ -295,13 +292,13 @@ function makeStage(container, quality, preview=false) {
   const height = preview ? 210 : Math.max(110, Math.min(145, width*.33));
   renderer.setSize(width,height,false);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a2e);
+  scene.background = null;
   const camera = new THREE.PerspectiveCamera(preview ? 26 : 23,width/height,.1,50);
   camera.position.set(0, preview ? 4.15 : 3.3, preview ? 6.1 : 5.5);
   camera.lookAt(0,preview ? .25 : .55,0);
   const lightMul = quality === 'high' ? 1.08 : 1;
-  scene.add(new THREE.HemisphereLight(0xffffff,0x8c96c8,1.48 * lightMul));
-  const key = new THREE.DirectionalLight(0xfff8e8,1.72 * lightMul);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x9fa9dd,1.72 * lightMul));
+  const key = new THREE.DirectionalLight(0xffffff,2.05 * lightMul);
   key.position.set(-3,6,4); scene.add(key);
   const rim = new THREE.PointLight(0x88ddff,2.55 * lightMul,11); rim.position.set(4,2,-2); scene.add(rim);
   const fill = new THREE.DirectionalLight(0xcfd4ff,.86 * lightMul); fill.position.set(2,-1,3); scene.add(fill);
@@ -369,7 +366,7 @@ function renderGameDice({container,dice,states,skinId,specialId}) {
     stage.scene.add(mesh);stage.objects.push(mesh);
   });
   const effectBoost=['29','45','46','48','51'].includes(String(specialId||''));
-  const particles=addParticles(stage,skinId,quality==='high'?(effectBoost?30:18):(effectBoost?12:8)),start=performance.now(),duration=reducedMotion()?60:460,linger=quality==='high'?420:260;
+  const particles=addParticles(stage,skinId,effectBoost?20:12),start=performance.now(),duration=reducedMotion()?40:280,linger=160;
   let impacted=false;
   // Puntos adaptativos + una base inferior discreta para scoring/hot.
   dice.forEach((_, index) => {
@@ -431,7 +428,7 @@ function createPreview(container,skinId,value=5) {
 }
 
 function clearGameDice(){requestId+=1;disposeStage(gameStage);gameStage=null;}
-function setQuality(value){if(!['auto','high','low','off'].includes(value))return;localStorage.setItem(QUALITY_KEY,value);clearGameDice();window.dispatchEvent(new CustomEvent('macko-dice-quality',{detail:{configured:value,resolved:resolvedQuality()}}));}
+function setQuality(value){if(!['high','off'].includes(value))return;localStorage.setItem(QUALITY_KEY,value);clearGameDice();window.dispatchEvent(new CustomEvent('macko-dice-quality',{detail:{configured:value,resolved:resolvedQuality()}}));}
 
 window.MackoDice3D={renderDice:renderGameDice,createPreview,clear:clearGameDice,setQuality,getQuality:configuredQuality,getResolvedQuality:resolvedQuality,isSupported:supportsWebGL,skins:SKINS_3D};
 window.dispatchEvent(new CustomEvent('macko-dice-3d-ready'));
