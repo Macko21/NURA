@@ -1985,6 +1985,27 @@ async function onMatchWon(match, roomId) {
         }
       } catch(e) { console.error('Error guardando score diario:', e.message); }
     }
+
+    // ── Apuestas: distribuir pot al ganador ──
+    if (match.betPot > 0 && match.betPlayers) {
+      try {
+        const HOUSE_EDGE = 0.1;
+        const netPot = Math.floor(match.betPot * (1 - HOUSE_EDGE));
+        if (netPot > 0 && winner.id && !winner.isBot) {
+          await rewardWinner(winner.id, netPot, { isWin: true });
+          await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+            [winner.id, netPot, `Ganó apuesta: pot ${match.betPot} - 10% comisión`, Date.now()]);
+          console.log(`💰 Apuesta cobrada: ${winner.name} ganó ${netPot} monedas (pot: ${match.betPot})`);
+          // Notificar a todos
+          broadcastRoom(roomId, 'BET_WON', {
+            winnerId: winner.id,
+            winnerName: winner.name,
+            pot: match.betPot,
+            netWin: netPot
+          });
+        }
+      } catch(e) { console.error('Error distribuyendo apuesta:', e.message); }
+    }
   } catch (e) {
     console.error("DB post-win:", e.message);
   }
@@ -2080,6 +2101,14 @@ async function startMatchForRoom(roomId, triggerData) {
       }
     }
   }
+  // Guardar apuestas en el match para distribuir al finalizar
+  const { getBetPot } = require('./roomManager');
+  match.betPot = getBetPot(roomId);
+  if (match.betPot > 0) {
+    match.betPlayers = room.players.map(p => ({ id: p.id, name: p.name, bet: p.bet || 0 }));
+    console.log(`💰 Apuestas activas: pot=${match.betPot} monedas`);
+  }
+
   broadcastRoom(roomId, "GAME_STARTED", {
     firstPlayer, match: snapshotMatch(match)
   });
@@ -2652,6 +2681,33 @@ wss.on("connection", socket => {
           } else if (readyCount < 2) {
             cancelReadyCountdown(data.roomId);
           }
+        }
+        return;
+      }
+
+      /* ── APUESTAS ─────────────────────────────────────── */
+      if (type === "SET_BET") {
+        const { roomId, amount } = data;
+        const playerId = socket.playerId;
+        if (!roomId || !playerId) return;
+        const { setPlayerBet } = require('./roomManager');
+        const result = setPlayerBet(roomId, playerId, amount);
+        if (!result.ok) { send(socket, "ERROR", { message: result.error }); return; }
+        broadcastRoomState(roomId);
+        return;
+      }
+
+      if (type === "CONFIRM_BET") {
+        const { roomId } = data;
+        const playerId = socket.playerId;
+        if (!roomId || !playerId) return;
+        const { confirmPlayerBet, getBettingState } = require('./roomManager');
+        const result = confirmPlayerBet(roomId, playerId);
+        if (!result.ok) { send(socket, "ERROR", { message: result.error }); return; }
+        broadcastRoomState(roomId);
+        // Si todos apostaron, notificar
+        if (result.allBet && result.pot > 0) {
+          broadcastRoom(roomId, 'BETTING_COMPLETE', { pot: result.pot });
         }
         return;
       }

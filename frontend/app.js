@@ -1885,6 +1885,8 @@ function handle(type, data) {
       _winShown = false;
       _gameOverShown = false;
       _rematchInProgress = false;
+      _myBet = 0;
+      _betConfirmed = false;
       // Cargar monedas del jugador para power-ups
       const mePlayer = data.match?.players?.find(p => p.id === S.id);
       if (mePlayer) S.coins = mePlayer.coins || 0;
@@ -2439,6 +2441,21 @@ function handle(type, data) {
       updatePowerUpButtons();
       break;
 
+    case 'BET_WON': {
+      if (data.winnerId === S.id) {
+        toast(`💰 ¡Ganaste la apuesta! +${data.netWin} monedas (pot: ${data.pot})`, 4000);
+        SFX.win();
+      } else {
+        toast(`💰 ${data.winnerName} ganó la apuesta de ${data.pot} monedas`, 3000);
+      }
+      break;
+    }
+
+    case 'BETTING_COMPLETE': {
+      toast(`💰 ¡Todas las apuestas confirmadas! Pot: ${data.pot} 🪙`, 2500);
+      break;
+    }
+
     case 'ERROR':
       clearJoinAttempt();
       const rematchBtn = $('btn-play-again');
@@ -2449,6 +2466,80 @@ function handle(type, data) {
       toast('⚠ ' + data.message);
       break;
   }
+}
+
+/* ── Sistema de Apuestas ─────────────────────────────── */
+const BET_PRESETS = [0, 100, 200, 500, 1000, 2000, 5000];
+let _myBet = 0;
+let _betConfirmed = false;
+
+function renderBetting(room) {
+  const section = $('betting-section');
+  if (!section) return;
+
+  // Solo mostrar si hay 2+ jugadores y la sala está en espera
+  if (!room || room.status !== 'waiting' || room.players.length < 2) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  // Si es sala de bots, ocultar apuestas
+  if (room.isBotGame) { section.classList.add('hidden'); return; }
+
+  section.classList.remove('hidden');
+
+  // Renderizar presets
+  const presetsEl = $('bet-presets');
+  if (presetsEl) {
+    presetsEl.innerHTML = BET_PRESETS.map(amount => {
+      const active = _myBet === amount ? 'active' : '';
+      const label = amount === 0 ? 'Sin apuesta' : `${amount} 🪙`;
+      return `<button class="bet-preset-btn ${active}" data-bet="${amount}">${label}</button>`;
+    }).join('');
+
+    // Bind clicks
+    presetsEl.querySelectorAll('.bet-preset-btn').forEach(btn => {
+      btn.onclick = () => {
+        _myBet = parseInt(btn.dataset.bet) || 0;
+        _betConfirmed = false;
+        if (S.roomId) wsSend('SET_BET', { roomId: S.roomId, amount: _myBet });
+        renderBetting(room);
+      };
+    });
+  }
+
+  // Renderizar apuestas de jugadores
+  const playersEl = $('bet-players');
+  if (playersEl) {
+    playersEl.innerHTML = room.players.map(p => {
+      const bet = p.bet || 0;
+      const confirmed = p.betConfirmed;
+      const isMe = p.id === S.id;
+      return `<div class="bet-player-row">
+        <span class="bet-player-name">${esc(p.name)}${isMe ? ' (vos)' : ''}</span>
+        <span class="bet-player-amount">${bet > 0 ? bet + ' 🪙' : '—'}</span>
+        <span class="bet-player-status ${confirmed ? 'confirmed' : 'waiting'}">${confirmed ? '✔' : '⏳'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Pot total
+  const pot = room.players.reduce((sum, p) => sum + (p.bet || 0), 0);
+  const potEl = $('bet-pot');
+  if (potEl) potEl.textContent = `Pot: ${pot} 🪙`;
+
+  // Botón confirmar
+  const confirmBtn = $('btn-confirm-bet');
+  if (confirmBtn) {
+    confirmBtn.disabled = _betConfirmed || _myBet === 0;
+    confirmBtn.textContent = _betConfirmed ? '✔ Apuesta confirmada' : '✔ Confirmar apuesta';
+  }
+}
+
+function confirmMyBet() {
+  if (_betConfirmed || _myBet === 0) return;
+  _betConfirmed = true;
+  if (S.roomId) wsSend('CONFIRM_BET', { roomId: S.roomId });
 }
 
 /* ── Render sala de espera ───────────────────────────── */
@@ -2497,6 +2588,9 @@ function renderRoom(room) {
     const text = readyStatus.querySelector('.ready-status-text');
     if (!text || !text.textContent.includes('Iniciando')) readyStatus.classList.add('hidden');
   }
+
+  // Renderizar sección de apuestas
+  renderBetting(room);
 }
 
 /* ── Sincronizar items equipados desde match state ──── */
@@ -4697,6 +4791,10 @@ function initUI() {
       rs.classList.remove('hidden');
     }
   };
+
+  // Confirmar apuesta
+  const confirmBetBtn = $('btn-confirm-bet');
+  if (confirmBetBtn) confirmBetBtn.onclick = confirmMyBet;
 
   /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
   $('btn-roll').onclick = () => {

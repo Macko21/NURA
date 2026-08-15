@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.9.1";
+const GAME_VERSION = "4.10.0";
 
 const CHANGELOG = [
+  {
+    version: "4.10.0",
+    date: "2026-08-15",
+    title: "💰 Apuestas entre jugadores",
+    scope: "game",
+    files: ["roomManager.js", "server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "💰 APUESTAS: elegí un monto antes de empezar la partida (0, 100, 200, 500, 1000, 2000, 5000 🪙)",
+      "💰 POT: se muestra el total apostado por todos los jugadores en la sala de espera",
+      "🏆 GANADOR: el ganador se lleva el pot completo (menos 10% de comisión)",
+      "✔ CONFIRMACIÓN: cada jugador debe confirmar su apuesta antes de que empiece la partida",
+      "🔒 ANTI-CHEAT: validación server-side de monedas, monto máximo 5000, límites estrictos",
+      "📱 UI: sección de apuestas en sala de espera con presets y estado de cada jugador",
+      "🔔 NOTIFICACION: toast cuando alguien gana la apuesta y cuando se completa el pot"
+    ]
+  },
   {
     version: "4.9.1",
     date: "2026-08-15",
