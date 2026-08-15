@@ -15,25 +15,8 @@ const DOT_POSITIONS = {
   6: [[12,10],[38,10],[12,25],[38,25],[12,40],[38,40]]
 };
 
-let _dice3DPromise = null;
 let _diceRenderRequest = 0;
 let _lastDiceView = null;
-// Incrementar cuando se modifique dice-renderer-3d.mjs para forzar recarga del cache
-const _3D_CACHE_BUST = '7';
-
-function loadDice3D() {
-  if (window.MackoDice3D) return Promise.resolve(window.MackoDice3D);
-  if (!_dice3DPromise) {
-    const version = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : 'current';
-    _dice3DPromise = import(`/dice-renderer-3d.mjs?v=${encodeURIComponent(version)}&b=${_3D_CACHE_BUST}`)
-      .then(() => window.MackoDice3D)
-      .catch(err => {
-        console.warn('Dados 3D no disponibles; usando renderer 2D:', err.message);
-        return null;
-      });
-  }
-  return _dice3DPromise;
-}
 
 // Mapa de skins de dados: ID del item → colores
 const DICE_SKINS = {
@@ -198,7 +181,6 @@ function showDice(dice, mode) {
   if (!row) return;
   row.closest('.dice-tray')?.classList.remove('is-empty');
   const renderRequest = ++_diceRenderRequest;
-  row.classList.remove('dice-row-3d');
   row.innerHTML = '';
 
   let activeSkinId = null;
@@ -230,6 +212,7 @@ function showDice(dice, mode) {
   }
 
   const diceStates = [];
+  const isDead = mode === 'dead';
   dice.forEach((val, i) => {
     let state = 'normal';
     if (mode === 'all')    state = 'hot';
@@ -238,42 +221,26 @@ function showDice(dice, mode) {
     diceStates.push(state);
     _lastDiceView.diceStates.push(state);
     const die = makeDie(val, state, activeSkinId);
-    die.style.animationDelay = (i * 55) + 'ms';
-    if (activeSpecialId === '29' && mode !== 'dead') {
+    // Delay escalonado exponencial: los primeros caen rápido,
+    // los últimos tardan más para generar tensión
+    const isLast = i === dice.length - 1;
+    const baseDelay = isDead ? (i * 60) : (i * 120 + i * i * 25);
+    die.style.animationDelay = baseDelay + 'ms';
+    // Último dado recibe clase especial para wobble dramático
+    if (isLast && !isDead && dice.length > 1) {
+      die.classList.add('die-rolling-last');
+    }
+    if (activeSpecialId === '29' && !isDead) {
       die.classList.add('magic-dice');
     }
-    if (activeSpecialId === '48' && mode !== 'dead') {
+    if (activeSpecialId === '48' && !isDead) {
       die.classList.add('electric-dice');
     }
     row.appendChild(die);
   });
-  loadDice3D().then(renderer3D => {
-    if (!renderer3D || renderRequest !== _diceRenderRequest || !row.isConnected) return;
-    try {
-      const ok = renderer3D.renderDice({ container: row, dice, states: diceStates, skinId: activeSkinId, specialId: activeSpecialId });
-      if (!ok) restore2D();
-      syncDiceQualityUI();
-    } catch (err) {
-      console.warn('Fallback a dados 2D:', err.message);
-      restore2D();
-    }
-  });
-  function restore2D() {
-    if (renderRequest !== _diceRenderRequest || !row.isConnected) return;
-    if (row.querySelector('.die')) return;
-    row.innerHTML = '';
-    row.classList.remove('dice-row-3d');
-    dice.forEach((val, i) => {
-      const die = makeDie(val, diceStates[i], activeSkinId);
-      die.style.animationDelay = (i * 55) + 'ms';
-      if (activeSpecialId === '29' && diceStates[i] !== 'dead') die.classList.add('magic-dice');
-      if (activeSpecialId === '48' && diceStates[i] !== 'dead') die.classList.add('electric-dice');
-      row.appendChild(die);
-    });
-  }
   if (activeSkinId && SKIN_PARTICLES[activeSkinId] && mode !== 'dead') {
     setTimeout(() => {
-      if (!row.classList.contains('dice-row-3d') && renderRequest === _diceRenderRequest) spawnSkinParticles(activeSkinId, row);
+      if (renderRequest === _diceRenderRequest) spawnSkinParticles(activeSkinId, row);
     }, 400);
   }
 }
@@ -282,66 +249,78 @@ function clearDice() {
   _diceRenderRequest++;
   _lastDiceView = null;
   document.querySelector('.entry-banner-toast')?.remove();
-  window.MackoDice3D?.clear();
   const el = document.getElementById('dice-row');
-  if (el) { el.classList.remove('dice-row-3d'); el.innerHTML = ''; el.closest('.dice-tray')?.classList.add('is-empty'); }
+  if (el) { el.innerHTML = ''; el.closest('.dice-tray')?.classList.add('is-empty'); }
   setMsg('', '');
 }
 
-function syncDiceQualityUI() {
-  const select = document.getElementById('dice-quality-select');
-  const status = document.getElementById('dice-quality-status');
-  const renderer3D = window.MackoDice3D;
-  if (!select || !status) return;
-  if (!renderer3D) {
-    status.textContent = 'Renderer 2D activo';
-    return;
-  }
-  select.disabled = false;
-  select.value = renderer3D.getQuality();
-  const resolved = renderer3D.getResolvedQuality();
-  const labels = { high:'3D mejorado activo', off:'2D clásico activo' };
-  status.textContent = renderer3D.isSupported() ? labels[resolved] : '2D clásica · WebGL no disponible';
+
+
+/* ── Flash overlay global ──────────────────────────── */
+function _createFlashOverlay() {
+  const existing = document.querySelector('.flash-overlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'flash-overlay';
+  document.body.appendChild(overlay);
+  return overlay;
 }
 
-if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-  window.addEventListener('macko-dice-3d-lost', () => {
-  const select = document.getElementById('dice-quality-select');
-  if (select && !select.disabled) { select.value = 'off'; select.disabled = true; }
-  const status = document.getElementById('dice-quality-status');
-  if (status) status.textContent = '2D clásica · WebGL perdido';
-  const container = document.getElementById('dice-row');
-  if (!container) return;
-  container.classList.remove('dice-row-3d');
-  const lv = _lastDiceView;
-  if (lv && lv.dice && lv.dice.length) {
-    container.innerHTML = '';
-    lv.dice.forEach((val, i) => {
-      const st = lv.diceStates ? lv.diceStates[i] : 'normal';
-      const die = makeDie(val, st, lv.skinId);
-      die.style.animationDelay = (i * 55) + 'ms';
-      if (lv.specialId === '29' && st !== 'dead') die.classList.add('magic-dice');
-      if (lv.specialId === '48' && st !== 'dead') die.classList.add('electric-dice');
-      container.appendChild(die);
-    });
-  }
-  });
+/* ── Flash rojo: farkle / bust ──────────────────── */
+function triggerFarkleFlash() {
+  const overlay = _createFlashOverlay();
+  void overlay.offsetWidth;
+  overlay.classList.add('flash-red');
+  setTimeout(() => overlay.remove(), 600);
+}
 
-  window.addEventListener('macko-dice-3d-ready', syncDiceQualityUI);
-  window.addEventListener('macko-dice-quality', () => {
-    syncDiceQualityUI();
-    if (_lastDiceView) setTimeout(() => showDice(_lastDiceView.dice, _lastDiceView.mode), 0);
-  });
-  document.addEventListener('DOMContentLoaded', () => {
-    const select = document.getElementById('dice-quality-select');
-    if (select) {
-      select.value = localStorage.getItem('macko_dice_quality') === 'off' ? 'off' : 'high';
-      select.addEventListener('change', () => loadDice3D().then(renderer3D => renderer3D?.setQuality(select.value)));
-    }
-    const warmRenderer = () => loadDice3D().then(syncDiceQualityUI);
-    if ('requestIdleCallback' in window) window.requestIdleCallback(warmRenderer, { timeout: 4000 });
-    else setTimeout(warmRenderer, 1200);
-  });
+/* ── Flash dorado: victoria ─────────────────────── */
+function triggerVictoryFlash() {
+  const overlay = _createFlashOverlay();
+  void overlay.offsetWidth;
+  overlay.classList.add('flash-gold');
+  setTimeout(() => overlay.remove(), 900);
+}
+
+/* ── Screen shake — visible para TODOS ──────────── */
+function triggerScreenShake(intensity) {
+  const table = document.querySelector('.game-table');
+  if (!table) return;
+  table.classList.remove('shake');
+  void table.offsetWidth;
+  if (intensity === 'strong') table.style.animationDuration = '.6s';
+  else table.style.animationDuration = '.5s';
+  table.classList.add('shake');
+  setTimeout(() => { table.classList.remove('shake'); table.style.animationDuration = ''; }, 600);
+}
+
+/* ── Flash dorado para hot dice ──────────────────── */
+function triggerHotFlash() {
+  const tray = document.querySelector('.dice-tray');
+  if (!tray) return;
+  tray.classList.remove('hot-flash');
+  void tray.offsetWidth;
+  tray.classList.add('hot-flash');
+  setTimeout(() => tray.classList.remove('hot-flash'), 800);
+}
+
+/* ── Modo tenso: dado cerca de 10.000 ────────────── */
+function applyNearWinEffect(match) {
+  if (!match) return;
+  const myPlayer = match.players?.find(p => p.id === (typeof S !== 'undefined' ? S.id : null));
+  if (!myPlayer) return;
+  const score = myPlayer.score || 0;
+  const tray = document.querySelector('.dice-tray');
+  if (!tray) return;
+  if (score >= 9000 && score < 10000) {
+    tray.classList.add('near-win-tray');
+    tray.style.borderColor = 'rgba(255,80,80,.5)';
+    tray.style.boxShadow = '0 0 20px rgba(255,50,50,.3), inset 0 0 12px rgba(255,50,50,.1)';
+  } else {
+    tray.classList.remove('near-win-tray');
+    tray.style.borderColor = '';
+    tray.style.boxShadow = '';
+  }
 }
 
 function setMsg(text, type) {

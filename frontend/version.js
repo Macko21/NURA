@@ -10,9 +10,148 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.7.0";
+const GAME_VERSION = "4.10.0";
 
 const CHANGELOG = [
+  {
+    version: "4.10.0",
+    date: "2026-08-15",
+    title: "💰 Apuestas entre jugadores",
+    scope: "game",
+    files: ["roomManager.js", "server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "💰 APUESTAS: elegí un monto antes de empezar la partida (0, 100, 200, 500, 1000, 2000, 5000 🪙)",
+      "💰 POT: se muestra el total apostado por todos los jugadores en la sala de espera",
+      "🏆 GANADOR: el ganador se lleva el pot completo (menos 10% de comisión)",
+      "✔ CONFIRMACIÓN: cada jugador debe confirmar su apuesta antes de que empiece la partida",
+      "🔒 ANTI-CHEAT: validación server-side de monedas, monto máximo 5000, límites estrictos",
+      "📱 UI: sección de apuestas en sala de espera con presets y estado de cada jugador",
+      "🔔 NOTIFICACION: toast cuando alguien gana la apuesta y cuando se completa el pot"
+    ]
+  },
+  {
+    version: "4.9.1",
+    date: "2026-08-15",
+    title: "✨ Tablero animado de fondo",
+    scope: "game",
+    files: ["app.js", "index.html", "styles.css"],
+    changes: [
+      "✨ FONDO ANIMADO: partículas flotantes sutiles sobre el tablero de juego",
+      "🎨 MODO IDLE: partículas azules suaves cuando no es tu turno",
+      "🎮 MODO MI TURNO: partículas cyan más brillantes cuando jugás",
+      "🔥 MODO HOT DICE: partículas doradas cuando tenés dados calientes",
+      "🔴 MODO TENSIÓN: partículas rojas cuando superás 9.000 puntos",
+      "⚡ PERFORMANCE: canvas ligero con requestAnimationFrame, auto-limpieza al salir"
+    ]
+  },
+  {
+    version: "4.9.0",
+    date: "2026-08-15",
+    title: "🎯 Desafío Diario con ranking",
+    scope: "game",
+    files: ["database.js", "server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "🎯 DESAFÍO DIARIO: cada día hay un desafío nuevo con nombre y temática única",
+      "🤖 PARTIDA SOLO: jugás contra 1 bot fácil para lograr el mejor puntaje",
+      "🏆 RANKING DIARIO: leaderboard de todos los jugadores del día con mejores puntajes",
+      "💰 RECOMPENSA: 500 monedas al completar el desafío (llegar a 10.000)",
+      "📊 MI MEJOR: tu mejor puntaje del día se guarda y muestra en el modal",
+      "🎨 8 TEMAS: Fuego y Hielo, Supervivencia, Relámpago, Dados Locos, Monte Callejero, Amanecer, Marea Alta, Eclipse Total",
+      "📅 DETERMINISTICO: todos los jugadores ven el mismo desafío cada día"
+    ]
+  },
+  {
+    version: "4.8.5",
+    date: "2026-08-15",
+    title: "🎮 Power-ups comprables en partida",
+    scope: "game",
+    files: ["diceManager.js", "server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "🛡️ SEGURO (300 🪙): si tirás muerto, no perdés el turno — el seguro se consume y seguís",
+      "🎲 DADO EXTRA (200 🪙): tirás 6 dados en vez de 5 para este turno",
+      "🔮 MIRAR FUTURO (400 🪙): ves qué vas a sacar antes de decidir",
+      "💰 Se compran con monedas del jugador durante la partida",
+      "🔒 Anti-cheat: validación server-side de monedas y estado del turno",
+      "📱 UI: barra de power-ups con botones que se deshabilitan si no hay monedas o no es tu turno",
+      "✨ Toast visual cuando se activa un power-up"
+    ]
+  },
+  {
+    version: "4.8.4",
+    date: "2026-08-15",
+    title: "💬 Emotes reactivos en partida",
+    scope: "game",
+    files: ["server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "💬 EMOTES: botón 💬 en la barra de juego que abre un picker con 8 emojis",
+      "💬 BUBBLE: el emote aparece como burbuja flotante sobre el avatar del jugador",
+      "💬 ANIMACIÓN: bounce al aparecer + float hacia arriba + fade out en 3 segundos",
+      "🔒 ANTI-SPAM: cooldown de 2 segundos entre emotes por jugador en el backend",
+      "🌍 SYNC: todos los jugadores de la sala ven los emotes en tiempo real",
+      "8 EMOTES: 😂 🔥 💀 😱 🏆 👏 🤬 😈"
+    ]
+  },
+  {
+    version: "4.8.3",
+    date: "2026-08-15",
+    title: "💥 Flash overlays y screen shake mejorado",
+    scope: "game",
+    files: ["dice-renderer.js", "styles.css", "app.js"],
+    changes: [
+      "💥 FLASH ROJO: overlay rojo fullscreen al tirar muerto o pasarte — TODO el mundo lo ve",
+      "🏆 FLASH DORADO: overlay dorado brillante al ganar — celebración visual inmediata",
+      "🔥 HOT FLASH MEJORADO: borde dorado + glow intenso en la bandeja de dados",
+      "📱 SCREEN SHAKE: ahora visible para TODOS los jugadores (espectadores incluidos)",
+      "⚡ TIMEOUT: auto-tirada muerta/bust también tiene flash + shake + reset combo",
+      "💪 SHAKE INTENSO: victoria usa shake más fuerte (.6s) para máxima dramatización"
+    ]
+  },
+  {
+    version: "4.8.2",
+    date: "2026-08-15",
+    title: "🔥 Combo counter — rachas de turnos ganadores",
+    scope: "game",
+    files: ["matchState.js", "diceManager.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "🔥 COMBO: counter visual que aparece cuando anotás 2+ turnos seguidos — todos los jugadores lo ven",
+      "🔥 COMBO x2: borde naranja con fuego 🔥 — primer nivel de combo",
+      "🔥 COMBO x3+: borde rojo intenso con fuego 🔥🔥 — modo caliente",
+      "⚡ MEGACOMBO x5+: borde dorado brillante con rayo ⚡ — máxima adrenalina",
+      "💥 POP: animación de crecimiento al incrementar el combo",
+      "🔄 RESET: el combo se pierde al tirar muerto o pasarse de 10.000",
+      "🎯 BACKEND: tracking de combo por jugador en matchState + envío en eventos BANKED/DEAD_ROLL/BUST"
+    ]
+  },
+  {
+    version: "4.8.1",
+    date: "2026-08-15",
+    title: "🎲 Dados dramáticos con tensión y efectos de impacto",
+    scope: "game",
+    files: ["dice-renderer.js", "styles.css", "app.js"],
+    changes: [
+      "🎲 ANIMACIÓN: dados caen uno por uno con delay escalonado exponencial — los primeros son rápidos, los últimos tardan más para generar tensión",
+      "🎲 WOBBLE: el último dado tiene una animación de balanceo más larga antes de asentarse (tipo tragamenedas)",
+      "💥 SCREEN SHAKE: la pantalla se sacude al tirar muerto (farkle) o pasarte de 10.000 — feedback táctil del error",
+      "✨ FLASH DORADO: la bandeja de dados brilla al recibir dados calientes — señal visual de éxito",
+      "🔴 MODO TENSO: cuando tu puntaje supera 9.000, el borde del tablero pulsa en rojo — todos ven que estás cerca de ganar",
+      "🎯 LAND: dados tienen un mini-impacto al aterrizar para sensación de peso"
+    ]
+  },
+  {
+    version: "4.8.0",
+    date: "2026-08-15",
+    title: "🎲 Dados 2D puros + fixes de estabilidad",
+    scope: "game",
+    files: ["app.js", "dice-renderer.js", "styles.css", "index.html", "sw.js", "server.js", "diceManager.js"],
+    changes: [
+      "🎲 DADOS: eliminado el modo 3D completo — ahora el juego usa exclusivamente dados 2D SVG con skins",
+      "🧹 LIMPIEZA: removido selector de calidad, canvas 3D, vendor Three.js y cache del Service Worker",
+      "🐛 FIX: constante XP_PER_STREAK_WIN declarada (causaba ReferenceError post-victoria)",
+      "🛡️ FIX: onMatchWon garantiza GAME_OVER aunque falle pre-broadcast",
+      "🛡️ FIX: _advanceTurn termina partida si todos quedan eliminados",
+      "📱 FIX: flags _winShown/_gameOverShown reseteados al iniciar partida nueva"
+    ]
+  },
   {
     version: "4.7.0",
     date: "2026-08-02",

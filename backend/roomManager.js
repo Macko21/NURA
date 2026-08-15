@@ -502,5 +502,76 @@ startReadyCountdown,
 
 cancelReadyCountdown,
 
-hasReadyCountdown
+hasReadyCountdown,
+
+// Apuestas
+setPlayerBet,
+confirmPlayerBet,
+getBettingState,
+getBetPot
 };
+
+/* ── Apuestas ─────────────────────────────────────── */
+
+// Límites de apuesta
+const BET_LIMITS = { min: 0, max: 5000 };
+const BET_PRESETS = [0, 100, 200, 500, 1000, 2000, 5000];
+const HOUSE_EDGE = 0.1; // 10% comisión
+
+function setPlayerBet(roomId, playerId, amount) {
+  const room = rooms.get(roomId);
+  if (!room || room.status !== 'waiting') return { ok: false, error: 'Sala no disponible' };
+  const player = room.players.find(p => p.id === playerId);
+  if (!player) return { ok: false, error: 'Jugador no encontrado en la sala' };
+
+  amount = Math.max(BET_LIMITS.min, Math.min(BET_LIMITS.max, Math.floor(Number(amount) || 0)));
+  player.bet = amount;
+  player.betConfirmed = false; // Reset confirmación al cambiar monto
+
+  // Inicializar estado de apuestas de la sala
+  if (!room.betting) room.betting = { enabled: false, pot: 0 };
+
+  return { ok: true, bet: amount, presets: BET_PRESETS };
+}
+
+function confirmPlayerBet(roomId, playerId) {
+  const room = rooms.get(roomId);
+  if (!room || room.status !== 'waiting') return { ok: false, error: 'Sala no disponible' };
+  const player = room.players.find(p => p.id === playerId);
+  if (!player) return { ok: false, error: 'Jugador no encontrado' };
+
+  player.betConfirmed = true;
+
+  // Calcular pot total
+  const pot = room.players.reduce((sum, p) => sum + (p.bet || 0), 0);
+  room.betting = { enabled: pot > 0, pot };
+
+  // Verificar si todos apostaron
+  const allBet = room.players.every(p => p.betConfirmed || (p.bet || 0) === 0);
+
+  return { ok: true, bet: player.bet || 0, pot, allBet };
+}
+
+function getBettingState(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+  const pot = room.players.reduce((sum, p) => sum + (p.bet || 0), 0);
+  return {
+    enabled: pot > 0,
+    pot,
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      bet: p.bet || 0,
+      confirmed: !!p.betConfirmed
+    })),
+    presets: BET_PRESETS,
+    houseEdge: HOUSE_EDGE
+  };
+}
+
+function getBetPot(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return 0;
+  return room.players.reduce((sum, p) => sum + (p.bet || 0), 0);
+}

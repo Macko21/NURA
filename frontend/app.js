@@ -1108,6 +1108,238 @@ function syncMyScore(match) {
   if (me) $('my-score').textContent = me.score||0;
 }
 
+/* ── Combo Counter UI ────────────────────────────────── */
+function updateCombo(combo) {
+  const counter = $('combo-counter');
+  const number = $('combo-number');
+  const fire = $('combo-fire');
+  const label = $('combo-label');
+  if (!counter || !number) return;
+
+  if (!combo || combo < 2) {
+    counter.classList.add('hidden');
+    counter.classList.remove('combo-hot', 'combo-max');
+    return;
+  }
+
+  counter.classList.remove('hidden');
+  number.textContent = 'x' + combo;
+
+  // Niveles de combo con colores crecientes
+  counter.classList.remove('combo-hot', 'combo-max');
+  if (combo >= 5) {
+    counter.classList.add('combo-max');
+    fire.textContent = '⚡';
+    label.textContent = 'MEGACOMBO';
+  } else if (combo >= 3) {
+    counter.classList.add('combo-hot');
+    fire.textContent = '🔥';
+    label.textContent = 'COMBO';
+  } else {
+    fire.textContent = '🔥';
+    label.textContent = 'COMBO';
+  }
+
+  // Pop animation
+  counter.classList.remove('combo-pop');
+  void counter.offsetWidth;
+  counter.classList.add('combo-pop');
+}
+
+function resetCombo() {
+  const counter = $('combo-counter');
+  if (counter) {
+    counter.classList.add('hidden');
+    counter.classList.remove('combo-hot', 'combo-max', 'combo-pop');
+  }
+}
+
+/* ── Emote Bubble flotante ──────────────────────────── */
+function showEmoteBubble(playerId, emote) {
+  // Buscar el chip del jugador en el scoreboard
+  const chips = document.querySelectorAll('.scoreboard .sc-chip');
+  for (const chip of chips) {
+    const nameEl = chip.querySelector('.sc-nm');
+    if (!nameEl) continue;
+    // Encontrar el jugador por ID (comparar con el match actual)
+    const matchPlayer = S.match?.players?.find(p => p.id === playerId);
+    if (!matchPlayer) continue;
+    if (nameEl.textContent !== matchPlayer.name) continue;
+
+    // Remover bubble anterior si existe
+    chip.querySelector('.emote-bubble')?.remove();
+
+    // Crear nueva bubble
+    const bubble = document.createElement('span');
+    bubble.className = 'emote-bubble';
+    bubble.textContent = emote;
+    chip.appendChild(bubble);
+
+    // Auto-remover después de la animación (3s total)
+    setTimeout(() => bubble.remove(), 3200);
+    break;
+  }
+}
+
+/* ── Power-ups UI ────────────────────────────────────── */
+const POWERUP_COSTS = { insurance: 300, extraDie: 200, peek: 400 };
+const POWERUP_NAMES = { insurance: '🛡️ Seguro', extraDie: '🎲 Dado Extra', peek: '🔮 Mirar Futuro' };
+
+function showPowerUpBar() {
+  const bar = $('powerup-bar');
+  if (!bar) return;
+  bar.classList.remove('hidden');
+  updatePowerUpButtons();
+}
+
+function hidePowerUpBar() {
+  const bar = $('powerup-bar');
+  if (bar) bar.classList.add('hidden');
+}
+
+function updatePowerUpButtons() {
+  if (!S.match) return;
+  const me = S.match.players?.find(p => p.id === S.id);
+  if (!me || !me.entered) { hidePowerUpBar(); return; }
+
+  const bar = $('powerup-bar');
+  if (bar) bar.classList.remove('hidden');
+
+  // Actualizar estado de cada botón
+  Object.keys(POWERUP_COSTS).forEach(puId => {
+    const btn = $(`pu-${puId}`);
+    if (!btn) return;
+    const cost = POWERUP_COSTS[puId];
+    const isActive = me.activePowerUps?.[puId];
+    const canAfford = (S.coins || 0) >= cost;
+    const isMyTurn = S.myTurn && me.entered;
+    btn.disabled = !isMyTurn || !canAfford || isActive;
+    btn.classList.toggle('active-powerup', !!isActive);
+  });
+}
+
+function usePowerUp(powerUpId) {
+  if (!S.roomId || !S.id) return;
+  const cost = POWERUP_COSTS[powerUpId];
+  const name = POWERUP_NAMES[powerUpId];
+  if (!cost || !name) return;
+
+  // Verificar monedas localmente primero
+  if ((S.coins || 0) < cost) {
+    toast(`❌ Necesitás ${cost} monedas para ${name}`);
+    return;
+  }
+
+  wsSend('USE_POWERUP', { roomId: S.roomId, playerId: S.id, powerUpId });
+}
+
+/* ── Tablero Animado: Partículas de fondo ─────────── */
+let _gameBgParticles = [];
+let _gameBgAnimId = null;
+let _gameBgMode = 'idle'; // idle, myTurn, hot, tension
+
+const BG_PARTICLE_COLORS = {
+  idle:   ['rgba(6,182,212,.3)', 'rgba(6,182,212,.15)', 'rgba(100,200,255,.1)'],
+  myTurn: ['rgba(6,182,212,.4)', 'rgba(34,211,238,.25)', 'rgba(165,243,252,.15)'],
+  hot:    ['rgba(255,180,0,.35)', 'rgba(255,100,0,.25)', 'rgba(255,220,80,.15)'],
+  tension: ['rgba(255,80,80,.3)', 'rgba(255,50,50,.2)', 'rgba(200,40,40,.15)']
+};
+
+function initGameBgCanvas() {
+  const canvas = document.getElementById('game-bg-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const table = canvas.parentElement;
+  if (!table) return;
+
+  function resize() {
+    canvas.width = table.clientWidth;
+    canvas.height = table.clientHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Crear partículas iniciales
+  _gameBgParticles = [];
+  for (let i = 0; i < 35; i++) {
+    _gameBgParticles.push(createBgParticle(canvas.width, canvas.height));
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const colors = BG_PARTICLE_COLORS[_gameBgMode] || BG_PARTICLE_COLORS.idle;
+
+    for (const p of _gameBgParticles) {
+      // Movimiento
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Rebotar en bordes
+      if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+      if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+      // Pulso de opacidad
+      p.alpha += p.alphaDir * 0.005;
+      if (p.alpha > p.alphaMax || p.alpha < p.alphaMin) p.alphaDir *= -1;
+
+      // Dibujar partícula suave
+      const color = colors[p.colorIdx % colors.length];
+      ctx.beginPath();
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    _gameBgAnimId = requestAnimationFrame(animate);
+  }
+
+  if (_gameBgAnimId) cancelAnimationFrame(_gameBgAnimId);
+  animate();
+}
+
+function createBgParticle(w, h) {
+  return {
+    x: Math.random() * (w || 400),
+    y: Math.random() * (h || 600),
+    size: 15 + Math.random() * 35,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.2,
+    alpha: 0.1 + Math.random() * 0.3,
+    alphaMin: 0.05,
+    alphaMax: 0.4,
+    alphaDir: Math.random() > 0.5 ? 1 : -1,
+    colorIdx: Math.floor(Math.random() * 3)
+  };
+}
+
+function setGameBgMode(mode) {
+  _gameBgMode = mode;
+}
+
+function stopGameBgCanvas() {
+  if (_gameBgAnimId) cancelAnimationFrame(_gameBgAnimId);
+  _gameBgAnimId = null;
+  const canvas = document.getElementById('game-bg-canvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function showPowerUpToast(icon, text) {
+  const existing = document.querySelector('.pu-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.className = 'pu-toast';
+  toast.innerHTML = `${icon} ${text}`;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; }, 1500);
+  setTimeout(() => toast.remove(), 2000);
+}
+
 function updateGameRoomCode() {
   const el = $('game-room-code');
   if (el) el.textContent = S.roomCode || '—';
@@ -1125,6 +1357,7 @@ function goLobby(msg) {
   _gameOverShown = false;
   _rematchInProgress = false;
   stopTimer();
+  stopGameBgCanvas();
   clearSession();
   // Limpiar grabación de audio si está activa
   if (_recording && _mediaRecorder?.state === 'recording') {
@@ -1652,6 +1885,11 @@ function handle(type, data) {
       _winShown = false;
       _gameOverShown = false;
       _rematchInProgress = false;
+      _myBet = 0;
+      _betConfirmed = false;
+      // Cargar monedas del jugador para power-ups
+      const mePlayer = data.match?.players?.find(p => p.id === S.id);
+      if (mePlayer) S.coins = mePlayer.coins || 0;
       saveSession();
       showScreen('screen-game');
       $('ready-status')?.classList.add('hidden');
@@ -1663,8 +1901,11 @@ function handle(type, data) {
       renderSB(data.match);
       updateTurnUI(data.match);
       clearDice();
+      resetCombo();
       updateGameRoomCode();
       updateGameCoins();
+      // Iniciar canvas de fondo animado
+      setTimeout(() => initGameBgCanvas(), 100);
       sys('¡La partida comenzó!');
       SFX.score();
       if (data.firstPlayer?.id === S.id) startTimer(TURN_SECS);
@@ -1680,6 +1921,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'scored');
+      if (data.playerId===S.id) { applyNearWinEffect(data.match); }
       setMsg(`Sacó ${data.rollScore} pts → Costo 1000 → Ganaste ${data.gained} pts`, 'good');
       $('turn-points').textContent = '0';
       $('roll-count').textContent  = '— / 3';
@@ -1740,7 +1982,7 @@ function handle(type, data) {
         updateTurnUI(data.match);
       }
       syncMyScore(data.match);
-      if (data.playerId===S.id) playSkinScore();
+      if (data.playerId===S.id) { applyNearWinEffect(data.match); playSkinScore(); }
       break;
 
     case 'DEAD_ROLL':
@@ -1749,6 +1991,8 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
+      resetCombo();
+      triggerScreenShake(); triggerFarkleFlash();
       setMsg('¡Sin puntos! Turno perdido 💀','bad');
       updateTurnUI(data.match);
       if (data.playerId===S.id) stopTimer();
@@ -1762,6 +2006,8 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
+      resetCombo();
+      triggerScreenShake(); triggerFarkleFlash();
       setMsg('¡Te pasaste de 10.000! 💥','bad');
       updateTurnUI(data.match);
       if (data.playerId===S.id) stopTimer();
@@ -1775,12 +2021,14 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
+      triggerHotFlash();
       setMsg('🔥 DADOS CALIENTES — Si puntúan todos, seguís; si puntúa parcialmente, suma y termina','hot');
       $('turn-points').textContent = data.turnPoints;
       $('bank-pts').textContent    = data.turnPoints>0 ? '+'+data.turnPoints : '';
       if (data.playerId===S.id) { flashTurnPoints(); startTimer(TURN_SECS); }
       updateTurnUI(data.match);
       syncMyScore(data.match);
+      if (data.playerId===S.id) { applyNearWinEffect(data.match); }
       sys(`🔥 ${data.playerName} dados calientes! +${data.rollScore} pts acumulados`);
       playSkinHot();
       break;
@@ -1794,9 +2042,14 @@ function handle(type, data) {
       syncMyScore(data.match);
       if (data.auto) setMsg(`Banco automático — +${data.gained} pts anotados ✔`,'good');
       sys(`${data.playerName} anotó ${data.gained} pts → total ${data.totalScore}`);
+      // Actualizar combo counter
+      if (data.combo && data.combo >= 2) {
+        updateCombo(data.combo);
+      }
       if (data.playerId===S.id) {
         stopTimer();
         SFX.bank();
+        applyNearWinEffect(data.match);
         if (!data.auto) toast(`✔ Anotaste ${data.gained} puntos. Total: ${data.totalScore}`);
       }
       break;
@@ -1860,6 +2113,12 @@ function handle(type, data) {
         scored: `🎲 Auto-tirada: +${data.gained} puntos`,
         win: '🏆 ¡Victoria por timeout!'
       };
+      // Efectos visuales según resultado
+      if (data.result === 'dead' || data.result === 'bust') {
+        triggerScreenShake(); triggerFarkleFlash(); resetCombo();
+      } else if (data.result === 'win') {
+        triggerScreenShake('strong'); triggerVictoryFlash();
+      }
       sys(resultMsg[data.result] || '⏰ Auto-tirada por timeout');
       toast(resultMsg[data.result] || '⏰ Auto-tirada', 3000);
       if (data.playerId === S.id) {
@@ -1903,6 +2162,7 @@ function handle(type, data) {
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
+      triggerScreenShake('strong'); triggerVictoryFlash();
       const winP = S.match.players.find(p => p.id === data.playerId);
       showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
       SFX.win();
@@ -1918,6 +2178,7 @@ function handle(type, data) {
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
+      triggerScreenShake('strong'); triggerVictoryFlash();
       const winP = S.match.players.find(p => p.id === data.playerId);
       showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
       SFX.win();
@@ -1942,6 +2203,7 @@ function handle(type, data) {
         $('btn-play-again')?.classList.add('hidden');
       }
       if (victoryAlreadyShown) break;
+      triggerScreenShake('strong'); triggerVictoryFlash();
       const winnerId = data.winner?.id;
       const winSkin = winnerId && S.match 
         ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
@@ -2077,6 +2339,47 @@ function handle(type, data) {
       }
       break;
 
+    case 'EMOTE':
+      if (data.playerId !== S.id) {
+        showEmoteBubble(data.playerId, data.emote);
+        SFX.chat();
+      }
+      break;
+
+    case 'POWER_UP_ACTIVATED': {
+      S.match = data.match;
+      renderSB(data.match);
+      updatePowerUpButtons();
+      if (data.playerId !== S.id) {
+        toast(`${data.powerUpIcon} ${data.playerName} activó ${data.powerUpName}`, 2500);
+      } else {
+        showPowerUpToast(data.powerUpIcon, `${data.powerUpName} activado!`);
+      }
+      // Si es dado extra, actualizar dados restantes
+      if (data.powerUpId === 'extraDie' && data.match) {
+        const me = data.match.players?.find(p => p.id === S.id);
+        if (me && data.playerId === S.id) {
+          $('roll-count').textContent = me.rollCount + ' / 3';
+        }
+      }
+      break;
+    }
+
+    case 'INSURANCE_SAVED': {
+      S.match = data.match;
+      S.banking = false;
+      syncEquippedFromMatch(data.match);
+      renderSB(data.match);
+      showDice(data.dice, 'dead');
+      showPowerUpToast('🛡️', '¡Seguro te salvó! Seguís en el turno');
+      setMsg('🛡️ Seguro activado — tirada muerta salvada', 'good');
+      updateTurnUI(data.match);
+      if (data.playerId === S.id) startTimer(TURN_SECS);
+      updatePowerUpButtons();
+      sys(`🛡️ ${data.playerName} usó Seguro — no perdió el turno`);
+      break;
+    }
+
     /* ── Ranking ─────────────────────────────────────── */
     case 'RANKING':
       renderRanking(data.ranking);
@@ -2129,6 +2432,30 @@ function handle(type, data) {
       addNotification(data.title || 'Notificación', data.message, data.notifType || 'system');
       break;
 
+    case 'COINS_UPDATE':
+      S.coins = data.coins || 0;
+      const coinsAmt = $('game-coins-amount');
+      if (coinsAmt) coinsAmt.textContent = S.coins;
+      const coinsDisp = $('game-coins-display');
+      if (coinsDisp) coinsDisp.classList.remove('hidden');
+      updatePowerUpButtons();
+      break;
+
+    case 'BET_WON': {
+      if (data.winnerId === S.id) {
+        toast(`💰 ¡Ganaste la apuesta! +${data.netWin} monedas (pot: ${data.pot})`, 4000);
+        SFX.win();
+      } else {
+        toast(`💰 ${data.winnerName} ganó la apuesta de ${data.pot} monedas`, 3000);
+      }
+      break;
+    }
+
+    case 'BETTING_COMPLETE': {
+      toast(`💰 ¡Todas las apuestas confirmadas! Pot: ${data.pot} 🪙`, 2500);
+      break;
+    }
+
     case 'ERROR':
       clearJoinAttempt();
       const rematchBtn = $('btn-play-again');
@@ -2139,6 +2466,80 @@ function handle(type, data) {
       toast('⚠ ' + data.message);
       break;
   }
+}
+
+/* ── Sistema de Apuestas ─────────────────────────────── */
+const BET_PRESETS = [0, 100, 200, 500, 1000, 2000, 5000];
+let _myBet = 0;
+let _betConfirmed = false;
+
+function renderBetting(room) {
+  const section = $('betting-section');
+  if (!section) return;
+
+  // Solo mostrar si hay 2+ jugadores y la sala está en espera
+  if (!room || room.status !== 'waiting' || room.players.length < 2) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  // Si es sala de bots, ocultar apuestas
+  if (room.isBotGame) { section.classList.add('hidden'); return; }
+
+  section.classList.remove('hidden');
+
+  // Renderizar presets
+  const presetsEl = $('bet-presets');
+  if (presetsEl) {
+    presetsEl.innerHTML = BET_PRESETS.map(amount => {
+      const active = _myBet === amount ? 'active' : '';
+      const label = amount === 0 ? 'Sin apuesta' : `${amount} 🪙`;
+      return `<button class="bet-preset-btn ${active}" data-bet="${amount}">${label}</button>`;
+    }).join('');
+
+    // Bind clicks
+    presetsEl.querySelectorAll('.bet-preset-btn').forEach(btn => {
+      btn.onclick = () => {
+        _myBet = parseInt(btn.dataset.bet) || 0;
+        _betConfirmed = false;
+        if (S.roomId) wsSend('SET_BET', { roomId: S.roomId, amount: _myBet });
+        renderBetting(room);
+      };
+    });
+  }
+
+  // Renderizar apuestas de jugadores
+  const playersEl = $('bet-players');
+  if (playersEl) {
+    playersEl.innerHTML = room.players.map(p => {
+      const bet = p.bet || 0;
+      const confirmed = p.betConfirmed;
+      const isMe = p.id === S.id;
+      return `<div class="bet-player-row">
+        <span class="bet-player-name">${esc(p.name)}${isMe ? ' (vos)' : ''}</span>
+        <span class="bet-player-amount">${bet > 0 ? bet + ' 🪙' : '—'}</span>
+        <span class="bet-player-status ${confirmed ? 'confirmed' : 'waiting'}">${confirmed ? '✔' : '⏳'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Pot total
+  const pot = room.players.reduce((sum, p) => sum + (p.bet || 0), 0);
+  const potEl = $('bet-pot');
+  if (potEl) potEl.textContent = `Pot: ${pot} 🪙`;
+
+  // Botón confirmar
+  const confirmBtn = $('btn-confirm-bet');
+  if (confirmBtn) {
+    confirmBtn.disabled = _betConfirmed || _myBet === 0;
+    confirmBtn.textContent = _betConfirmed ? '✔ Apuesta confirmada' : '✔ Confirmar apuesta';
+  }
+}
+
+function confirmMyBet() {
+  if (_betConfirmed || _myBet === 0) return;
+  _betConfirmed = true;
+  if (S.roomId) wsSend('CONFIRM_BET', { roomId: S.roomId });
 }
 
 /* ── Render sala de espera ───────────────────────────── */
@@ -2187,6 +2588,9 @@ function renderRoom(room) {
     const text = readyStatus.querySelector('.ready-status-text');
     if (!text || !text.textContent.includes('Iniciando')) readyStatus.classList.add('hidden');
   }
+
+  // Renderizar sección de apuestas
+  renderBetting(room);
 }
 
 /* ── Sincronizar items equipados desde match state ──── */
@@ -2338,6 +2742,12 @@ function updateTurnUI(match) {
   S.myTurn = cur.id === S.id;
   if (me) S.entered = me.entered;
 
+  // Actualizar modo del canvas de fondo
+  if (me?.score >= 9000) setGameBgMode('tension');
+  else if (me?.isHotDiceTurn) setGameBgMode('hot');
+  else if (S.myTurn) setGameBgMode('myTurn');
+  else setGameBgMode('idle');
+
   const banner = $('turn-banner');
   if (S.myTurn) {
     if (!me?.entered) {
@@ -2363,10 +2773,15 @@ function updateTurnUI(match) {
     btnRoll.disabled = !!cur.mustStop;
     const canBank = me?.entered && (cur.turnPoints>0) && cur.canContinue && !cur.mustStop && !cur.isHotDiceTurn;
     btnBank.disabled = !canBank;
+    // Power-ups: mostrar barra si está en juego y es mi turno
+    if (me?.entered) showPowerUpBar();
+    else hidePowerUpBar();
+    updatePowerUpButtons();
   } else {
     az.classList.add('hidden');
     wz.classList.remove('hidden');
     $('waiting-text').textContent = `Turno de ${cur.name}...`;
+    hidePowerUpBar();
   }
 
   if (me) {
@@ -3934,6 +4349,28 @@ function initUI() {
     $('tournament-bracket-view').classList.add('hidden');
   };
 
+  // Desafío Diario
+  $('btn-daily').onclick = () => {
+    if (!isLogged()) { toast('🔒 Debes iniciar sesión'); return; }
+    openDailyChallenge();
+  };
+  $('btn-close-daily').onclick = closeDailyChallenge;
+  $('btn-play-daily').onclick = async () => {
+    closeDailyChallenge();
+    toast('🎯 Iniciando desafío diario...', 2000);
+    // Crear sala contra bots con modificador del desafío
+    const token = localStorage.getItem('gameToken');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/daily-challenge', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const { challenge } = await res.json();
+      // Enviar al servidor para crear partida con modificadores
+      wsSend('START_DAILY', { challenge });
+    } catch(e) { toast('Error iniciando desafío'); }
+  };
+
   $('btn-ranking').onclick = async () => {
     if (!isLogged()) {
       toast('🔒 Debes iniciar sesión para ver el ranking');
@@ -4355,6 +4792,10 @@ function initUI() {
     }
   };
 
+  // Confirmar apuesta
+  const confirmBetBtn = $('btn-confirm-bet');
+  if (confirmBetBtn) confirmBetBtn.onclick = confirmMyBet;
+
   /* ── Botón TIRAR: SIN NINGÚN BLOQUEO ──────────────── */
   $('btn-roll').onclick = () => {
     wsSend('ROLL', { roomId:S.roomId, playerId:S.id });
@@ -4366,6 +4807,45 @@ function initUI() {
   $('btn-bank').onclick = () => {
     wsSend('BANK', { roomId:S.roomId, playerId:S.id });
   };
+
+  /* ── EMOTE PICKER ──────────────────────────────────── */
+  const emotePicker = $('emote-picker');
+  const btnEmote = $('btn-emote');
+  if (btnEmote && emotePicker) {
+    btnEmote.onclick = (e) => {
+      e.stopPropagation();
+      emotePicker.classList.toggle('hidden');
+      btnEmote.classList.toggle('active', !emotePicker.classList.contains('hidden'));
+    };
+    // Cerrar picker al hacer click afuera
+    document.addEventListener('click', (e) => {
+      if (!emotePicker.contains(e.target) && e.target !== btnEmote) {
+        emotePicker.classList.add('hidden');
+        btnEmote.classList.remove('active');
+      }
+    });
+    // Enviar emote al hacer click en una opción
+    emotePicker.querySelectorAll('.emote-option').forEach(btn => {
+      btn.onclick = () => {
+        const emote = btn.dataset.emote;
+        if (emote && S.roomId) {
+          wsSend('EMOTE', { emote });
+          // Mostrar en nuestro propio avatar inmediatamente
+          showEmoteBubble(S.id, emote);
+        }
+        emotePicker.classList.add('hidden');
+        btnEmote.classList.remove('active');
+      };
+    });
+  }
+
+  /* ── POWER-UP BUTTONS ─────────────────────────────── */
+  document.querySelectorAll('.powerup-btn').forEach(btn => {
+    btn.onclick = () => {
+      const puId = btn.dataset.pu;
+      if (puId) usePowerUp(puId);
+    };
+  });
 
   /* Salir de partida — modal propio, va al lobby inmediatamente */
   $('btn-leave-game').onclick = () => {
@@ -5477,6 +5957,72 @@ window.addEventListener('macko-native-resume', () => {
    REGLAS Y TUTORIAL
    ════════════════════════════════════════════════════════ */
 
+/* ── Desafío Diario ─────────────────────────────────── */
+async function openDailyChallenge() {
+  const modal = $('modal-daily');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  try {
+    const token = localStorage.getItem('gameToken');
+    const res = await fetch('/api/daily-challenge', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) throw new Error('Error cargando desafío');
+    const { challenge, myScore } = await res.json();
+
+    // Llenar datos del desafío
+    $('daily-icon').textContent = challenge.name.split(' ')[0] || '🎯';
+    $('daily-name').textContent = challenge.name;
+    $('daily-desc').textContent = challenge.description;
+    $('daily-reward-amt').textContent = challenge.reward;
+
+    // Mi puntaje
+    const myScoreEl = $('daily-my-score');
+    if (myScore && myScore.score > 0) {
+      myScoreEl.classList.remove('hidden');
+      $('daily-best').textContent = myScore.score.toLocaleString();
+    } else {
+      myScoreEl.classList.add('hidden');
+    }
+
+    // Leaderboard
+    const lbRes = await fetch('/api/daily-challenge/leaderboard', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const { leaderboard } = await lbRes.json();
+    renderDailyLeaderboard(leaderboard);
+
+  } catch(e) {
+    toast('Error cargando desafío diario');
+    modal.classList.add('hidden');
+  }
+}
+
+function renderDailyLeaderboard(rows) {
+  const el = $('daily-leaderboard');
+  if (!el) return;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<p style="padding:16px;color:var(--text3);font-size:12px">Sé el primero en jugar hoy!</p>';
+    return;
+  }
+  el.innerHTML = rows.map((r, i) => {
+    const rank = i + 1;
+    const isMe = r.player_id === S.id;
+    const rankClass = rank === 1 ? 'top1' : rank === 2 ? 'top2' : rank === 3 ? 'top3' : '';
+    const badge = r.completed ? '<span class="daily-lb-badge">✔</span>' : '';
+    return `<div class="daily-lb-row${isMe ? ' me' : ''}">
+      <span class="daily-lb-rank ${rankClass}">${rank}</span>
+      <span class="daily-lb-name">${esc(r.player_name)} ${badge}</span>
+      <span class="daily-lb-score">${r.score.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+}
+
+function closeDailyChallenge() {
+  $('modal-daily')?.classList.add('hidden');
+}
+
 /* ── Modal de reglas ───────────────────────────────── */
 function openRules() {
   $('modal-rules')?.classList.remove('hidden');
@@ -5940,16 +6486,7 @@ function openInventoryPreview(item, equipCategory, isEquipped) {
     }
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    if (cat === 'dados') {
-      const stage = box.querySelector('.dice-3d-shop-stage');
-      if (stage && typeof loadDice3D === 'function') {
-        loadDice3D().then(renderer3D => {
-          if (!renderer3D || !stage.isConnected) return;
-          dispose3DPreview = renderer3D.createPreview(stage, String(item.id), 5);
-          stage.classList.toggle('is-fallback', !dispose3DPreview);
-        });
-      }
-    }
+
   } catch(e) { toast('⚠ Error: ' + e.message); }
 }
 window.openInventoryPreview = openInventoryPreview;
@@ -5987,17 +6524,7 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
     box.querySelector('.shop-preview-close').onclick = closePreview;
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    if (category === 'dados' || category === 'dice') {
-      const stage = box.querySelector('.dice-3d-shop-stage');
-      const previewVal = Number(stage?.dataset.value || 5);
-      if (stage && typeof loadDice3D === 'function') {
-        loadDice3D().then(renderer3D => {
-          if (!renderer3D || !stage.isConnected) return;
-          dispose3DPreview = renderer3D.createPreview(stage, String(itemId), previewVal);
-          stage.classList.toggle('is-fallback', !dispose3DPreview);
-        });
-      }
-    }
+
   } catch(e) {
     toast('⚠ Error al mostrar preview: ' + e.message);
   }
@@ -6021,7 +6548,7 @@ function buildDicePreviewHTML(skinId, itemName, itemIcon) {
       dieEl.style.cssText = 'margin:0 auto;width:52px;height:52px';
       return '<div class="dice-state-card">' + dieEl.outerHTML + '<div class="dice-state-label"><span class="dice-state-icon">' + s.icon + '</span>' + esc(s.label) + '</div></div>';
     }).join('');
-    return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en el juego</p><div class="dice-3d-shop-stage" data-value="' + previewVal + '"><span>Preparando preview 3D…</span></div><div class="dice-states-title">Estados durante la partida</div><div class="dice-states-grid">' + diceHtml + '</div>';
+    return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en el juego</p><div class="dice-states-title">Estados durante la partida</div><div class="dice-states-grid">' + diceHtml + '</div>';
   } catch(e) {
     return '<p style="text-align:center;color:var(--red);padding:20px">Error al generar preview: ' + esc(e.message) + '</p>';
   }

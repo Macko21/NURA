@@ -118,6 +118,7 @@
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
       </div>
       <button class="btn btn-ghost" id="btn-bot-game">🤖 Jugar vs Bots</button>
+      <button class="btn btn-ghost" id="btn-daily" style="color:var(--gold2)">🎯 Desafío Diario</button>
       <button class="btn btn-link" id="btn-portal">🏛️ Portal social</button>
       <button class="btn btn-link" id="btn-ranking">🏆 Ranking global</button>
       <button class="btn btn-link" id="btn-tournaments" style="color:var(--gold2)">🏆 Torneos<span id="tournament-push-badge" class="push-badge hidden">🔔</span></button>
@@ -171,14 +172,7 @@
       <output id="sfx-volume-value" for="sfx-volume-slider">80%</output>
     </div>
   </div>
-  <div class="sound-channel">
-    <div class="sound-channel-header"><span>✨ Estilo de dados</span></div>
-    <select id="dice-quality-select" class="dice-quality-select" aria-label="Calidad visual de los dados">
-      <option value="high">3D mejorado</option>
-      <option value="off">2D clásico</option>
-    </select>
-    <p id="dice-quality-status" class="dice-quality-status">3D mejorado activo</p>
-  </div>
+
 </div>
 
 <div id="screen-join" class="screen">
@@ -209,6 +203,15 @@
   <div class="page-body">
     <p class="hint">Compartí el código · arranca cuando todos estén listos</p>
     <div id="players-list" class="players-list"></div>
+    <div id="betting-section" class="betting-section hidden">
+      <div class="betting-header">
+        <span class="betting-title">💰 Apuestas</span>
+        <span id="bet-pot" class="bet-pot">Pot: 0 🪙</span>
+      </div>
+      <div id="bet-presets" class="bet-presets"></div>
+      <div id="bet-players" class="bet-players"></div>
+      <button id="btn-confirm-bet" class="btn btn-ghost" style="width:100%;margin-top:8px">✔ Confirmar apuesta</button>
+    </div>
     <div id="ready-status" class="ready-status hidden">
       <span class="ready-status-text">⏳ Esperando...</span>
     </div>
@@ -230,6 +233,7 @@
     <div class="game-user-info">
       <span id="game-coins-display" class="game-coins-display hidden">🪙 <span id="game-coins-amount">0</span></span>
       <button id="btn-sound" class="btn-sound" title="Ajustar sonido" aria-label="Ajustar sonido" aria-expanded="false">🔊</button>
+      <button id="btn-emote" class="btn-emote" title="Emotes" aria-label="Emotes">💬</button>
       <button id="btn-leave-game" class="btn-leave-game">✕ Salir</button>
     </div>
   </div>
@@ -237,6 +241,7 @@
   <div id="scoreboard" class="scoreboard"></div>
 
   <div class="game-table">
+    <canvas id="game-bg-canvas" class="game-bg-canvas"></canvas>
     <div class="turn-header">
       <div id="turn-banner" class="turn-banner"></div>
       <div id="turn-timer" class="turn-timer hidden">
@@ -270,6 +275,27 @@
       </div>
     </div>
 
+    <div id="combo-counter" class="combo-counter hidden">
+      <span id="combo-fire" class="combo-fire">🔥</span>
+      <span id="combo-number" class="combo-number">x2</span>
+      <span id="combo-label" class="combo-label">COMBO</span>
+    </div>
+
+    <div id="powerup-bar" class="powerup-bar hidden">
+      <button id="pu-insurance" class="powerup-btn" data-pu="insurance" title="Seguro: no perdés el turno si tirás muerto (300 🪙)">
+        <span class="pu-icon">🛡️</span>
+        <span class="pu-cost">300</span>
+      </button>
+      <button id="pu-extraDie" class="powerup-btn" data-pu="extraDie" title="Dado Extra: tirás 6 dados (200 🪙)">
+        <span class="pu-icon">🎲</span>
+        <span class="pu-cost">200</span>
+      </button>
+      <button id="pu-peek" class="powerup-btn" data-pu="peek" title="Mirar Futuro: ves el resultado antes (400 🪙)">
+        <span class="pu-icon">🔮</span>
+        <span class="pu-cost">400</span>
+      </button>
+    </div>
+
     <div id="action-zone" class="action-zone hidden">
       <button id="btn-roll" class="btn-roll">
         <span class="btn-roll-icon">🎲</span>
@@ -280,6 +306,18 @@
         <span id="bank-pts" class="bank-pts"></span>
       </button>
     </div>
+
+    <div id="emote-picker" class="emote-picker hidden">
+      <button class="emote-option" data-emote="😂">😂</button>
+      <button class="emote-option" data-emote="🔥">🔥</button>
+      <button class="emote-option" data-emote="💀">💀</button>
+      <button class="emote-option" data-emote="😱">😱</button>
+      <button class="emote-option" data-emote="🏆">🏆</button>
+      <button class="emote-option" data-emote="👏">👏</button>
+      <button class="emote-option" data-emote="🤬">🤬</button>
+      <button class="emote-option" data-emote="😈">😈</button>
+    </div>
+
     <div id="entry-banner-host" class="entry-banner-host" aria-live="polite"></div>
     <div id="waiting-zone" class="waiting-zone">
       <div class="dot-loader"><span></span><span></span><span></span></div>
@@ -501,6 +539,26 @@
         <button id="tb-back" class="btn btn-ghost" style="width:auto;padding:6px 14px;font-size:11px;margin-bottom:12px">← Volver a lista</button>
       </div>
       <div id="tournament-bracket" class="tournament-bracket"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DESAFÍO DIARIO ══ -->
+<div id="modal-daily" class="modal hidden">
+  <div class="modal-box" style="max-width:480px;width:92%;text-align:center;padding:24px;max-height:85vh;overflow-y:auto">
+    <button id="btn-close-daily" class="close-modal-btn">✕</button>
+    <div id="daily-icon" style="font-size:48px;margin-bottom:8px">🎯</div>
+    <h2 id="daily-name" style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:4px;font-size:20px">Desafío Diario</h2>
+    <p id="daily-desc" class="shop-desc" style="margin-bottom:12px"></p>
+    <div id="daily-my-score" class="daily-my-score hidden">
+      <span style="font-size:13px;color:var(--text2)">Tu mejor:</span>
+      <span id="daily-best" style="font-family:'Cinzel',serif;font-size:24px;font-weight:900;color:var(--gold)">0</span>
+    </div>
+    <div id="daily-reward" style="font-size:12px;color:var(--text3);margin:8px 0 16px">🎁 Recompensa: <span id="daily-reward-amt">500</span> 🪙</div>
+    <button id="btn-play-daily" class="btn btn-gold glow-btn" style="width:100%;margin-bottom:16px">🎯 ¡Jugar Desafío!</button>
+    <h3 style="font-size:13px;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">🏆 Ranking de Hoy</h3>
+    <div id="daily-leaderboard" class="daily-leaderboard">
+      <p style="padding:16px;color:var(--text3);font-size:12px">Cargando ranking...</p>
     </div>
   </div>
 </div>

@@ -751,6 +751,56 @@ app.get("/api/tournaments/history", requireAuth, async (req, res) => {
   }
 });
 
+// ── DESAFÍO DIARIO ────────────────────────────────────────────
+
+app.get("/api/daily-challenge", requireAuth, async (req, res) => {
+  try {
+    const { ensureTodayChallenge, getDailyPlayerScore } = require("./database");
+    const challenge = await ensureTodayChallenge();
+    const playerId = req.user.playerId || req.user.username;
+    const myScore = await getDailyPlayerScore(playerId);
+    res.json({ challenge, myScore });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/daily-challenge/leaderboard", requireAuth, async (req, res) => {
+  try {
+    const { getDailyLeaderboard } = require("./database");
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const leaderboard = await getDailyLeaderboard(limit);
+    res.json({ leaderboard });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/daily-challenge/submit", requireAuth, async (req, res) => {
+  try {
+    const { submitDailyScore } = require("./database");
+    const playerId = req.user.playerId || req.user.username;
+    const { playerName, score, rolls, completed } = req.body;
+    if (!playerName || typeof score !== 'number') {
+      return res.status(400).json({ error: 'Datos inválidos' });
+    }
+    await submitDailyScore(playerId, playerName, Math.floor(score), rolls || 0, !!completed);
+    // Recompensas si completó el desafío
+    if (completed && score >= 10000) {
+      const { ensureTodayChallenge } = require("./database");
+      const challenge = await ensureTodayChallenge();
+      try {
+        await pool.query('UPDATE players SET coins = coins + $1 WHERE id = $2', [challenge.reward, playerId]);
+        await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+          [playerId, challenge.reward, `Desafío diario completado: ${challenge.name}`, Date.now()]);
+      } catch(e) {}
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── VERSIÓN Y CHANGELOG ──────────────────────────────────────
 // Cache de la versión (se actualiza al reiniciar el server)
 let _versionCache = null;
@@ -1921,6 +1971,41 @@ async function onMatchWon(match, roomId) {
       if (p.fiveOnes > 0 && p.id === winner.id) await registerFiveOnes(p.id);
     }
     if (isBotGame) console.log(`🤖 Partida contra bots registrada. Ganador: ${winner.name || winner.id}`);
+
+    // ── Desafío Diario: guardar puntaje del jugador humano ──
+    if (room?.isDailyChallenge) {
+      try {
+        const { submitDailyScore } = require('./database');
+        const humanPlayer = match.players.find(p => !p.isBot);
+        if (humanPlayer) {
+          const rolls = match.history?.filter(e => e.type === 'ROLL' && e.payload?.playerId === humanPlayer.id).length || 0;
+          const completed = humanPlayer.score >= 10000;
+          await submitDailyScore(humanPlayer.id, humanPlayer.name, humanPlayer.score, rolls, completed);
+          console.log(`🎯 Desafío diario: ${humanPlayer.name} score=${humanPlayer.score} completed=${completed}`);
+        }
+      } catch(e) { console.error('Error guardando score diario:', e.message); }
+    }
+
+    // ── Apuestas: distribuir pot al ganador ──
+    if (match.betPot > 0 && match.betPlayers) {
+      try {
+        const HOUSE_EDGE = 0.1;
+        const netPot = Math.floor(match.betPot * (1 - HOUSE_EDGE));
+        if (netPot > 0 && winner.id && !winner.isBot) {
+          await rewardWinner(winner.id, netPot, { isWin: true });
+          await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+            [winner.id, netPot, `Ganó apuesta: pot ${match.betPot} - 10% comisión`, Date.now()]);
+          console.log(`💰 Apuesta cobrada: ${winner.name} ganó ${netPot} monedas (pot: ${match.betPot})`);
+          // Notificar a todos
+          broadcastRoom(roomId, 'BET_WON', {
+            winnerId: winner.id,
+            winnerName: winner.name,
+            pot: match.betPot,
+            netWin: netPot
+          });
+        }
+      } catch(e) { console.error('Error distribuyendo apuesta:', e.message); }
+    }
   } catch (e) {
     console.error("DB post-win:", e.message);
   }
@@ -2016,6 +2101,14 @@ async function startMatchForRoom(roomId, triggerData) {
       }
     }
   }
+  // Guardar apuestas en el match para distribuir al finalizar
+  const { getBetPot } = require('./roomManager');
+  match.betPot = getBetPot(roomId);
+  if (match.betPot > 0) {
+    match.betPlayers = room.players.map(p => ({ id: p.id, name: p.name, bet: p.bet || 0 }));
+    console.log(`💰 Apuestas activas: pot=${match.betPot} monedas`);
+  }
+
   broadcastRoom(roomId, "GAME_STARTED", {
     firstPlayer, match: snapshotMatch(match)
   });
@@ -2592,6 +2685,33 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── APUESTAS ─────────────────────────────────────── */
+      if (type === "SET_BET") {
+        const { roomId, amount } = data;
+        const playerId = socket.playerId;
+        if (!roomId || !playerId) return;
+        const { setPlayerBet } = require('./roomManager');
+        const result = setPlayerBet(roomId, playerId, amount);
+        if (!result.ok) { send(socket, "ERROR", { message: result.error }); return; }
+        broadcastRoomState(roomId);
+        return;
+      }
+
+      if (type === "CONFIRM_BET") {
+        const { roomId } = data;
+        const playerId = socket.playerId;
+        if (!roomId || !playerId) return;
+        const { confirmPlayerBet, getBettingState } = require('./roomManager');
+        const result = confirmPlayerBet(roomId, playerId);
+        if (!result.ok) { send(socket, "ERROR", { message: result.error }); return; }
+        broadcastRoomState(roomId);
+        // Si todos apostaron, notificar
+        if (result.allBet && result.pot > 0) {
+          broadcastRoom(roomId, 'BETTING_COMPLETE', { pot: result.pot });
+        }
+        return;
+      }
+
       /* ── TIRAR ─────────────────────────────────────────── */
       if (type === "ROLL") {
         const { roomId, playerId } = data;
@@ -2626,6 +2746,44 @@ wss.on("connection", socket => {
         if (!result.ok) { send(socket, "ERROR", { message: result.error }); return; }
         const updated = getMatch(roomId);
         if (updated?.status === "finished") await onMatchWon(updated, roomId);
+        return;
+      }
+
+      /* ── POWER-UP ─────────────────────────────────────── */
+      if (type === "USE_POWERUP") {
+        const { roomId, playerId, powerUpId } = data;
+        const { handlePowerUp, getPowerUps } = require('./diceManager');
+        const powerUps = getPowerUps();
+        const pu = powerUps[powerUpId];
+        if (!pu) { send(socket, "ERROR", { message: 'Power-up inválido' }); return; }
+        // Verificar y deducir monedas
+        try {
+          const playerResult = await pool.query('SELECT coins FROM players WHERE id = $1', [playerId]);
+          const coins = Number(playerResult.rows[0]?.coins) || 0;
+          if (coins < pu.cost) {
+            send(socket, "ERROR", { message: `No tenés suficientes monedas (necesitás ${pu.cost})` });
+            return;
+          }
+          await pool.query('UPDATE players SET coins = coins - $1 WHERE id = $2', [pu.cost, playerId]);
+          await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+            [playerId, -pu.cost, `Power-up: ${pu.name}`, Date.now()]);
+        } catch (e) {
+          send(socket, "ERROR", { message: 'Error procesando monedas' }); return;
+        }
+        // Activar power-up
+        const result = handlePowerUp(roomId, playerId, powerUpId, broadcastRoom);
+        if (!result.ok) {
+          // Reembolsar si falla
+          try {
+            await pool.query('UPDATE players SET coins = coins + $1 WHERE id = $2', [pu.cost, playerId]);
+          } catch(e) {}
+          send(socket, "ERROR", { message: result.error }); return;
+        }
+        // Enviar saldo actualizado
+        try {
+          const updated = await pool.query('SELECT coins FROM players WHERE id = $1', [playerId]);
+          send(socket, 'COINS_UPDATE', { coins: Number(updated.rows[0]?.coins) || 0 });
+        } catch(e) {}
         return;
       }
 
@@ -2966,6 +3124,27 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── EMOTE EN PARTIDA ─────────────────────────────── */
+      if (type === "EMOTE") {
+        const emote = String(data.emote || '').slice(0, 4);
+        if (!emote) return;
+        // Cooldown anti-spam: 2 segundos entre emotes por jugador
+        const now = Date.now();
+        if (socket._lastEmote && now - socket._lastEmote < 2000) return;
+        socket._lastEmote = now;
+        // Broadcast a todos en la misma sala
+        const roomId = socket.roomId;
+        if (roomId) {
+          broadcastRoom(roomId, "EMOTE", {
+            playerId:   socket.playerId,
+            playerName: socket.playerName,
+            emote,
+            timestamp:  now
+          });
+        }
+        return;
+      }
+
       /* ── AUDIO CHAT ──────────────────────────────────── */
       if (type === "CHAT_AUDIO") {
         const audioData = String(data.audioData || "");
@@ -3119,6 +3298,66 @@ wss.on("connection", socket => {
         } catch (err) {
           console.error("Error en START_BOT_GAME:", err);
           send(socket, "ERROR", { message: "Error al iniciar partida contra bots" });
+        }
+        return;
+      }
+
+      // ── DESAFÍO DIARIO ──────────────────────────────
+      if (type === "START_DAILY") {
+        try {
+          const playerName = data.playerName || socket.playerName || 'Jugador';
+          const playerId = data.playerId || socket.playerId;
+          if (!playerId) {
+            send(socket, "ERROR", { message: "No se pudo identificar al jugador" });
+            return;
+          }
+          const activeRoom = findActivePlayerRoom(playerId);
+          if (activeRoom) {
+            send(socket, "ERROR", { message: "Ya estás en una partida activa" });
+            return;
+          }
+          leaveWaitingRooms(playerId);
+
+          // Crear sala solo para el jugador
+          const room = createRoom({
+            ownerId: playerId,
+            ownerName: playerName,
+            isPrivate: true,
+            maxPlayers: 2,
+            ownerIsGuest: !!socket.isGuest
+          });
+          room.isBotGame = true;
+          room.isDailyChallenge = true;
+
+          clients.set(playerId, socket);
+          socket.playerId = playerId;
+          socket.playerName = playerName;
+          socket.roomId = room.id;
+
+          send(socket, "ROOM_CREATED", { room });
+
+          // Agregar 1 bot fácil como oponente
+          botGameHandler.addBotsToRoom(room, 1, 'easy');
+          setReady(room.id, playerId, true);
+
+          setTimeout(async () => {
+            try {
+              await startMatchForRoom(room.id);
+              setTurnCallback(room.id, (rid) => {
+                botGameHandler.scheduleBotTurnIfNeeded(rid, broadcastRoom);
+              });
+              setTimeout(() => {
+                botGameHandler.scheduleBotTurnIfNeeded(room.id, broadcastRoom);
+              }, 1000);
+            } catch (e) {
+              console.error("Error starting daily match:", e.message);
+            }
+          }, 500);
+
+          console.log(`🎯 Desafío diario iniciado: jugador: ${playerName}`);
+        } catch (err) {
+          console.error("Error en START_DAILY:", err);
+          send(socket, "ERROR", { message: "Error al iniciar desafío diario" });
         }
         return;
       }
