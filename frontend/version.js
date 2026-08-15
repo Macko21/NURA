@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.9.0";
+const GAME_VERSION = "4.9.1";
 
 const CHANGELOG = [
+  {
+    version: "4.9.1",
+    date: "2026-08-15",
+    title: "✨ Tablero animado de fondo",
+    scope: "game",
+    files: ["app.js", "index.html", "styles.css"],
+    changes: [
+      "✨ FONDO ANIMADO: partículas flotantes sutiles sobre el tablero de juego",
+      "🎨 MODO IDLE: partículas azules suaves cuando no es tu turno",
+      "🎮 MODO MI TURNO: partículas cyan más brillantes cuando jugás",
+      "🔥 MODO HOT DICE: partículas doradas cuando tenés dados calientes",
+      "🔴 MODO TENSIÓN: partículas rojas cuando superás 9.000 puntos",
+      "⚡ PERFORMANCE: canvas ligero con requestAnimationFrame, auto-limpieza al salir"
+    ]
+  },
   {
     version: "4.9.0",
     date: "2026-08-15",

@@ -737,6 +737,12 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
   background:linear-gradient(180deg,var(--accent-bg) 0%,transparent 35%);
   pointer-events:none;
 }
+/* Canvas de fondo animado */
+.game-bg-canvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  pointer-events:none;z-index:0;opacity:.6;
+}
+[data-theme="light"] .game-bg-canvas{opacity:.3}
 [data-theme="light"] .game-table::before{
   background:linear-gradient(180deg,rgba(200,180,140,.06) 0%,transparent 30%);
 }

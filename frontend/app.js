@@ -1233,6 +1233,102 @@ function usePowerUp(powerUpId) {
   wsSend('USE_POWERUP', { roomId: S.roomId, playerId: S.id, powerUpId });
 }
 
+/* ── Tablero Animado: Partículas de fondo ─────────── */
+let _gameBgParticles = [];
+let _gameBgAnimId = null;
+let _gameBgMode = 'idle'; // idle, myTurn, hot, tension
+
+const BG_PARTICLE_COLORS = {
+  idle:   ['rgba(6,182,212,.3)', 'rgba(6,182,212,.15)', 'rgba(100,200,255,.1)'],
+  myTurn: ['rgba(6,182,212,.4)', 'rgba(34,211,238,.25)', 'rgba(165,243,252,.15)'],
+  hot:    ['rgba(255,180,0,.35)', 'rgba(255,100,0,.25)', 'rgba(255,220,80,.15)'],
+  tension: ['rgba(255,80,80,.3)', 'rgba(255,50,50,.2)', 'rgba(200,40,40,.15)']
+};
+
+function initGameBgCanvas() {
+  const canvas = document.getElementById('game-bg-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const table = canvas.parentElement;
+  if (!table) return;
+
+  function resize() {
+    canvas.width = table.clientWidth;
+    canvas.height = table.clientHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Crear partículas iniciales
+  _gameBgParticles = [];
+  for (let i = 0; i < 35; i++) {
+    _gameBgParticles.push(createBgParticle(canvas.width, canvas.height));
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const colors = BG_PARTICLE_COLORS[_gameBgMode] || BG_PARTICLE_COLORS.idle;
+
+    for (const p of _gameBgParticles) {
+      // Movimiento
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Rebotar en bordes
+      if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+      if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+      // Pulso de opacidad
+      p.alpha += p.alphaDir * 0.005;
+      if (p.alpha > p.alphaMax || p.alpha < p.alphaMin) p.alphaDir *= -1;
+
+      // Dibujar partícula suave
+      const color = colors[p.colorIdx % colors.length];
+      ctx.beginPath();
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    _gameBgAnimId = requestAnimationFrame(animate);
+  }
+
+  if (_gameBgAnimId) cancelAnimationFrame(_gameBgAnimId);
+  animate();
+}
+
+function createBgParticle(w, h) {
+  return {
+    x: Math.random() * (w || 400),
+    y: Math.random() * (h || 600),
+    size: 15 + Math.random() * 35,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.2,
+    alpha: 0.1 + Math.random() * 0.3,
+    alphaMin: 0.05,
+    alphaMax: 0.4,
+    alphaDir: Math.random() > 0.5 ? 1 : -1,
+    colorIdx: Math.floor(Math.random() * 3)
+  };
+}
+
+function setGameBgMode(mode) {
+  _gameBgMode = mode;
+}
+
+function stopGameBgCanvas() {
+  if (_gameBgAnimId) cancelAnimationFrame(_gameBgAnimId);
+  _gameBgAnimId = null;
+  const canvas = document.getElementById('game-bg-canvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
 function showPowerUpToast(icon, text) {
   const existing = document.querySelector('.pu-toast');
   if (existing) existing.remove();
@@ -1261,6 +1357,7 @@ function goLobby(msg) {
   _gameOverShown = false;
   _rematchInProgress = false;
   stopTimer();
+  stopGameBgCanvas();
   clearSession();
   // Limpiar grabación de audio si está activa
   if (_recording && _mediaRecorder?.state === 'recording') {
@@ -1805,6 +1902,8 @@ function handle(type, data) {
       resetCombo();
       updateGameRoomCode();
       updateGameCoins();
+      // Iniciar canvas de fondo animado
+      setTimeout(() => initGameBgCanvas(), 100);
       sys('¡La partida comenzó!');
       SFX.score();
       if (data.firstPlayer?.id === S.id) startTimer(TURN_SECS);
@@ -2548,6 +2647,12 @@ function updateTurnUI(match) {
 
   S.myTurn = cur.id === S.id;
   if (me) S.entered = me.entered;
+
+  // Actualizar modo del canvas de fondo
+  if (me?.score >= 9000) setGameBgMode('tension');
+  else if (me?.isHotDiceTurn) setGameBgMode('hot');
+  else if (S.myTurn) setGameBgMode('myTurn');
+  else setGameBgMode('idle');
 
   const banner = $('turn-banner');
   if (S.myTurn) {
