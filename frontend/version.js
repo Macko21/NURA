@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.8.2";
+const GAME_VERSION = "4.8.3";
 
 const CHANGELOG = [
+  {
+    version: "4.8.3",
+    date: "2026-08-15",
+    title: "💥 Flash overlays y screen shake mejorado",
+    scope: "game",
+    files: ["dice-renderer.js", "styles.css", "app.js"],
+    changes: [
+      "💥 FLASH ROJO: overlay rojo fullscreen al tirar muerto o pasarte — TODO el mundo lo ve",
+      "🏆 FLASH DORADO: overlay dorado brillante al ganar — celebración visual inmediata",
+      "🔥 HOT FLASH MEJORADO: borde dorado + glow intenso en la bandeja de dados",
+      "📱 SCREEN SHAKE: ahora visible para TODOS los jugadores (espectadores incluidos)",
+      "⚡ TIMEOUT: auto-tirada muerta/bust también tiene flash + shake + reset combo",
+      "💪 SHAKE INTENSO: victoria usa shake más fuerte (.6s) para máxima dramatización"
+    ]
+  },
   {
     version: "4.8.2",
     date: "2026-08-15",

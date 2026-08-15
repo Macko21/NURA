@@ -256,14 +256,42 @@ function clearDice() {
 
 
 
-/* ── Screen shake dramático ────────────────────────── */
-function triggerScreenShake() {
+/* ── Flash overlay global ──────────────────────────── */
+function _createFlashOverlay() {
+  const existing = document.querySelector('.flash-overlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'flash-overlay';
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+/* ── Flash rojo: farkle / bust ──────────────────── */
+function triggerFarkleFlash() {
+  const overlay = _createFlashOverlay();
+  void overlay.offsetWidth;
+  overlay.classList.add('flash-red');
+  setTimeout(() => overlay.remove(), 600);
+}
+
+/* ── Flash dorado: victoria ─────────────────────── */
+function triggerVictoryFlash() {
+  const overlay = _createFlashOverlay();
+  void overlay.offsetWidth;
+  overlay.classList.add('flash-gold');
+  setTimeout(() => overlay.remove(), 900);
+}
+
+/* ── Screen shake — visible para TODOS ──────────── */
+function triggerScreenShake(intensity) {
   const table = document.querySelector('.game-table');
   if (!table) return;
   table.classList.remove('shake');
-  void table.offsetWidth; // force reflow
+  void table.offsetWidth;
+  if (intensity === 'strong') table.style.animationDuration = '.6s';
+  else table.style.animationDuration = '.5s';
   table.classList.add('shake');
-  setTimeout(() => table.classList.remove('shake'), 500);
+  setTimeout(() => { table.classList.remove('shake'); table.style.animationDuration = ''; }, 600);
 }
 
 /* ── Flash dorado para hot dice ──────────────────── */
@@ -273,7 +301,7 @@ function triggerHotFlash() {
   tray.classList.remove('hot-flash');
   void tray.offsetWidth;
   tray.classList.add('hot-flash');
-  setTimeout(() => tray.classList.remove('hot-flash'), 700);
+  setTimeout(() => tray.classList.remove('hot-flash'), 800);
 }
 
 /* ── Modo tenso: dado cerca de 10.000 ────────────── */

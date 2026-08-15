@@ -1798,7 +1798,7 @@ function handle(type, data) {
       renderSB(data.match);
       showDice(data.dice,'dead');
       resetCombo();
-      if (data.playerId===S.id) { triggerScreenShake(); }
+      triggerScreenShake(); triggerFarkleFlash();
       setMsg('¡Sin puntos! Turno perdido 💀','bad');
       updateTurnUI(data.match);
       if (data.playerId===S.id) stopTimer();
@@ -1813,7 +1813,7 @@ function handle(type, data) {
       renderSB(data.match);
       showDice(data.dice,'dead');
       resetCombo();
-      if (data.playerId===S.id) { triggerScreenShake(); }
+      triggerScreenShake(); triggerFarkleFlash();
       setMsg('¡Te pasaste de 10.000! 💥','bad');
       updateTurnUI(data.match);
       if (data.playerId===S.id) stopTimer();
@@ -1827,7 +1827,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
-      if (data.playerId===S.id) { triggerHotFlash(); }
+      triggerHotFlash();
       setMsg('🔥 DADOS CALIENTES — Si puntúan todos, seguís; si puntúa parcialmente, suma y termina','hot');
       $('turn-points').textContent = data.turnPoints;
       $('bank-pts').textContent    = data.turnPoints>0 ? '+'+data.turnPoints : '';
@@ -1919,6 +1919,12 @@ function handle(type, data) {
         scored: `🎲 Auto-tirada: +${data.gained} puntos`,
         win: '🏆 ¡Victoria por timeout!'
       };
+      // Efectos visuales según resultado
+      if (data.result === 'dead' || data.result === 'bust') {
+        triggerScreenShake(); triggerFarkleFlash(); resetCombo();
+      } else if (data.result === 'win') {
+        triggerScreenShake('strong'); triggerVictoryFlash();
+      }
       sys(resultMsg[data.result] || '⏰ Auto-tirada por timeout');
       toast(resultMsg[data.result] || '⏰ Auto-tirada', 3000);
       if (data.playerId === S.id) {
@@ -1962,6 +1968,7 @@ function handle(type, data) {
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
+      triggerScreenShake('strong'); triggerVictoryFlash();
       const winP = S.match.players.find(p => p.id === data.playerId);
       showWin(data.playerName,'¡Sacó cinco 1s — Victoria instantánea! 🎊',data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
       SFX.win();
@@ -1977,6 +1984,7 @@ function handle(type, data) {
       renderSB(data.match);
       showDice(data.dice,'all');
       stopTimer();
+      triggerScreenShake('strong'); triggerVictoryFlash();
       const winP = S.match.players.find(p => p.id === data.playerId);
       showWin(data.playerName,'¡Llegó a 10.000 exactos y ganó! 🏆',data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
       SFX.win();
@@ -2001,6 +2009,7 @@ function handle(type, data) {
         $('btn-play-again')?.classList.add('hidden');
       }
       if (victoryAlreadyShown) break;
+      triggerScreenShake('strong'); triggerVictoryFlash();
       const winnerId = data.winner?.id;
       const winSkin = winnerId && S.match 
         ? (S.match.players.find(p => p.id === winnerId)?.equippedDice || null)
