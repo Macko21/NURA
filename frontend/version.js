@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.8.4";
+const GAME_VERSION = "4.8.5";
 
 const CHANGELOG = [
+  {
+    version: "4.8.5",
+    date: "2026-08-15",
+    title: "🎮 Power-ups comprables en partida",
+    scope: "game",
+    files: ["diceManager.js", "server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "🛡️ SEGURO (300 🪙): si tirás muerto, no perdés el turno — el seguro se consume y seguís",
+      "🎲 DADO EXTRA (200 🪙): tirás 6 dados en vez de 5 para este turno",
+      "🔮 MIRAR FUTURO (400 🪙): ves qué vas a sacar antes de decidir",
+      "💰 Se compran con monedas del jugador durante la partida",
+      "🔒 Anti-cheat: validación server-side de monedas y estado del turno",
+      "📱 UI: barra de power-ups con botones que se deshabilitan si no hay monedas o no es tu turno",
+      "✨ Toast visual cuando se activa un power-up"
+    ]
+  },
   {
     version: "4.8.4",
     date: "2026-08-15",

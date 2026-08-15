@@ -2629,6 +2629,44 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── POWER-UP ─────────────────────────────────────── */
+      if (type === "USE_POWERUP") {
+        const { roomId, playerId, powerUpId } = data;
+        const { handlePowerUp, getPowerUps } = require('./diceManager');
+        const powerUps = getPowerUps();
+        const pu = powerUps[powerUpId];
+        if (!pu) { send(socket, "ERROR", { message: 'Power-up inválido' }); return; }
+        // Verificar y deducir monedas
+        try {
+          const playerResult = await pool.query('SELECT coins FROM players WHERE id = $1', [playerId]);
+          const coins = Number(playerResult.rows[0]?.coins) || 0;
+          if (coins < pu.cost) {
+            send(socket, "ERROR", { message: `No tenés suficientes monedas (necesitás ${pu.cost})` });
+            return;
+          }
+          await pool.query('UPDATE players SET coins = coins - $1 WHERE id = $2', [pu.cost, playerId]);
+          await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+            [playerId, -pu.cost, `Power-up: ${pu.name}`, Date.now()]);
+        } catch (e) {
+          send(socket, "ERROR", { message: 'Error procesando monedas' }); return;
+        }
+        // Activar power-up
+        const result = handlePowerUp(roomId, playerId, powerUpId, broadcastRoom);
+        if (!result.ok) {
+          // Reembolsar si falla
+          try {
+            await pool.query('UPDATE players SET coins = coins + $1 WHERE id = $2', [pu.cost, playerId]);
+          } catch(e) {}
+          send(socket, "ERROR", { message: result.error }); return;
+        }
+        // Enviar saldo actualizado
+        try {
+          const updated = await pool.query('SELECT coins FROM players WHERE id = $1', [playerId]);
+          send(socket, 'COINS_UPDATE', { coins: Number(updated.rows[0]?.coins) || 0 });
+        } catch(e) {}
+        return;
+      }
+
       /* ── TOURNAMENT: ENTRAR AL MATCH ASIGNADO ───────── */
       if (type === "TOURNAMENT_JOIN_MATCH") {
         const tournamentId = Number(data.tournamentId);

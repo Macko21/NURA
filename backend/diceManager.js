@@ -23,6 +23,13 @@ const {
 const matches    = new Map();
 const turnTimers = new Map();
 const autoBankTimers = new Map();
+
+/* ── Power-ups de partida ────────────────────────────── */
+const POWERUPS = {
+  insurance:  { name: 'Seguro',       icon: '🛡️', cost: 300, desc: 'Si tirás muerto, no perdés el turno' },
+  extraDie:   { name: 'Dado Extra',   icon: '🎲', cost: 200, desc: 'Tirás 6 dados en vez de 5 este turno' },
+  peek:       { name: 'Mirar Futuro', icon: '🔮', cost: 400, desc: 'Ves qué vas a sacar antes de decidir' }
+};
 const finishHandlers = new Map();
 const turnCallbacks = new Map(); // roomId → function(roomId): se llama después de cada cambio de turno
 
@@ -129,7 +136,8 @@ function snapshotMatch(match) {
       isGuest:           !!p.isGuest,
       joinedLate:        !!p.joinedLate,
       turnsPlayed:       Number(p.turnsPlayed) || 0,
-      combo:             Number(p.combo) || 0
+      combo:             Number(p.combo) || 0,
+      activePowerUps:    p.activePowerUps || {}
     }))
   };
 }
@@ -549,6 +557,18 @@ function handleRoll(roomId, playerId, broadcast) {
 
   // Tirada muerta
   if (rollScore === 0) {
+    // 🛡️ Seguro: si tiene insurance activo, no pierde el turno
+    if (cur.activePowerUps?.insurance) {
+      cur.activePowerUps.insurance = false; // Consumir seguro
+      cur.turnPoints = 0; // Pierde los puntos del turno pero conserva el turno
+      clearTurnTimer(roomId);
+      pushHistory(match, "INSURANCE_SAVED", { playerId, dice });
+      broadcast(roomId, "INSURANCE_SAVED", {
+        playerId, playerName: cur.name, dice, match: snapshotMatch(match)
+      });
+      resetTurnTimer(roomId, id => _handleTimeout(id, broadcast));
+      return { ok: true, event: "INSURANCE_SAVED", dice };
+    }
     cur.turnPoints = 0;
     cur.combo = 0; // Reset combo al fallar
     clearTurnTimer(roomId);
@@ -725,9 +745,53 @@ function removeTurnCallback(roomId) {
   turnCallbacks.delete(roomId);
 }
 
+/* ── Power-ups ──────────────────────────────────────── */
+function handlePowerUp(roomId, playerId, powerUpId, broadcast) {
+  const match = matches.get(roomId);
+  if (!match || match.status !== 'playing') return { ok: false, error: 'Partida no activa' };
+  const cur = getCurrentPlayer(match);
+  if (!cur || cur.id !== playerId) return { ok: false, error: 'No es tu turno' };
+  if (!cur.entered) return { ok: false, error: 'No entraste al juego aún' };
+
+  const powerUp = POWERUPS[powerUpId];
+  if (!powerUp) return { ok: false, error: 'Power-up inválido' };
+
+  // Verificar que no tenga ya un power-up activo del mismo tipo
+  if (!cur.activePowerUps) cur.activePowerUps = {};
+  if (cur.activePowerUps[powerUpId]) return { ok: false, error: 'Ya tenés este power-up activo' };
+
+  // Verificar monedas (el cliente ya verificó, pero validamos en server también)
+  // Nota: la deducción de monedas se hace en server.js antes de llamar a esta función
+
+  // Activar el power-up
+  cur.activePowerUps[powerUpId] = true;
+
+  // Efectos inmediatos
+  if (powerUpId === 'extraDie') {
+    // Dar 1 dado extra para este turno (máx 6)
+    cur.remainingDice = Math.min(cur.remainingDice + 1, 6);
+  }
+
+  pushHistory(match, 'POWER_UP', { playerId, powerUpId, powerUpName: powerUp.name });
+  broadcast(roomId, 'POWER_UP_ACTIVATED', {
+    playerId,
+    playerName: cur.name,
+    powerUpId,
+    powerUpName: powerUp.name,
+    powerUpIcon: powerUp.icon,
+    match: snapshotMatch(match)
+  });
+
+  return { ok: true, powerUpId, remainingDice: cur.remainingDice };
+}
+
+function getPowerUps() {
+  return POWERUPS;
+}
+
 module.exports = {
   createMatch, startFirstTurnTimer, getMatch, destroyMatch,
-  handleEntryRoll, handleRoll, handleBank,
+  handleEntryRoll, handleRoll, handleBank, handlePowerUp, getPowerUps,
   handleDisconnect, handleReconnect, snapshotMatch, addLatePlayer, rollDice,
   setTurnCallback, removeTurnCallback
 };

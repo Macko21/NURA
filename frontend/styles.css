@@ -1169,6 +1169,56 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
   100%{transform:translateX(-50%) translateY(-20px);opacity:0}
 }
 .sc-chip{position:relative}
+/* ══════════════════════════════════════
+   POWER-UP BAR
+   ══════════════════════════════════════ */
+.powerup-bar{
+  display:flex;gap:6px;justify-content:center;
+  max-width:280px;margin:0 auto 4px;
+  padding:4px 8px;
+  background:linear-gradient(135deg,rgba(150,50,255,.08),rgba(80,40,200,.05));
+  border:1px solid rgba(150,50,255,.2);
+  border-radius:12px;
+}
+.powerup-bar.hidden{display:none}
+.powerup-btn{
+  display:flex;align-items:center;gap:4px;
+  padding:5px 10px;border:1px solid rgba(150,50,255,.3);
+  border-radius:10px;background:rgba(150,50,255,.08);
+  color:var(--text);font-size:11px;font-family:inherit;font-weight:600;
+  cursor:pointer;transition:all .2s;flex-shrink:0;
+}
+.powerup-btn:hover:not(:disabled){
+  background:rgba(150,50,255,.15);border-color:rgba(150,50,255,.5);
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(150,50,255,.2);
+}
+.powerup-btn:active:not(:disabled){transform:translateY(0)}
+.powerup-btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.powerup-btn.active-powerup{
+  background:rgba(150,50,255,.2);border-color:rgba(150,50,255,.6);
+  box-shadow:0 0 12px rgba(150,50,255,.3);
+  animation:puActive 1s ease-in-out infinite;
+}
+@keyframes puActive{
+  0%,100%{box-shadow:0 0 8px rgba(150,50,255,.2)}
+  50%{box-shadow:0 0 16px rgba(150,50,255,.4)}
+}
+.pu-icon{font-size:16px}
+.pu-cost{font-size:10px;color:var(--gold);font-weight:700}
+/* Toast de power-up activado */
+.pu-toast{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  padding:12px 24px;border-radius:16px;z-index:9998;
+  background:rgba(150,50,255,.9);color:#fff;
+  font-size:16px;font-weight:700;text-align:center;
+  animation:puToastIn .4s cubic-bezier(.22,1,.36,1) both;
+  pointer-events:none;box-shadow:0 8px 32px rgba(150,50,255,.4);
+}
+@keyframes puToastIn{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  60%{transform:translate(-50%,-50%) scale(1.1)}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:1}
+}
 .action-zone{
   display:flex;gap:10px;width:100%;max-width:460px;position:sticky;bottom:0;z-index:4;flex-shrink:0;
   padding:6px 0 4px;background:linear-gradient(180deg,transparent,var(--bg-dark) 28%);

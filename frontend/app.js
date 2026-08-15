@@ -1181,6 +1181,69 @@ function showEmoteBubble(playerId, emote) {
   }
 }
 
+/* ── Power-ups UI ────────────────────────────────────── */
+const POWERUP_COSTS = { insurance: 300, extraDie: 200, peek: 400 };
+const POWERUP_NAMES = { insurance: '🛡️ Seguro', extraDie: '🎲 Dado Extra', peek: '🔮 Mirar Futuro' };
+
+function showPowerUpBar() {
+  const bar = $('powerup-bar');
+  if (!bar) return;
+  bar.classList.remove('hidden');
+  updatePowerUpButtons();
+}
+
+function hidePowerUpBar() {
+  const bar = $('powerup-bar');
+  if (bar) bar.classList.add('hidden');
+}
+
+function updatePowerUpButtons() {
+  if (!S.match) return;
+  const me = S.match.players?.find(p => p.id === S.id);
+  if (!me || !me.entered) { hidePowerUpBar(); return; }
+
+  const bar = $('powerup-bar');
+  if (bar) bar.classList.remove('hidden');
+
+  // Actualizar estado de cada botón
+  Object.keys(POWERUP_COSTS).forEach(puId => {
+    const btn = $(`pu-${puId}`);
+    if (!btn) return;
+    const cost = POWERUP_COSTS[puId];
+    const isActive = me.activePowerUps?.[puId];
+    const canAfford = (S.coins || 0) >= cost;
+    const isMyTurn = S.myTurn && me.entered;
+    btn.disabled = !isMyTurn || !canAfford || isActive;
+    btn.classList.toggle('active-powerup', !!isActive);
+  });
+}
+
+function usePowerUp(powerUpId) {
+  if (!S.roomId || !S.id) return;
+  const cost = POWERUP_COSTS[powerUpId];
+  const name = POWERUP_NAMES[powerUpId];
+  if (!cost || !name) return;
+
+  // Verificar monedas localmente primero
+  if ((S.coins || 0) < cost) {
+    toast(`❌ Necesitás ${cost} monedas para ${name}`);
+    return;
+  }
+
+  wsSend('USE_POWERUP', { roomId: S.roomId, playerId: S.id, powerUpId });
+}
+
+function showPowerUpToast(icon, text) {
+  const existing = document.querySelector('.pu-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.className = 'pu-toast';
+  toast.innerHTML = `${icon} ${text}`;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; }, 1500);
+  setTimeout(() => toast.remove(), 2000);
+}
+
 function updateGameRoomCode() {
   const el = $('game-room-code');
   if (el) el.textContent = S.roomCode || '—';
@@ -1725,6 +1788,9 @@ function handle(type, data) {
       _winShown = false;
       _gameOverShown = false;
       _rematchInProgress = false;
+      // Cargar monedas del jugador para power-ups
+      const mePlayer = data.match?.players?.find(p => p.id === S.id);
+      if (mePlayer) S.coins = mePlayer.coins || 0;
       saveSession();
       showScreen('screen-game');
       $('ready-status')?.classList.add('hidden');
@@ -2179,6 +2245,40 @@ function handle(type, data) {
       }
       break;
 
+    case 'POWER_UP_ACTIVATED': {
+      S.match = data.match;
+      renderSB(data.match);
+      updatePowerUpButtons();
+      if (data.playerId !== S.id) {
+        toast(`${data.powerUpIcon} ${data.playerName} activó ${data.powerUpName}`, 2500);
+      } else {
+        showPowerUpToast(data.powerUpIcon, `${data.powerUpName} activado!`);
+      }
+      // Si es dado extra, actualizar dados restantes
+      if (data.powerUpId === 'extraDie' && data.match) {
+        const me = data.match.players?.find(p => p.id === S.id);
+        if (me && data.playerId === S.id) {
+          $('roll-count').textContent = me.rollCount + ' / 3';
+        }
+      }
+      break;
+    }
+
+    case 'INSURANCE_SAVED': {
+      S.match = data.match;
+      S.banking = false;
+      syncEquippedFromMatch(data.match);
+      renderSB(data.match);
+      showDice(data.dice, 'dead');
+      showPowerUpToast('🛡️', '¡Seguro te salvó! Seguís en el turno');
+      setMsg('🛡️ Seguro activado — tirada muerta salvada', 'good');
+      updateTurnUI(data.match);
+      if (data.playerId === S.id) startTimer(TURN_SECS);
+      updatePowerUpButtons();
+      sys(`🛡️ ${data.playerName} usó Seguro — no perdió el turno`);
+      break;
+    }
+
     /* ── Ranking ─────────────────────────────────────── */
     case 'RANKING':
       renderRanking(data.ranking);
@@ -2229,6 +2329,15 @@ function handle(type, data) {
     case 'NOTIFICATION':
       toast((data.icon || '🔔') + ' ' + data.message, 5000);
       addNotification(data.title || 'Notificación', data.message, data.notifType || 'system');
+      break;
+
+    case 'COINS_UPDATE':
+      S.coins = data.coins || 0;
+      const coinsAmt = $('game-coins-amount');
+      if (coinsAmt) coinsAmt.textContent = S.coins;
+      const coinsDisp = $('game-coins-display');
+      if (coinsDisp) coinsDisp.classList.remove('hidden');
+      updatePowerUpButtons();
       break;
 
     case 'ERROR':
@@ -2465,10 +2574,15 @@ function updateTurnUI(match) {
     btnRoll.disabled = !!cur.mustStop;
     const canBank = me?.entered && (cur.turnPoints>0) && cur.canContinue && !cur.mustStop && !cur.isHotDiceTurn;
     btnBank.disabled = !canBank;
+    // Power-ups: mostrar barra si está en juego y es mi turno
+    if (me?.entered) showPowerUpBar();
+    else hidePowerUpBar();
+    updatePowerUpButtons();
   } else {
     az.classList.add('hidden');
     wz.classList.remove('hidden');
     $('waiting-text').textContent = `Turno de ${cur.name}...`;
+    hidePowerUpBar();
   }
 
   if (me) {
@@ -4499,6 +4613,14 @@ function initUI() {
       };
     });
   }
+
+  /* ── POWER-UP BUTTONS ─────────────────────────────── */
+  document.querySelectorAll('.powerup-btn').forEach(btn => {
+    btn.onclick = () => {
+      const puId = btn.dataset.pu;
+      if (puId) usePowerUp(puId);
+    };
+  });
 
   /* Salir de partida — modal propio, va al lobby inmediatamente */
   $('btn-leave-game').onclick = () => {
