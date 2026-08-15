@@ -1108,6 +1108,52 @@ function syncMyScore(match) {
   if (me) $('my-score').textContent = me.score||0;
 }
 
+/* ── Combo Counter UI ────────────────────────────────── */
+function updateCombo(combo) {
+  const counter = $('combo-counter');
+  const number = $('combo-number');
+  const fire = $('combo-fire');
+  const label = $('combo-label');
+  if (!counter || !number) return;
+
+  if (!combo || combo < 2) {
+    counter.classList.add('hidden');
+    counter.classList.remove('combo-hot', 'combo-max');
+    return;
+  }
+
+  counter.classList.remove('hidden');
+  number.textContent = 'x' + combo;
+
+  // Niveles de combo con colores crecientes
+  counter.classList.remove('combo-hot', 'combo-max');
+  if (combo >= 5) {
+    counter.classList.add('combo-max');
+    fire.textContent = '⚡';
+    label.textContent = 'MEGACOMBO';
+  } else if (combo >= 3) {
+    counter.classList.add('combo-hot');
+    fire.textContent = '🔥';
+    label.textContent = 'COMBO';
+  } else {
+    fire.textContent = '🔥';
+    label.textContent = 'COMBO';
+  }
+
+  // Pop animation
+  counter.classList.remove('combo-pop');
+  void counter.offsetWidth;
+  counter.classList.add('combo-pop');
+}
+
+function resetCombo() {
+  const counter = $('combo-counter');
+  if (counter) {
+    counter.classList.add('hidden');
+    counter.classList.remove('combo-hot', 'combo-max', 'combo-pop');
+  }
+}
+
 function updateGameRoomCode() {
   const el = $('game-room-code');
   if (el) el.textContent = S.roomCode || '—';
@@ -1663,6 +1709,7 @@ function handle(type, data) {
       renderSB(data.match);
       updateTurnUI(data.match);
       clearDice();
+      resetCombo();
       updateGameRoomCode();
       updateGameCoins();
       sys('¡La partida comenzó!');
@@ -1750,6 +1797,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
+      resetCombo();
       if (data.playerId===S.id) { triggerScreenShake(); }
       setMsg('¡Sin puntos! Turno perdido 💀','bad');
       updateTurnUI(data.match);
@@ -1764,6 +1812,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
+      resetCombo();
       if (data.playerId===S.id) { triggerScreenShake(); }
       setMsg('¡Te pasaste de 10.000! 💥','bad');
       updateTurnUI(data.match);
@@ -1799,6 +1848,10 @@ function handle(type, data) {
       syncMyScore(data.match);
       if (data.auto) setMsg(`Banco automático — +${data.gained} pts anotados ✔`,'good');
       sys(`${data.playerName} anotó ${data.gained} pts → total ${data.totalScore}`);
+      // Actualizar combo counter
+      if (data.combo && data.combo >= 2) {
+        updateCombo(data.combo);
+      }
       if (data.playerId===S.id) {
         stopTimer();
         SFX.bank();

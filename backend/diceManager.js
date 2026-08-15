@@ -128,7 +128,8 @@ function snapshotMatch(match) {
       ,
       isGuest:           !!p.isGuest,
       joinedLate:        !!p.joinedLate,
-      turnsPlayed:       Number(p.turnsPlayed) || 0
+      turnsPlayed:       Number(p.turnsPlayed) || 0,
+      combo:             Number(p.combo) || 0
     }))
   };
 }
@@ -248,13 +249,17 @@ function _bank(match, roomId, broadcast, auto = false) {
     return; // No avanzar turno, la partida terminó
   }
 
-  pushHistory(match, "BANKED", { playerId: cur.id, gained, totalScore: cur.score, auto });
+  // Incrementar combo: turno consecutivo anotando puntos
+  cur.combo = (cur.combo || 0) + 1;
+
+  pushHistory(match, "BANKED", { playerId: cur.id, gained, totalScore: cur.score, auto, combo: cur.combo });
   broadcast(roomId, "BANKED", {
     playerId:   cur.id,
     playerName: cur.name,
     gained,
     totalScore: cur.score,
     auto,
+    combo:      cur.combo,
     match:      snapshotMatch(match)
   });
 
@@ -285,10 +290,11 @@ function _handleTimeout(roomId, broadcast) {
 
     if (rollScore === 0) {
       // Tirada muerta en auto-roll
-      pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "dead" });
+      cur.combo = 0;
+      pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "dead", combo: 0 });
       broadcast(roomId, "TIMEOUT_AUTO_ROLL", {
         playerId: cur.id, playerName: cur.name, dice,
-        result: "dead", lives: cur.lives,
+        result: "dead", lives: cur.lives, combo: 0,
         match: snapshotMatch(match)
       });
     } else {
@@ -298,10 +304,11 @@ function _handleTimeout(roomId, broadcast) {
       if (projected > MAX_SCORE) {
         // Bust en auto-roll
         cur.turnPoints = 0;
-        pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "bust" });
+        cur.combo = 0;
+        pushHistory(match, "TIMEOUT_AUTO_ROLL", { playerId: cur.id, dice, result: "bust", combo: 0 });
         broadcast(roomId, "TIMEOUT_AUTO_ROLL", {
           playerId: cur.id, playerName: cur.name, dice,
-          result: "bust", lives: cur.lives,
+          result: "bust", lives: cur.lives, combo: 0,
           match: snapshotMatch(match)
         });
       } else if (projected === MAX_SCORE) {
@@ -543,10 +550,11 @@ function handleRoll(roomId, playerId, broadcast) {
   // Tirada muerta
   if (rollScore === 0) {
     cur.turnPoints = 0;
+    cur.combo = 0; // Reset combo al fallar
     clearTurnTimer(roomId);
-    pushHistory(match, "DEAD_ROLL", { playerId, dice });
+    pushHistory(match, "DEAD_ROLL", { playerId, dice, combo: 0 });
     broadcast(roomId, "DEAD_ROLL", {
-      playerId, playerName: cur.name, dice, match: snapshotMatch(match)
+      playerId, playerName: cur.name, dice, combo: 0, match: snapshotMatch(match)
     });
     _advanceTurn(match, roomId, broadcast);
     return { ok: true, event: "DEAD_ROLL", dice };
@@ -558,10 +566,11 @@ function handleRoll(roomId, playerId, broadcast) {
   // Bust
   if (projected > MAX_SCORE) {
     cur.turnPoints = 0;
+    cur.combo = 0; // Reset combo al pasarse
     clearTurnTimer(roomId);
-    pushHistory(match, "BUST", { playerId, dice, rollScore, projected });
+    pushHistory(match, "BUST", { playerId, dice, rollScore, projected, combo: 0 });
     broadcast(roomId, "BUST", {
-      playerId, playerName: cur.name, dice, rollScore, projected,
+      playerId, playerName: cur.name, dice, rollScore, projected, combo: 0,
       match: snapshotMatch(match)
     });
     _advanceTurn(match, roomId, broadcast);

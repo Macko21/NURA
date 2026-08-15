@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.8.1";
+const GAME_VERSION = "4.8.2";
 
 const CHANGELOG = [
+  {
+    version: "4.8.2",
+    date: "2026-08-15",
+    title: "🔥 Combo counter — rachas de turnos ganadores",
+    scope: "game",
+    files: ["matchState.js", "diceManager.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "🔥 COMBO: counter visual que aparece cuando anotás 2+ turnos seguidos — todos los jugadores lo ven",
+      "🔥 COMBO x2: borde naranja con fuego 🔥 — primer nivel de combo",
+      "🔥 COMBO x3+: borde rojo intenso con fuego 🔥🔥 — modo caliente",
+      "⚡ MEGACOMBO x5+: borde dorado brillante con rayo ⚡ — máxima adrenalina",
+      "💥 POP: animación de crecimiento al incrementar el combo",
+      "🔄 RESET: el combo se pierde al tirar muerto o pasarse de 10.000",
+      "🎯 BACKEND: tracking de combo por jugador en matchState + envío en eventos BANKED/DEAD_ROLL/BUST"
+    ]
+  },
   {
     version: "4.8.1",
     date: "2026-08-15",

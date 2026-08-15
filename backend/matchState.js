@@ -55,6 +55,11 @@ function createPlayerState(player) {
     turnsPlayed: 0,
 
     /**
+     * Combo: turnos consecutivos anotando puntos
+     */
+    combo: 0,
+
+    /**
      * Turno actual
      */
     turnPoints: 0,

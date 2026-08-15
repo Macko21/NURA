@@ -1035,6 +1035,61 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 }
 .flash-pts{animation:flashPts .5s ease}
 
+/* ══════════════════════════════════════
+   COMBO COUNTER
+   ══════════════════════════════════════ */
+.combo-counter{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  width:100%;max-width:200px;margin:0 auto 4px;
+  padding:6px 16px;border-radius:20px;
+  background:linear-gradient(135deg,rgba(255,100,0,.15),rgba(255,60,0,.08));
+  border:1px solid rgba(255,100,0,.3);
+  animation:comboAppear .4s cubic-bezier(.22,1,.36,1) both;
+  transition:all .3s ease;
+}
+.combo-counter.hidden{display:none}
+.combo-counter.combo-hot{
+  background:linear-gradient(135deg,rgba(255,60,0,.25),rgba(255,30,0,.15));
+  border-color:rgba(255,60,0,.6);
+  box-shadow:0 0 20px rgba(255,60,0,.3),inset 0 0 12px rgba(255,60,0,.1);
+}
+.combo-counter.combo-max{
+  background:linear-gradient(135deg,rgba(255,200,0,.3),rgba(255,100,0,.2));
+  border-color:rgba(255,200,0,.7);
+  box-shadow:0 0 30px rgba(255,200,0,.4),0 0 60px rgba(255,100,0,.2);
+  animation:comboAppear .4s cubic-bezier(.22,1,.36,1) both,comboMaxPulse 1s ease-in-out infinite;
+}
+.combo-fire{font-size:18px;filter:drop-shadow(0 0 6px rgba(255,100,0,.5))}
+.combo-number{
+  font-family:'Cinzel',serif;font-size:22px;font-weight:900;
+  color:#ff6b35;text-shadow:0 0 12px rgba(255,100,0,.4);
+  transition:all .3s ease;
+}
+.combo-counter.combo-hot .combo-number{color:#ff4444;text-shadow:0 0 16px rgba(255,50,0,.5)}
+.combo-counter.combo-max .combo-number{color:#ffd700;text-shadow:0 0 20px rgba(255,200,0,.6);font-size:26px}
+.combo-label{
+  font-size:10px;font-weight:700;letter-spacing:2px;
+  color:rgba(255,120,50,.7);text-transform:uppercase;
+}
+.combo-counter.combo-hot .combo-label{color:rgba(255,80,50,.8)}
+.combo-counter.combo-max .combo-label{color:rgba(255,200,50,.9)}
+@keyframes comboAppear{
+  0%{transform:scale(0);opacity:0}
+  60%{transform:scale(1.2)}
+  100%{transform:scale(1);opacity:1}
+}
+@keyframes comboMaxPulse{
+  0%,100%{transform:scale(1);filter:brightness(1)}
+  50%{transform:scale(1.05);filter:brightness(1.2)}
+}
+.combo-pop{
+  animation:comboPop .3s ease-out;
+}
+@keyframes comboPop{
+  0%{transform:scale(1)}
+  40%{transform:scale(1.4)}
+  100%{transform:scale(1)}
+}
 .action-zone{
   display:flex;gap:10px;width:100%;max-width:460px;position:sticky;bottom:0;z-index:4;flex-shrink:0;
   padding:6px 0 4px;background:linear-gradient(180deg,transparent,var(--bg-dark) 28%);
