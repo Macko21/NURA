@@ -171,7 +171,29 @@ function _advanceTurn(match, roomId, broadcast) {
       }
     }
 
-    if (!found) return;
+    if (!found) {
+      // Ningún jugador activo — terminar la partida automáticamente.
+      // Buscar al último jugador no eliminado (incluso si está desconectado)
+      // o al último jugador en la lista.
+      let lastAlive = match.players.find(p => !p.eliminated);
+      if (!lastAlive && match.players.length > 0) lastAlive = match.players[match.players.length - 1];
+      if (lastAlive && match.status === 'playing') {
+        setWinner(match, lastAlive);
+        pushHistory(match, 'WIN', { playerId: lastAlive.id, reason: 'last_standing' });
+        broadcast(roomId, 'WIN', {
+          playerId: lastAlive.id, playerName: lastAlive.name, dice: [],
+          match: snapshotMatch(match)
+        });
+        const handler = finishHandlers.get(roomId);
+        if (handler && !match.finishNotified) {
+          match.finishNotified = true;
+          Promise.resolve(handler(match, roomId)).catch(err => {
+            console.error('Error finalizando partida (last_standing):', err.message);
+          });
+        }
+      }
+      return;
+    }
 
     startTurn(match);
 
