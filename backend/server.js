@@ -2966,6 +2966,27 @@ wss.on("connection", socket => {
         return;
       }
 
+      /* ── EMOTE EN PARTIDA ─────────────────────────────── */
+      if (type === "EMOTE") {
+        const emote = String(data.emote || '').slice(0, 4);
+        if (!emote) return;
+        // Cooldown anti-spam: 2 segundos entre emotes por jugador
+        const now = Date.now();
+        if (socket._lastEmote && now - socket._lastEmote < 2000) return;
+        socket._lastEmote = now;
+        // Broadcast a todos en la misma sala
+        const roomId = socket.roomId;
+        if (roomId) {
+          broadcastRoom(roomId, "EMOTE", {
+            playerId:   socket.playerId,
+            playerName: socket.playerName,
+            emote,
+            timestamp:  now
+          });
+        }
+        return;
+      }
+
       /* ── AUDIO CHAT ──────────────────────────────────── */
       if (type === "CHAT_AUDIO") {
         const audioData = String(data.audioData || "");

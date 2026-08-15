@@ -1154,6 +1154,33 @@ function resetCombo() {
   }
 }
 
+/* ── Emote Bubble flotante ──────────────────────────── */
+function showEmoteBubble(playerId, emote) {
+  // Buscar el chip del jugador en el scoreboard
+  const chips = document.querySelectorAll('.scoreboard .sc-chip');
+  for (const chip of chips) {
+    const nameEl = chip.querySelector('.sc-nm');
+    if (!nameEl) continue;
+    // Encontrar el jugador por ID (comparar con el match actual)
+    const matchPlayer = S.match?.players?.find(p => p.id === playerId);
+    if (!matchPlayer) continue;
+    if (nameEl.textContent !== matchPlayer.name) continue;
+
+    // Remover bubble anterior si existe
+    chip.querySelector('.emote-bubble')?.remove();
+
+    // Crear nueva bubble
+    const bubble = document.createElement('span');
+    bubble.className = 'emote-bubble';
+    bubble.textContent = emote;
+    chip.appendChild(bubble);
+
+    // Auto-remover después de la animación (3s total)
+    setTimeout(() => bubble.remove(), 3200);
+    break;
+  }
+}
+
 function updateGameRoomCode() {
   const el = $('game-room-code');
   if (el) el.textContent = S.roomCode || '—';
@@ -2141,6 +2168,13 @@ function handle(type, data) {
     case 'CHAT_AUDIO':
       if (data.playerId !== S.id) {
         addAudioMsg(data.playerName, data.audioData, data.duration, false);
+        SFX.chat();
+      }
+      break;
+
+    case 'EMOTE':
+      if (data.playerId !== S.id) {
+        showEmoteBubble(data.playerId, data.emote);
         SFX.chat();
       }
       break;
@@ -4434,6 +4468,37 @@ function initUI() {
   $('btn-bank').onclick = () => {
     wsSend('BANK', { roomId:S.roomId, playerId:S.id });
   };
+
+  /* ── EMOTE PICKER ──────────────────────────────────── */
+  const emotePicker = $('emote-picker');
+  const btnEmote = $('btn-emote');
+  if (btnEmote && emotePicker) {
+    btnEmote.onclick = (e) => {
+      e.stopPropagation();
+      emotePicker.classList.toggle('hidden');
+      btnEmote.classList.toggle('active', !emotePicker.classList.contains('hidden'));
+    };
+    // Cerrar picker al hacer click afuera
+    document.addEventListener('click', (e) => {
+      if (!emotePicker.contains(e.target) && e.target !== btnEmote) {
+        emotePicker.classList.add('hidden');
+        btnEmote.classList.remove('active');
+      }
+    });
+    // Enviar emote al hacer click en una opción
+    emotePicker.querySelectorAll('.emote-option').forEach(btn => {
+      btn.onclick = () => {
+        const emote = btn.dataset.emote;
+        if (emote && S.roomId) {
+          wsSend('EMOTE', { emote });
+          // Mostrar en nuestro propio avatar inmediatamente
+          showEmoteBubble(S.id, emote);
+        }
+        emotePicker.classList.add('hidden');
+        btnEmote.classList.remove('active');
+      };
+    });
+  }
 
   /* Salir de partida — modal propio, va al lobby inmediatamente */
   $('btn-leave-game').onclick = () => {

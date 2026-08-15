@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.8.3";
+const GAME_VERSION = "4.8.4";
 
 const CHANGELOG = [
+  {
+    version: "4.8.4",
+    date: "2026-08-15",
+    title: "💬 Emotes reactivos en partida",
+    scope: "game",
+    files: ["server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "💬 EMOTES: botón 💬 en la barra de juego que abre un picker con 8 emojis",
+      "💬 BUBBLE: el emote aparece como burbuja flotante sobre el avatar del jugador",
+      "💬 ANIMACIÓN: bounce al aparecer + float hacia arriba + fade out en 3 segundos",
+      "🔒 ANTI-SPAM: cooldown de 2 segundos entre emotes por jugador en el backend",
+      "🌍 SYNC: todos los jugadores de la sala ven los emotes en tiempo real",
+      "8 EMOTES: 😂 🔥 💀 😱 🏆 👏 🤬 😈"
+    ]
+  },
   {
     version: "4.8.3",
     date: "2026-08-15",
