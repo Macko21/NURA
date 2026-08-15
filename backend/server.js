@@ -1659,6 +1659,7 @@ const JOIN_REQUEST_MS = 30_000;
 const XP_PER_GAME   = 25;
 const XP_PER_WIN    = 50;
 const XP_PER_TOP3   = 15;
+const XP_PER_STREAK_WIN = 20;
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function send(socket, type, data = {}) {
@@ -1767,62 +1768,86 @@ async function onMatchWon(match, roomId) {
   const winner = match.winner;
   if (!winner || match.finalizing) return;
   match.finalizing = true;
-  rejectAllJoinRequests(roomId, 'La partida terminó');
+  // Envolver todo el pre-broadcast en try/catch para que GAME_OVER
+  // siempre se envíe aunque algo falle antes.
+  let room = null;
+  let isTournamentMatch = false;
+  try {
+    try { rejectAllJoinRequests(roomId, 'La partida terminó'); } catch(e) { console.error('rejectJoinRequests:', e.message); }
 
-  const room = getRoom(roomId);
-  const isTournamentMatch = !!room?.isTournamentMatch;
+    room = getRoom(roomId);
+    isTournamentMatch = !!room?.isTournamentMatch;
 
-  // En torneos el resultado se confirma antes de destruir la partida. Si la
-  // base se cae unos segundos, se conserva el estado ganador y se reintenta:
-  // nunca se pierde un resultado ni se habilita una revancha accidental.
-  if (isTournamentMatch) {
+    // En torneos el resultado se confirma antes de destruir la partida. Si la
+    // base se cae unos segundos, se conserva el estado ganador y se reintenta:
+    // nunca se pierde un resultado ni se habilita una revancha accidental.
+    if (isTournamentMatch) {
+      try {
+        await completeTournamentMatch(
+          room.tournamentId,
+          room.tournamentMatchId,
+          winner.id,
+          match.players[0]?.score || 0,
+          match.players[1]?.score || 0,
+          clients,
+          send
+        );
+      } catch (e) {
+        console.error('Error avanzando match de torneo; se reintentara:', e.message);
+        match.finalizing = false;
+        broadcastRoom(roomId, "ERROR", {
+          message: "Estamos confirmando el resultado del torneo. No cierres la partida."
+        });
+        setTimeout(() => {
+          const pendingMatch = getMatch(roomId);
+          if (pendingMatch === match && match.winner && !match.finalizing) {
+            onMatchWon(match, roomId).catch(err => {
+              console.error("Reintento de resultado de torneo:", err.message);
+            });
+          }
+        }, 3000);
+        return;
+      }
+    }
+
+    // Cerrar la partida y resetear la sala antes de tocar la base de datos.
+    // Asi el boton Revancha nunca compite con las recompensas o estadisticas.
+    const finalSnapshot = snapshotMatch(match);
+    if (room) {
+      cancelReadyCountdown(roomId);
+      room.status = "waiting";
+      for (const p of room.players) {
+        p.ready   = false;
+        p.score   = 0;
+        p.entered = false;
+      }
+    }
+    broadcastRoom(roomId, "GAME_OVER", {
+      winner,
+      match: finalSnapshot,
+      room,
+      tournamentMatch: isTournamentMatch
+    });
+    destroyMatch(roomId);
+  } catch (preBroadcastErr) {
+    // Último recurso: si algo falló antes de GAME_OVER, enviarlo ahora
+    console.error('onMatchWon pre-broadcast error:', preBroadcastErr.message);
     try {
-      await completeTournamentMatch(
-        room.tournamentId,
-        room.tournamentMatchId,
-        winner.id,
-        match.players[0]?.score || 0,
-        match.players[1]?.score || 0,
-        clients,
-        send
-      );
-    } catch (e) {
-      console.error('Error avanzando match de torneo; se reintentara:', e.message);
-      match.finalizing = false;
-      broadcastRoom(roomId, "ERROR", {
-        message: "Estamos confirmando el resultado del torneo. No cierres la partida."
+      if (room && room.status !== 'waiting') {
+        room.status = 'waiting';
+        for (const p of room.players) { p.ready = false; p.score = 0; p.entered = false; }
+      }
+      broadcastRoom(roomId, 'GAME_OVER', {
+        winner,
+        match: snapshotMatch(match),
+        room,
+        tournamentMatch: isTournamentMatch
       });
-      setTimeout(() => {
-        const pendingMatch = getMatch(roomId);
-        if (pendingMatch === match && match.winner && !match.finalizing) {
-          onMatchWon(match, roomId).catch(err => {
-            console.error("Reintento de resultado de torneo:", err.message);
-          });
-        }
-      }, 3000);
-      return;
+      destroyMatch(roomId);
+    } catch (lastResortErr) {
+      console.error('onMatchWon last-resort GAME_OVER failed:', lastResortErr.message);
     }
   }
-
-  // Cerrar la partida y resetear la sala antes de tocar la base de datos.
-  // Asi el boton Revancha nunca compite con las recompensas o estadisticas.
-  const finalSnapshot = snapshotMatch(match);
-  if (room) {
-    cancelReadyCountdown(roomId);
-    room.status = "waiting";
-    for (const p of room.players) {
-      p.ready   = false;
-      p.score   = 0;
-      p.entered = false;
-    }
-  }
-  broadcastRoom(roomId, "GAME_OVER", {
-    winner,
-    match: finalSnapshot,
-    room,
-    tournamentMatch: isTournamentMatch
-  });
-  destroyMatch(roomId);
 
   const isBotGame = !!room?.isBotGame;
   try {

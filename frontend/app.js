@@ -1649,6 +1649,9 @@ function handle(type, data) {
       S.banking = false;
       _timeoutCount = 0;
       _playerLives = MAX_LIVES;
+      _winShown = false;
+      _gameOverShown = false;
+      _rematchInProgress = false;
       saveSession();
       showScreen('screen-game');
       $('ready-status')?.classList.add('hidden');
@@ -1863,6 +1866,14 @@ function handle(type, data) {
         _playerLives = data.lives != null ? data.lives : _playerLives;
         const livesStr = '❤️'.repeat(_playerLives) + '🖤'.repeat(MAX_LIVES - _playerLives);
         toast(`Vidas: ${livesStr}`, 2000);
+      }
+      // Si fue victoria por timeout, preparar flags para GAME_OVER subsiguiente
+      if (data.result === 'win') {
+        _winShown = true;
+        S.banking = false;
+        const winP = S.match?.players?.find(p => p.id === data.playerId);
+        showWin(data.playerName || winP?.name || '🏆', '¡Llegó a 10.000 por auto-tirada! 🏆', data.dice, winP?.equippedDice || null, winP?.equippedSpecial || null);
+        SFX.win();
       }
       updateTurnUI(data.match);
       break;
