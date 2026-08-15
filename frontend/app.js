@@ -5940,16 +5940,7 @@ function openInventoryPreview(item, equipCategory, isEquipped) {
     }
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    if (cat === 'dados') {
-      const stage = box.querySelector('.dice-3d-shop-stage');
-      if (stage && typeof loadDice3D === 'function') {
-        loadDice3D().then(renderer3D => {
-          if (!renderer3D || !stage.isConnected) return;
-          dispose3DPreview = renderer3D.createPreview(stage, String(item.id), 5);
-          stage.classList.toggle('is-fallback', !dispose3DPreview);
-        });
-      }
-    }
+
   } catch(e) { toast('⚠ Error: ' + e.message); }
 }
 window.openInventoryPreview = openInventoryPreview;
@@ -5987,17 +5978,7 @@ function openItemPreview(category, itemId, itemName, itemIcon) {
     box.querySelector('.shop-preview-close').onclick = closePreview;
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    if (category === 'dados' || category === 'dice') {
-      const stage = box.querySelector('.dice-3d-shop-stage');
-      const previewVal = Number(stage?.dataset.value || 5);
-      if (stage && typeof loadDice3D === 'function') {
-        loadDice3D().then(renderer3D => {
-          if (!renderer3D || !stage.isConnected) return;
-          dispose3DPreview = renderer3D.createPreview(stage, String(itemId), previewVal);
-          stage.classList.toggle('is-fallback', !dispose3DPreview);
-        });
-      }
-    }
+
   } catch(e) {
     toast('⚠ Error al mostrar preview: ' + e.message);
   }
@@ -6021,7 +6002,7 @@ function buildDicePreviewHTML(skinId, itemName, itemIcon) {
       dieEl.style.cssText = 'margin:0 auto;width:52px;height:52px';
       return '<div class="dice-state-card">' + dieEl.outerHTML + '<div class="dice-state-label"><span class="dice-state-icon">' + s.icon + '</span>' + esc(s.label) + '</div></div>';
     }).join('');
-    return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en el juego</p><div class="dice-3d-shop-stage" data-value="' + previewVal + '"><span>Preparando preview 3D…</span></div><div class="dice-states-title">Estados durante la partida</div><div class="dice-states-grid">' + diceHtml + '</div>';
+    return '<p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">🎲 Así se ve <strong>' + esc(skinName) + '</strong> en el juego</p><div class="dice-states-title">Estados durante la partida</div><div class="dice-states-grid">' + diceHtml + '</div>';
   } catch(e) {
     return '<p style="text-align:center;color:var(--red);padding:20px">Error al generar preview: ' + esc(e.message) + '</p>';
   }

@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.7.0";
+const GAME_VERSION = "4.8.0";
 
 const CHANGELOG = [
+  {
+    version: "4.8.0",
+    date: "2026-08-15",
+    title: "🎲 Dados 2D puros + fixes de estabilidad",
+    scope: "game",
+    files: ["app.js", "dice-renderer.js", "styles.css", "index.html", "sw.js", "server.js", "diceManager.js"],
+    changes: [
+      "🎲 DADOS: eliminado el modo 3D completo — ahora el juego usa exclusivamente dados 2D SVG con skins",
+      "🧹 LIMPIEZA: removido selector de calidad, canvas 3D, vendor Three.js y cache del Service Worker",
+      "🐛 FIX: constante XP_PER_STREAK_WIN declarada (causaba ReferenceError post-victoria)",
+      "🛡️ FIX: onMatchWon garantiza GAME_OVER aunque falle pre-broadcast",
+      "🛡️ FIX: _advanceTurn termina partida si todos quedan eliminados",
+      "📱 FIX: flags _winShown/_gameOverShown reseteados al iniciar partida nueva"
+    ]
+  },
   {
     version: "4.7.0",
     date: "2026-08-02",
