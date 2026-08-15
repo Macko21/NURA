@@ -1680,6 +1680,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'scored');
+      if (data.playerId===S.id) { applyNearWinEffect(data.match); }
       setMsg(`Sacó ${data.rollScore} pts → Costo 1000 → Ganaste ${data.gained} pts`, 'good');
       $('turn-points').textContent = '0';
       $('roll-count').textContent  = '— / 3';
@@ -1740,7 +1741,7 @@ function handle(type, data) {
         updateTurnUI(data.match);
       }
       syncMyScore(data.match);
-      if (data.playerId===S.id) playSkinScore();
+      if (data.playerId===S.id) { applyNearWinEffect(data.match); playSkinScore(); }
       break;
 
     case 'DEAD_ROLL':
@@ -1749,6 +1750,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
+      if (data.playerId===S.id) { triggerScreenShake(); }
       setMsg('¡Sin puntos! Turno perdido 💀','bad');
       updateTurnUI(data.match);
       if (data.playerId===S.id) stopTimer();
@@ -1762,6 +1764,7 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'dead');
+      if (data.playerId===S.id) { triggerScreenShake(); }
       setMsg('¡Te pasaste de 10.000! 💥','bad');
       updateTurnUI(data.match);
       if (data.playerId===S.id) stopTimer();
@@ -1775,12 +1778,14 @@ function handle(type, data) {
       syncEquippedFromMatch(data.match);
       renderSB(data.match);
       showDice(data.dice,'all');
+      if (data.playerId===S.id) { triggerHotFlash(); }
       setMsg('🔥 DADOS CALIENTES — Si puntúan todos, seguís; si puntúa parcialmente, suma y termina','hot');
       $('turn-points').textContent = data.turnPoints;
       $('bank-pts').textContent    = data.turnPoints>0 ? '+'+data.turnPoints : '';
       if (data.playerId===S.id) { flashTurnPoints(); startTimer(TURN_SECS); }
       updateTurnUI(data.match);
       syncMyScore(data.match);
+      if (data.playerId===S.id) { applyNearWinEffect(data.match); }
       sys(`🔥 ${data.playerName} dados calientes! +${data.rollScore} pts acumulados`);
       playSkinHot();
       break;
@@ -1797,6 +1802,7 @@ function handle(type, data) {
       if (data.playerId===S.id) {
         stopTimer();
         SFX.bank();
+        applyNearWinEffect(data.match);
         if (!data.auto) toast(`✔ Anotaste ${data.gained} puntos. Total: ${data.totalScore}`);
       }
       break;

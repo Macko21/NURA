@@ -212,6 +212,7 @@ function showDice(dice, mode) {
   }
 
   const diceStates = [];
+  const isDead = mode === 'dead';
   dice.forEach((val, i) => {
     let state = 'normal';
     if (mode === 'all')    state = 'hot';
@@ -220,11 +221,19 @@ function showDice(dice, mode) {
     diceStates.push(state);
     _lastDiceView.diceStates.push(state);
     const die = makeDie(val, state, activeSkinId);
-    die.style.animationDelay = (i * 55) + 'ms';
-    if (activeSpecialId === '29' && mode !== 'dead') {
+    // Delay escalonado exponencial: los primeros caen rápido,
+    // los últimos tardan más para generar tensión
+    const isLast = i === dice.length - 1;
+    const baseDelay = isDead ? (i * 60) : (i * 120 + i * i * 25);
+    die.style.animationDelay = baseDelay + 'ms';
+    // Último dado recibe clase especial para wobble dramático
+    if (isLast && !isDead && dice.length > 1) {
+      die.classList.add('die-rolling-last');
+    }
+    if (activeSpecialId === '29' && !isDead) {
       die.classList.add('magic-dice');
     }
-    if (activeSpecialId === '48' && mode !== 'dead') {
+    if (activeSpecialId === '48' && !isDead) {
       die.classList.add('electric-dice');
     }
     row.appendChild(die);
@@ -246,6 +255,45 @@ function clearDice() {
 }
 
 
+
+/* ── Screen shake dramático ────────────────────────── */
+function triggerScreenShake() {
+  const table = document.querySelector('.game-table');
+  if (!table) return;
+  table.classList.remove('shake');
+  void table.offsetWidth; // force reflow
+  table.classList.add('shake');
+  setTimeout(() => table.classList.remove('shake'), 500);
+}
+
+/* ── Flash dorado para hot dice ──────────────────── */
+function triggerHotFlash() {
+  const tray = document.querySelector('.dice-tray');
+  if (!tray) return;
+  tray.classList.remove('hot-flash');
+  void tray.offsetWidth;
+  tray.classList.add('hot-flash');
+  setTimeout(() => tray.classList.remove('hot-flash'), 700);
+}
+
+/* ── Modo tenso: dado cerca de 10.000 ────────────── */
+function applyNearWinEffect(match) {
+  if (!match) return;
+  const myPlayer = match.players?.find(p => p.id === (typeof S !== 'undefined' ? S.id : null));
+  if (!myPlayer) return;
+  const score = myPlayer.score || 0;
+  const tray = document.querySelector('.dice-tray');
+  if (!tray) return;
+  if (score >= 9000 && score < 10000) {
+    tray.classList.add('near-win-tray');
+    tray.style.borderColor = 'rgba(255,80,80,.5)';
+    tray.style.boxShadow = '0 0 20px rgba(255,50,50,.3), inset 0 0 12px rgba(255,50,50,.1)';
+  } else {
+    tray.classList.remove('near-win-tray');
+    tray.style.borderColor = '';
+    tray.style.boxShadow = '';
+  }
+}
 
 function setMsg(text, type) {
   const el = document.getElementById('roll-msg');

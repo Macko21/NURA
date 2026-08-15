@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.8.0";
+const GAME_VERSION = "4.8.1";
 
 const CHANGELOG = [
+  {
+    version: "4.8.1",
+    date: "2026-08-15",
+    title: "🎲 Dados dramáticos con tensión y efectos de impacto",
+    scope: "game",
+    files: ["dice-renderer.js", "styles.css", "app.js"],
+    changes: [
+      "🎲 ANIMACIÓN: dados caen uno por uno con delay escalonado exponencial — los primeros son rápidos, los últimos tardan más para generar tensión",
+      "🎲 WOBBLE: el último dado tiene una animación de balanceo más larga antes de asentarse (tipo tragamenedas)",
+      "💥 SCREEN SHAKE: la pantalla se sacude al tirar muerto (farkle) o pasarte de 10.000 — feedback táctil del error",
+      "✨ FLASH DORADO: la bandeja de dados brilla al recibir dados calientes — señal visual de éxito",
+      "🔴 MODO TENSO: cuando tu puntaje supera 9.000, el borde del tablero pulsa en rojo — todos ven que estás cerca de ganar",
+      "🎯 LAND: dados tienen un mini-impacto al aterrizar para sensación de peso"
+    ]
+  },
   {
     version: "4.8.0",
     date: "2026-08-15",
