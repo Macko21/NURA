@@ -751,6 +751,56 @@ app.get("/api/tournaments/history", requireAuth, async (req, res) => {
   }
 });
 
+// ── DESAFÍO DIARIO ────────────────────────────────────────────
+
+app.get("/api/daily-challenge", requireAuth, async (req, res) => {
+  try {
+    const { ensureTodayChallenge, getDailyPlayerScore } = require("./database");
+    const challenge = await ensureTodayChallenge();
+    const playerId = req.user.playerId || req.user.username;
+    const myScore = await getDailyPlayerScore(playerId);
+    res.json({ challenge, myScore });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/daily-challenge/leaderboard", requireAuth, async (req, res) => {
+  try {
+    const { getDailyLeaderboard } = require("./database");
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const leaderboard = await getDailyLeaderboard(limit);
+    res.json({ leaderboard });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/daily-challenge/submit", requireAuth, async (req, res) => {
+  try {
+    const { submitDailyScore } = require("./database");
+    const playerId = req.user.playerId || req.user.username;
+    const { playerName, score, rolls, completed } = req.body;
+    if (!playerName || typeof score !== 'number') {
+      return res.status(400).json({ error: 'Datos inválidos' });
+    }
+    await submitDailyScore(playerId, playerName, Math.floor(score), rolls || 0, !!completed);
+    // Recompensas si completó el desafío
+    if (completed && score >= 10000) {
+      const { ensureTodayChallenge } = require("./database");
+      const challenge = await ensureTodayChallenge();
+      try {
+        await pool.query('UPDATE players SET coins = coins + $1 WHERE id = $2', [challenge.reward, playerId]);
+        await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+          [playerId, challenge.reward, `Desafío diario completado: ${challenge.name}`, Date.now()]);
+      } catch(e) {}
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── VERSIÓN Y CHANGELOG ──────────────────────────────────────
 // Cache de la versión (se actualiza al reiniciar el server)
 let _versionCache = null;
@@ -1921,6 +1971,20 @@ async function onMatchWon(match, roomId) {
       if (p.fiveOnes > 0 && p.id === winner.id) await registerFiveOnes(p.id);
     }
     if (isBotGame) console.log(`🤖 Partida contra bots registrada. Ganador: ${winner.name || winner.id}`);
+
+    // ── Desafío Diario: guardar puntaje del jugador humano ──
+    if (room?.isDailyChallenge) {
+      try {
+        const { submitDailyScore } = require('./database');
+        const humanPlayer = match.players.find(p => !p.isBot);
+        if (humanPlayer) {
+          const rolls = match.history?.filter(e => e.type === 'ROLL' && e.payload?.playerId === humanPlayer.id).length || 0;
+          const completed = humanPlayer.score >= 10000;
+          await submitDailyScore(humanPlayer.id, humanPlayer.name, humanPlayer.score, rolls, completed);
+          console.log(`🎯 Desafío diario: ${humanPlayer.name} score=${humanPlayer.score} completed=${completed}`);
+        }
+      } catch(e) { console.error('Error guardando score diario:', e.message); }
+    }
   } catch (e) {
     console.error("DB post-win:", e.message);
   }
@@ -3178,6 +3242,66 @@ wss.on("connection", socket => {
         } catch (err) {
           console.error("Error en START_BOT_GAME:", err);
           send(socket, "ERROR", { message: "Error al iniciar partida contra bots" });
+        }
+        return;
+      }
+
+      // ── DESAFÍO DIARIO ──────────────────────────────
+      if (type === "START_DAILY") {
+        try {
+          const playerName = data.playerName || socket.playerName || 'Jugador';
+          const playerId = data.playerId || socket.playerId;
+          if (!playerId) {
+            send(socket, "ERROR", { message: "No se pudo identificar al jugador" });
+            return;
+          }
+          const activeRoom = findActivePlayerRoom(playerId);
+          if (activeRoom) {
+            send(socket, "ERROR", { message: "Ya estás en una partida activa" });
+            return;
+          }
+          leaveWaitingRooms(playerId);
+
+          // Crear sala solo para el jugador
+          const room = createRoom({
+            ownerId: playerId,
+            ownerName: playerName,
+            isPrivate: true,
+            maxPlayers: 2,
+            ownerIsGuest: !!socket.isGuest
+          });
+          room.isBotGame = true;
+          room.isDailyChallenge = true;
+
+          clients.set(playerId, socket);
+          socket.playerId = playerId;
+          socket.playerName = playerName;
+          socket.roomId = room.id;
+
+          send(socket, "ROOM_CREATED", { room });
+
+          // Agregar 1 bot fácil como oponente
+          botGameHandler.addBotsToRoom(room, 1, 'easy');
+          setReady(room.id, playerId, true);
+
+          setTimeout(async () => {
+            try {
+              await startMatchForRoom(room.id);
+              setTurnCallback(room.id, (rid) => {
+                botGameHandler.scheduleBotTurnIfNeeded(rid, broadcastRoom);
+              });
+              setTimeout(() => {
+                botGameHandler.scheduleBotTurnIfNeeded(room.id, broadcastRoom);
+              }, 1000);
+            } catch (e) {
+              console.error("Error starting daily match:", e.message);
+            }
+          }, 500);
+
+          console.log(`🎯 Desafío diario iniciado: jugador: ${playerName}`);
+        } catch (err) {
+          console.error("Error en START_DAILY:", err);
+          send(socket, "ERROR", { message: "Error al iniciar desafío diario" });
         }
         return;
       }

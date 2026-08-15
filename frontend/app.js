@@ -4150,6 +4150,28 @@ function initUI() {
     $('tournament-bracket-view').classList.add('hidden');
   };
 
+  // Desafío Diario
+  $('btn-daily').onclick = () => {
+    if (!isLogged()) { toast('🔒 Debes iniciar sesión'); return; }
+    openDailyChallenge();
+  };
+  $('btn-close-daily').onclick = closeDailyChallenge;
+  $('btn-play-daily').onclick = async () => {
+    closeDailyChallenge();
+    toast('🎯 Iniciando desafío diario...', 2000);
+    // Crear sala contra bots con modificador del desafío
+    const token = localStorage.getItem('gameToken');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/daily-challenge', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const { challenge } = await res.json();
+      // Enviar al servidor para crear partida con modificadores
+      wsSend('START_DAILY', { challenge });
+    } catch(e) { toast('Error iniciando desafío'); }
+  };
+
   $('btn-ranking').onclick = async () => {
     if (!isLogged()) {
       toast('🔒 Debes iniciar sesión para ver el ranking');
@@ -5731,6 +5753,72 @@ window.addEventListener('macko-native-resume', () => {
 /* ════════════════════════════════════════════════════════
    REGLAS Y TUTORIAL
    ════════════════════════════════════════════════════════ */
+
+/* ── Desafío Diario ─────────────────────────────────── */
+async function openDailyChallenge() {
+  const modal = $('modal-daily');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  try {
+    const token = localStorage.getItem('gameToken');
+    const res = await fetch('/api/daily-challenge', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) throw new Error('Error cargando desafío');
+    const { challenge, myScore } = await res.json();
+
+    // Llenar datos del desafío
+    $('daily-icon').textContent = challenge.name.split(' ')[0] || '🎯';
+    $('daily-name').textContent = challenge.name;
+    $('daily-desc').textContent = challenge.description;
+    $('daily-reward-amt').textContent = challenge.reward;
+
+    // Mi puntaje
+    const myScoreEl = $('daily-my-score');
+    if (myScore && myScore.score > 0) {
+      myScoreEl.classList.remove('hidden');
+      $('daily-best').textContent = myScore.score.toLocaleString();
+    } else {
+      myScoreEl.classList.add('hidden');
+    }
+
+    // Leaderboard
+    const lbRes = await fetch('/api/daily-challenge/leaderboard', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const { leaderboard } = await lbRes.json();
+    renderDailyLeaderboard(leaderboard);
+
+  } catch(e) {
+    toast('Error cargando desafío diario');
+    modal.classList.add('hidden');
+  }
+}
+
+function renderDailyLeaderboard(rows) {
+  const el = $('daily-leaderboard');
+  if (!el) return;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<p style="padding:16px;color:var(--text3);font-size:12px">Sé el primero en jugar hoy!</p>';
+    return;
+  }
+  el.innerHTML = rows.map((r, i) => {
+    const rank = i + 1;
+    const isMe = r.player_id === S.id;
+    const rankClass = rank === 1 ? 'top1' : rank === 2 ? 'top2' : rank === 3 ? 'top3' : '';
+    const badge = r.completed ? '<span class="daily-lb-badge">✔</span>' : '';
+    return `<div class="daily-lb-row${isMe ? ' me' : ''}">
+      <span class="daily-lb-rank ${rankClass}">${rank}</span>
+      <span class="daily-lb-name">${esc(r.player_name)} ${badge}</span>
+      <span class="daily-lb-score">${r.score.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+}
+
+function closeDailyChallenge() {
+  $('modal-daily')?.classList.add('hidden');
+}
 
 /* ── Modal de reglas ───────────────────────────────── */
 function openRules() {

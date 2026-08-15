@@ -394,6 +394,39 @@ async function initializeDatabase() {
         )
       `);
     } catch(e) { console.error('Error creating tournament_matches table:', e.message); }
+
+    // ── Desafío Diario ──
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS daily_challenges (
+          id SERIAL PRIMARY KEY,
+          challenge_date DATE UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          modifier TEXT NOT NULL,
+          target_score INTEGER DEFAULT 10000,
+          lives INTEGER DEFAULT 5,
+          entry_attempts INTEGER DEFAULT 3,
+          reward_coins INTEGER DEFAULT 500,
+          reward_xp INTEGER DEFAULT 100,
+          created_at BIGINT NOT NULL
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS daily_scores (
+          id SERIAL PRIMARY KEY,
+          challenge_date DATE NOT NULL,
+          player_id TEXT NOT NULL,
+          player_name TEXT NOT NULL,
+          score INTEGER NOT NULL,
+          rolls INTEGER DEFAULT 0,
+          completed BOOLEAN DEFAULT FALSE,
+          completed_at BIGINT,
+          UNIQUE(challenge_date, player_id)
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(challenge_date, score DESC)`);
+    } catch(e) { console.error('Error creating daily_challenges tables:', e.message); }
     for (const sql of migraciones) {
       try { await pool.query(sql); } catch(e) {}
     }
@@ -2711,6 +2744,83 @@ async function getTournamentStats() {
   } catch(e) { return {}; }
 }
 
+/* ── Desafío Diario ───────────────────────────────── */
+
+// Generadores de desafíos diarios (determinísticos por fecha)
+const DAILY_CHALLENGES = [
+  { name: '🔥 Fuego y Hielo',     description: 'Solo dados de fuego y hielo cuentan (1, 2, 5, 6)', modifier: 'fire_ice',    target: 10000, lives: 5, reward: 500 },
+  { name: '💀 Modo Supervivencia', description: '3 vidas, entrá con 500 en vez de 1000',              modifier: 'survival',    target: 10000, lives: 3, reward: 750 },
+  { name: '⚡ Relámpago',          description: 'Solo 2 intentos por turno, 4 vidas',                 modifier: 'lightning',   target: 10000, lives: 4, reward: 600 },
+  { name: '🎲 Dados Locos',        description: '6 dados siempre, pero más dados = más riesgo',       modifier: 'crazy_dice',  target: 10000, lives: 5, reward: 500 },
+  { name: '🏔️ Monte Callejero',   description: 'Entrá con 2000, 3 vidas, maximal riesgo',           modifier: 'mountain',    target: 10000, lives: 3, reward: 1000 },
+  { name: '🌅 Amanecer',           description: 'Primer turno: 6 dados, después 5. 4 vidas.',        modifier: 'sunrise',     target: 10000, lives: 4, reward: 650 },
+  { name: '🌊 Marea Alta',         description: 'Los 1s valen el doble, los 5s nada. 5 vidas.',      modifier: 'high_tide',   target: 10000, lives: 5, reward: 550 },
+  { name: '🌑 Eclipse Total',      description: 'Sin dados calientes. 3 vidas, alto riesgo.',         modifier: 'eclipse',     target: 10000, lives: 3, reward: 800 },
+];
+
+function getTodayChallenge() {
+  const today = new Date();
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const idx = seed % DAILY_CHALLENGES.length;
+  return { ...DAILY_CHALLENGES[idx], date: today.toISOString().split('T')[0] };
+}
+
+async function ensureTodayChallenge() {
+  const challenge = getTodayChallenge();
+  try {
+    await pool.query(
+      `INSERT INTO daily_challenges (challenge_date, name, description, modifier, target_score, lives, entry_attempts, reward_coins, reward_xp, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (challenge_date) DO NOTHING`,
+      [challenge.date, challenge.name, challenge.description, challenge.modifier, challenge.target, challenge.lives, 3, challenge.reward, 100, Date.now()]
+    );
+  } catch(e) { console.error('ensureTodayChallenge:', e.message); }
+  return challenge;
+}
+
+async function submitDailyScore(playerId, playerName, score, rolls, completed) {
+  const challenge = getTodayChallenge();
+  try {
+    await pool.query(
+      `INSERT INTO daily_scores (challenge_date, player_id, player_name, score, rolls, completed, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (challenge_date, player_id) DO UPDATE SET
+         score = GREATEST(daily_scores.score, $4),
+         rolls = $5,
+         completed = daily_scores.completed OR $6,
+         completed_at = COALESCE(daily_scores.completed_at, CASE WHEN $6 THEN $7 ELSE NULL END)`,
+      [challenge.date, playerId, playerName, score, rolls, completed, completed ? Date.now() : null]
+    );
+  } catch(e) { console.error('submitDailyScore:', e.message); }
+}
+
+async function getDailyLeaderboard(limit = 20) {
+  const challenge = getTodayChallenge();
+  try {
+    const result = await pool.query(
+      `SELECT player_id, player_name, score, rolls, completed
+       FROM daily_scores
+       WHERE challenge_date = $1
+       ORDER BY completed DESC, score DESC
+       LIMIT $2`,
+      [challenge.date, limit]
+    );
+    return result.rows;
+  } catch(e) { return []; }
+}
+
+async function getDailyPlayerScore(playerId) {
+  const challenge = getTodayChallenge();
+  try {
+    const result = await pool.query(
+      `SELECT score, rolls, completed FROM daily_scores
+       WHERE challenge_date = $1 AND player_id = $2`,
+      [challenge.date, playerId]
+    );
+    return result.rows[0] || null;
+  } catch(e) { return null; }
+}
+
 module.exports = {
   initializeDatabase,
   createPlayer,
@@ -2766,5 +2876,11 @@ module.exports = {
   getTournamentBracketData,
   cancelTournament,
   getTournamentHistoryByPlayer,
-  getTournamentStats
+  getTournamentStats,
+  // Desafío Diario
+  ensureTodayChallenge,
+  submitDailyScore,
+  getDailyLeaderboard,
+  getDailyPlayerScore,
+  getTodayChallenge
 };

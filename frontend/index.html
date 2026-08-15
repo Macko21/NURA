@@ -118,6 +118,7 @@
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
       </div>
       <button class="btn btn-ghost" id="btn-bot-game">🤖 Jugar vs Bots</button>
+      <button class="btn btn-ghost" id="btn-daily" style="color:var(--gold2)">🎯 Desafío Diario</button>
       <button class="btn btn-link" id="btn-portal">🏛️ Portal social</button>
       <button class="btn btn-link" id="btn-ranking">🏆 Ranking global</button>
       <button class="btn btn-link" id="btn-tournaments" style="color:var(--gold2)">🏆 Torneos<span id="tournament-push-badge" class="push-badge hidden">🔔</span></button>
@@ -528,6 +529,26 @@
         <button id="tb-back" class="btn btn-ghost" style="width:auto;padding:6px 14px;font-size:11px;margin-bottom:12px">← Volver a lista</button>
       </div>
       <div id="tournament-bracket" class="tournament-bracket"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DESAFÍO DIARIO ══ -->
+<div id="modal-daily" class="modal hidden">
+  <div class="modal-box" style="max-width:480px;width:92%;text-align:center;padding:24px;max-height:85vh;overflow-y:auto">
+    <button id="btn-close-daily" class="close-modal-btn">✕</button>
+    <div id="daily-icon" style="font-size:48px;margin-bottom:8px">🎯</div>
+    <h2 id="daily-name" style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:4px;font-size:20px">Desafío Diario</h2>
+    <p id="daily-desc" class="shop-desc" style="margin-bottom:12px"></p>
+    <div id="daily-my-score" class="daily-my-score hidden">
+      <span style="font-size:13px;color:var(--text2)">Tu mejor:</span>
+      <span id="daily-best" style="font-family:'Cinzel',serif;font-size:24px;font-weight:900;color:var(--gold)">0</span>
+    </div>
+    <div id="daily-reward" style="font-size:12px;color:var(--text3);margin:8px 0 16px">🎁 Recompensa: <span id="daily-reward-amt">500</span> 🪙</div>
+    <button id="btn-play-daily" class="btn btn-gold glow-btn" style="width:100%;margin-bottom:16px">🎯 ¡Jugar Desafío!</button>
+    <h3 style="font-size:13px;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">🏆 Ranking de Hoy</h3>
+    <div id="daily-leaderboard" class="daily-leaderboard">
+      <p style="padding:16px;color:var(--text3);font-size:12px">Cargando ranking...</p>
     </div>
   </div>
 </div>

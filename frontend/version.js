@@ -10,9 +10,25 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.8.5";
+const GAME_VERSION = "4.9.0";
 
 const CHANGELOG = [
+  {
+    version: "4.9.0",
+    date: "2026-08-15",
+    title: "🎯 Desafío Diario con ranking",
+    scope: "game",
+    files: ["database.js", "server.js", "app.js", "index.html", "styles.css"],
+    changes: [
+      "🎯 DESAFÍO DIARIO: cada día hay un desafío nuevo con nombre y temática única",
+      "🤖 PARTIDA SOLO: jugás contra 1 bot fácil para lograr el mejor puntaje",
+      "🏆 RANKING DIARIO: leaderboard de todos los jugadores del día con mejores puntajes",
+      "💰 RECOMPENSA: 500 monedas al completar el desafío (llegar a 10.000)",
+      "📊 MI MEJOR: tu mejor puntaje del día se guarda y muestra en el modal",
+      "🎨 8 TEMAS: Fuego y Hielo, Supervivencia, Relámpago, Dados Locos, Monte Callejero, Amanecer, Marea Alta, Eclipse Total",
+      "📅 DETERMINISTICO: todos los jugadores ven el mismo desafío cada día"
+    ]
+  },
   {
     version: "4.8.5",
     date: "2026-08-15",
