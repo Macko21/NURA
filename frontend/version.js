@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.11.0";
+const GAME_VERSION = "4.12.0";
 
 const CHANGELOG = [
+  {
+    version: "4.12.0",
+    date: "2026-08-16",
+    title: "🎨 Lobby rediseñado y cofre icon-only",
+    scope: "ui",
+    files: ["index.html", "styles.css", "app.js"],
+    changes: [
+      "🎨 LOBBY: menú principal más ancho (460px) para mejor legibilidad",
+      "🎨 GRID 2 COLS: Portal, Ranking, Torneos, Feedback y Reglas ahora en grid de 2 columnas",
+      "🎁 COFRE: movido al top bar junto al botón de música, solo icono sin texto",
+      "🎁 COFRE: click reclama si está listo, muestra tooltip con tiempo restante si no",
+      "🎁 COFRE: animación de pulso cuando está listo para reclamar"
+    ]
+  },
   {
     version: "4.11.0",
     date: "2026-08-16",

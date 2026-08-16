@@ -389,7 +389,11 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 }
 .btn-chest:hover:not(:disabled){filter:brightness(1.1);transform:translateY(1px)}
 .btn-chest:disabled{opacity:.5;cursor:not-allowed}
-.btn-chest-icon{font-size:15px;line-height:1}
+.btn-chest-icon{font-size:15px;line-height:1;background:var(--bg-input);border:1px solid var(--border2);border-radius:var(--r-sm);padding:4px 8px;cursor:pointer;transition:all .2s;flex-shrink:0}
+.btn-chest-icon:hover{border-color:var(--gold);color:var(--gold);transform:scale(1.08)}
+.btn-chest-icon.chest-ready{animation:chestPulse 1.5s ease-in-out infinite}
+@keyframes chestPulse{0%,100%{box-shadow:0 0 0 0 rgba(240,180,41,0)}50%{box-shadow:0 0 0 6px rgba(240,180,41,.25)}}
+.btn-chest-icon.chest-cooldown{opacity:.5;cursor:default}
 .btn-chest-copy{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05;white-space:nowrap}
 .btn-chest-copy strong{font:700 10px 'Sora',sans-serif}
 .btn-chest-copy small{font:800 11px 'Cinzel',serif;margin-top:3px}
@@ -424,7 +428,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 .lobby-content{
   position:relative;z-index:2;
   display:flex;flex-direction:column;align-items:center;gap:22px;
-  padding:20px;padding-bottom:80px;width:100%;max-width:360px;
+  padding:20px;padding-bottom:80px;width:100%;max-width:460px;
 }
 .logo-block{text-align:center}
 .logo-die{
@@ -475,6 +479,8 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 .toggle-opt:hover:not(.active){background:var(--bg-hover);color:var(--text2)}
 .lobby-form{width:100%;display:flex;flex-direction:column;gap:10px}
 .lobby-form .btn-link{text-align:center;justify-content:center}
+.lobby-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.lobby-grid-2 .btn-link{font-size:12px;padding:10px 6px}
 #btn-bot-game{border-color:rgba(100,200,255,.25);color:var(--accent)}
 
 /* ── Misiones diarias en lobby ──────────────────────── */
