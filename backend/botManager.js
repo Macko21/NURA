@@ -1,8 +1,23 @@
 "use strict";
 
-const BOT_NAMES = ["🤖 Tron", "⚡ Byte", "🎲 D20", "💎 Ruby", "🔥 Pixel", "🧊 Glitch", "🌟 Nova", "🛡️ Código", "⚙️ R2", "🔮 Chips"];
+const BOT_NAMES = ["Tron", "Byte", "D20", "Ruby", "Pixel", "Glitch", "Nova", "Código", "R2", "Chips"];
+const BOT_AVATARS = ["⚡", "🎲", "💎", "🔥", "🧊", "🌟", "🛡️", "⚙️", "🔮", "🎯"];
+const BOT_DICE_SKINS = [1, 2, 4, 5, 6, 18, 19, 20, 21, 22, 32, 33];
+const BOT_AVATAR_IDS = [7, 8, 9, 10, 11, 12, 13, 14, 23, 24, 25, 26, 27, 34, 35];
+const BOT_SPECIAL_IDS = [3, 15, 16, 17, 28, 29, 30, 31, 36];
 
-function getBotName(index) { return BOT_NAMES[index % BOT_NAMES.length]; }
+/** Shuffle Fisher-Yates */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/** Mezcla nombres + avatares para que cada bot sea único por partida */
+function getBotName(index, shuffledNames) { return shuffledNames[index % shuffledNames.length]; }
+function getBotAvatarEmoji(index, shuffledAvatars) { return shuffledAvatars[index % shuffledAvatars.length]; }
 function generateBotId(index) { return `bot_${index}_${Date.now()}`; }
 
 function shouldBank(player, difficulty, context = {}) {
@@ -50,11 +65,12 @@ function getBotPresentationDelay(event) {
 }
 
 const BOT_COSMETICS = {
-  dice: [1, 2, 4, 5, 6, 18, 19, 20, 21, 22, 32, 33],
-  avatar: [7, 8, 9, 10, 11, 12, 13, 14, 23, 24, 25, 26, 27, 34, 35],
-  special: [3, 15, 16, 17, 28, 29, 30, 31, 36]
+  dice: BOT_DICE_SKINS,
+  avatar: BOT_AVATAR_IDS,
+  special: BOT_SPECIAL_IDS
 };
 
+/** Genera un set de cosmeticos aleatorios para un bot */
 function getRandomCosmetics(catalog = []) {
   const dice = catalog.filter(i => i.category === 'dados' || (i.category === 'ultra' && /^Dados\b/i.test(i.name)));
   const avatars = catalog.filter(i =>
@@ -66,7 +82,9 @@ function getRandomCosmetics(catalog = []) {
   const die = pick(dice, BOT_COSMETICS.dice);
   const avatar = pick(avatars, BOT_COSMETICS.avatar);
   const special = pick(specials, BOT_COSMETICS.special);
-  return { equippedDice: die.id, equippedAvatar: avatar.icon || '🤖', equippedSpecial: special.id };
+  // Nunca usar 🤖 como avatar — causa confusión con "bot"
+  const avatarIcon = avatar.icon && avatar.icon !== '🤖' ? avatar.icon : BOT_AVATARS[Math.floor(Math.random() * BOT_AVATARS.length)];
+  return { equippedDice: die.id, equippedAvatar: avatarIcon, equippedSpecial: special.id };
 }
 
-module.exports = { getBotName, generateBotId, shouldBank, getBotDelay, getBotPresentationDelay, getRandomCosmetics, BOT_NAMES };
+module.exports = { getBotName, getBotAvatarEmoji, generateBotId, shouldBank, getBotDelay, getBotPresentationDelay, getRandomCosmetics, BOT_NAMES, BOT_AVATARS, shuffle };

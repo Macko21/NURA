@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.12.0";
+const GAME_VERSION = "4.13.0";
 
 const CHANGELOG = [
+  {
+    version: "4.13.0",
+    date: "2026-08-16",
+    title: "🤖 Bots mejorados — nombres y avatares aleatorios",
+    scope: "game",
+    files: ["backend/botManager.js", "backend/botGameHandler.js", "version.js"],
+    changes: [
+      "🤖 BOTS: nombres mezclados aleatoriamente cada partida (ya no siempre Tron primero)",
+      "🤖 BOTS: avatares emoji aleatorios sin usar 🤖 (causa confusión con la etiqueta bot)",
+      "🤖 BOTS: cosmeticos de dados y skins aleatorios de la tienda",
+      "🤖 BOTS: el jugador que empieza es aleatorio (ya estaba implementado)"
+    ]
+  },
   {
     version: "4.12.0",
     date: "2026-08-16",
