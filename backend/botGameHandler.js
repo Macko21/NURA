@@ -21,9 +21,13 @@ function addBotsToRoom(room, botCount, difficulty) {
   room.isBotGame = true;
   room.botDifficulty = difficulty;
 
+  // Nombres y avatares aleatorios para esta partida
+  const shuffledNames = botManager.shuffle([...botManager.BOT_NAMES]);
+  const shuffledAvatars = botManager.shuffle([...botManager.BOT_AVATARS]);
+
   for (let i = 0; i < botCount; i++) {
     const botId = botManager.generateBotId(i);
-    const botName = botManager.getBotName(i);
+    const botName = botManager.getBotName(i, shuffledNames);
     try {
       addPlayer(room.id, botId, botName);
       setReady(room.id, botId, true);
