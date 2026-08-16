@@ -457,6 +457,20 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 .boost-badge.hidden{display:none}
 @keyframes boostPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05);box-shadow:0 0 24px rgba(212,175,55,.5)}}
 
+/* Toggle de visibilidad de sala */
+.room-visibility-toggle{
+  display:flex;align-items:center;gap:10px;
+}
+.toggle-label{font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap}
+.toggle-group{display:flex;gap:0;border:1px solid var(--border2);border-radius:10px;overflow:hidden;flex:1}
+.toggle-opt{
+  flex:1;padding:7px 10px;border:none;cursor:pointer;
+  font:600 11px inherit;background:var(--bg-card2);color:var(--text3);
+  transition:all .18s;text-align:center;
+}
+.toggle-opt:first-child{border-right:1px solid var(--border2)}
+.toggle-opt.active{background:var(--gold-bg);color:var(--gold);font-weight:700}
+.toggle-opt:hover:not(.active){background:var(--bg-hover);color:var(--text2)}
 .lobby-form{width:100%;display:flex;flex-direction:column;gap:10px}
 .lobby-form .btn-link{text-align:center;justify-content:center}
 #btn-bot-game{border-color:rgba(100,200,255,.25);color:var(--accent)}
@@ -1106,8 +1120,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
    ══════════════════════════════════════ */
 .combo-counter{
   display:flex;align-items:center;justify-content:center;gap:6px;
-  width:100%;max-width:200px;margin:0 auto 4px;
-  padding:6px 16px;border-radius:20px;
+  padding:4px 14px;border-radius:20px;
   background:linear-gradient(135deg,rgba(255,100,0,.15),rgba(255,60,0,.08));
   border:1px solid rgba(255,100,0,.3);
   animation:comboAppear .4s cubic-bezier(.22,1,.36,1) both;
@@ -1206,8 +1219,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
    ══════════════════════════════════════ */
 .powerup-bar{
   display:flex;gap:6px;justify-content:center;
-  max-width:280px;margin:0 auto 4px;
-  padding:4px 8px;
+  padding:3px 6px;
   background:linear-gradient(135deg,rgba(150,50,255,.08),rgba(80,40,200,.05));
   border:1px solid rgba(150,50,255,.2);
   border-radius:12px;
@@ -1252,10 +1264,18 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
   100%{transform:translate(-50%,-50%) scale(1);opacity:1}
 }
 .action-zone{
-  display:flex;gap:10px;width:100%;max-width:460px;position:sticky;bottom:0;z-index:4;flex-shrink:0;
+  display:flex;flex-direction:column;gap:4px;width:100%;max-width:460px;position:sticky;bottom:0;z-index:4;flex-shrink:0;
   padding:6px 0 4px;background:linear-gradient(180deg,transparent,var(--bg-dark) 28%);
 }
 .action-zone.hidden{display:none}
+.action-info-row{
+  display:flex;justify-content:center;align-items:center;gap:8px;min-height:32px;
+  flex-wrap:wrap;
+}
+.action-info-row:empty{min-height:0}
+.action-buttons-row{
+  display:flex;gap:10px;width:100%;justify-content:center;
+}
 .waiting-zone{
   display:flex;align-items:center;gap:10px;
   color:var(--text3);font-size:12px;position:sticky;bottom:0;z-index:4;flex-shrink:0;
