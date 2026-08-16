@@ -4252,11 +4252,18 @@ function initUI() {
   /* ── Cofre diario ──────────────────────────────────────── */
   loadChestStatus();
   $('btn-chest').onclick = async () => {
+    const btn = $('btn-chest');
+    if (btn.disabled || btn.classList.contains('chest-cooldown')) {
+      // Mostrar tooltip con tiempo restante
+      const tip = btn.title || 'Cofre no disponible todavía';
+      toast(tip);
+      return;
+    }
     const token = localStorage.getItem('gameToken');
     if (!token) { toast('Debes iniciar sesión'); return; }
-    const btn = $('btn-chest');
     btn.disabled = true;
     btn.textContent = '⏳';
+    btn.classList.remove('chest-ready');
     try {
       const res = await fetch('/api/user/claim-chest', {
         method: 'POST',
@@ -5536,16 +5543,20 @@ function renderChestCountdown() {
     _chestTimer = null;
     _chestReadyAt = 0;
     btn.disabled = false;
-    btn.innerHTML = '<span class="btn-chest-icon">🎁</span><span class="btn-chest-copy"><strong>Cofre listo</strong><small>Reclamar</small></span>';
-    btn.title = '¡Reclamá tu cofre diario!';
+    btn.textContent = '🎁';
+    btn.classList.remove('chest-cooldown');
+    btn.classList.add('chest-ready');
+    btn.title = '🎁 ¡Reclamá tu cofre diario!';
     return;
   }
   const totalMinutes = Math.ceil(remaining / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
   btn.disabled = true;
-  btn.innerHTML = `<span class="btn-chest-icon">⏳</span><span class="btn-chest-copy"><strong>Nuevo cofre</strong><small>${hours}h ${mins}m</small></span>`;
-  btn.title = `Cofre disponible en ${hours}h ${mins}min`;
+  btn.textContent = '⏳';
+  btn.classList.remove('chest-ready');
+  btn.classList.add('chest-cooldown');
+  btn.title = `🎁 Cofre en ${hours}h ${mins}min — hacé click para reclamar cuando esté listo`;
 }
 
 async function loadChestStatus() {
@@ -5562,8 +5573,10 @@ async function loadChestStatus() {
       clearInterval(_chestTimer);
       _chestTimer = null;
       btn.disabled = false;
-      btn.innerHTML = '<span class="btn-chest-icon">🎁</span><span class="btn-chest-copy"><strong>Cofre listo</strong><small>Reclamar</small></span>';
-      btn.title = '¡Reclamá tu cofre diario!';
+      btn.textContent = '🎁';
+      btn.classList.remove('chest-cooldown');
+      btn.classList.add('chest-ready');
+      btn.title = '🎁 ¡Reclamá tu cofre diario!';
     } else {
       _chestReadyAt = Date.now() + Number(d.remaining || 0);
       renderChestCountdown();
