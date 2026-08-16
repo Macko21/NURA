@@ -1123,21 +1123,22 @@ function updateCombo(combo) {
   }
 
   counter.classList.remove('hidden');
-  number.textContent = 'x' + combo;
+  // Mostrar como "2 TURNOS" en vez de "x2" para que sea claro
+  number.textContent = combo;
 
   // Niveles de combo con colores crecientes
   counter.classList.remove('combo-hot', 'combo-max');
   if (combo >= 5) {
     counter.classList.add('combo-max');
     fire.textContent = '⚡';
-    label.textContent = 'MEGACOMBO';
+    label.textContent = 'TURNOS SEGUIDOS';
   } else if (combo >= 3) {
     counter.classList.add('combo-hot');
     fire.textContent = '🔥';
-    label.textContent = 'COMBO';
+    label.textContent = 'TURNOS SEGUIDOS';
   } else {
     fire.textContent = '🔥';
-    label.textContent = 'COMBO';
+    label.textContent = 'TURNOS SEGUIDOS';
   }
 
   // Pop animation
@@ -2472,6 +2473,7 @@ function handle(type, data) {
 const BET_PRESETS = [0, 100, 200, 500, 1000, 2000, 5000];
 let _myBet = 0;
 let _betConfirmed = false;
+let _roomIsPrivate = true; // Por defecto privada
 
 function renderBetting(room) {
   const section = $('betting-section');
@@ -4137,12 +4139,20 @@ function initUI() {
   };
 
   /* Lobby */
+  // Toggle de visibilidad de sala
+  const btnPriv = $('btn-visibility-private');
+  const btnPub = $('btn-visibility-public');
+  if (btnPriv && btnPub) {
+    btnPriv.onclick = () => { _roomIsPrivate = true; btnPriv.classList.add('active'); btnPub.classList.remove('active'); };
+    btnPub.onclick = () => { _roomIsPrivate = false; btnPub.classList.add('active'); btnPriv.classList.remove('active'); };
+  }
+
   $('btn-create').onclick = () => {
     if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }
     withSocketReady(() => wsSend('CREATE_ROOM', {
       playerId:S.id,
       playerName:getPlayerName(),
-      isPrivate:true,
+      isPrivate:_roomIsPrivate,
       maxPlayers:10,
       equippedDice:S.diceEquipped,
       equippedAvatar:S.avatarEquipped,
@@ -4181,6 +4191,15 @@ function initUI() {
     });
   });
 
+  // Bot visibility selector
+  document.querySelectorAll('.room-visibility-btn[data-scope="bots"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.room-visibility-btn[data-scope="bots"]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+
   // Close bot modal
   $('btn-close-bot-game')?.addEventListener('click', () => {
     $('modal-bot-game')?.classList.add('hidden');
@@ -4195,12 +4214,14 @@ function initUI() {
     }
     const countEl = document.querySelector('.bot-count-btn.active');
     const diffEl = document.querySelector('.bot-diff-btn.active');
+    const visEl = document.querySelector('.room-visibility-btn.active[data-scope="bots"]');
     if (!countEl || !diffEl) { toast('Seleccioná cantidad y dificultad', 'error'); return; }
     const botCount = parseInt(countEl.dataset.count);
     const difficulty = diffEl.dataset.diff;
+    const isPrivate = visEl ? visEl.dataset.private !== 'false' : true;
     $('modal-bot-game')?.classList.add('hidden');
     toast('🎮 Creando partida contra bots...', 2000);
-    wsSend('START_BOT_GAME', { botCount, difficulty, playerId: S.id, playerName: getPlayerName() });
+    wsSend('START_BOT_GAME', { botCount, difficulty, isPrivate, playerId: S.id, playerName: getPlayerName() });
   });
 
   /* ── Cofre diario ──────────────────────────────────────── */

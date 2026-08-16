@@ -113,6 +113,13 @@
         <label>Tu nombre</label>
         <input id="input-name" type="text" placeholder="Ej: Macko" maxlength="20" autocomplete="off" class="glass-input">
       </div>
+      <div class="room-visibility-toggle">
+        <label class="toggle-label">Visibilidad:</label>
+        <div class="toggle-group">
+          <button id="btn-visibility-private" class="toggle-opt active">🔒 Privada</button>
+          <button id="btn-visibility-public" class="toggle-opt">🌍 Pública</button>
+        </div>
+      </div>
       <div class="row-2">
         <button class="btn btn-gold glow-btn" id="btn-create">+ Crear sala</button>
         <button class="btn btn-ghost" id="btn-join-open">→ Unirse</button>
@@ -275,36 +282,38 @@
       </div>
     </div>
 
-    <div id="combo-counter" class="combo-counter hidden">
-      <span id="combo-fire" class="combo-fire">🔥</span>
-      <span id="combo-number" class="combo-number">x2</span>
-      <span id="combo-label" class="combo-label">COMBO</span>
-    </div>
-
-    <div id="powerup-bar" class="powerup-bar hidden">
-      <button id="pu-insurance" class="powerup-btn" data-pu="insurance" title="Seguro: no perdés el turno si tirás muerto (300 🪙)">
-        <span class="pu-icon">🛡️</span>
-        <span class="pu-cost">300</span>
-      </button>
-      <button id="pu-extraDie" class="powerup-btn" data-pu="extraDie" title="Dado Extra: tirás 6 dados (200 🪙)">
-        <span class="pu-icon">🎲</span>
-        <span class="pu-cost">200</span>
-      </button>
-      <button id="pu-peek" class="powerup-btn" data-pu="peek" title="Mirar Futuro: ves el resultado antes (400 🪙)">
-        <span class="pu-icon">🔮</span>
-        <span class="pu-cost">400</span>
-      </button>
-    </div>
-
     <div id="action-zone" class="action-zone hidden">
-      <button id="btn-roll" class="btn-roll">
-        <span class="btn-roll-icon">🎲</span>
-        <span id="roll-label">Tirar</span>
-      </button>
-      <button id="btn-bank" class="btn-bank" disabled>
-        <span>✔ Plantarse</span>
-        <span id="bank-pts" class="bank-pts"></span>
-      </button>
+      <div class="action-info-row">
+        <div id="combo-counter" class="combo-counter hidden">
+          <span id="combo-fire" class="combo-fire">🔥</span>
+          <span id="combo-number" class="combo-number">2</span>
+          <span id="combo-label" class="combo-label">TURNOS SEGUIDOS</span>
+        </div>
+        <div id="powerup-bar" class="powerup-bar hidden">
+          <button id="pu-insurance" class="powerup-btn" data-pu="insurance" title="Seguro: no perdés el turno si tirás muerto (300 🪙)">
+            <span class="pu-icon">🛡️</span>
+            <span class="pu-cost">300</span>
+          </button>
+          <button id="pu-extraDie" class="powerup-btn" data-pu="extraDie" title="Dado Extra: tirás 6 dados (200 🪙)">
+            <span class="pu-icon">🎲</span>
+            <span class="pu-cost">200</span>
+          </button>
+          <button id="pu-peek" class="powerup-btn" data-pu="peek" title="Mirar Futuro: ves el resultado antes (400 🪙)">
+            <span class="pu-icon">🔮</span>
+            <span class="pu-cost">400</span>
+          </button>
+        </div>
+      </div>
+      <div class="action-buttons-row">
+        <button id="btn-roll" class="btn-roll">
+          <span class="btn-roll-icon">🎲</span>
+          <span id="roll-label">Tirar</span>
+        </button>
+        <button id="btn-bank" class="btn-bank" disabled>
+          <span>✔ Plantarse</span>
+          <span id="bank-pts" class="bank-pts"></span>
+        </button>
+      </div>
     </div>
 
     <div id="emote-picker" class="emote-picker hidden">
