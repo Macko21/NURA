@@ -4150,9 +4150,9 @@ function initUI() {
   };
 
   // Modal crear sala — visibilidad selector
-  document.querySelectorAll('.room-visibility-btn[data-scope="normal"]').forEach(btn => {
+  document.querySelectorAll('.room-visibility-selector[data-scope="normal"] .room-visibility-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.room-visibility-btn[data-scope="normal"]').forEach(b => b.classList.remove('active'));
+      btn.closest('.room-visibility-selector').querySelectorAll('.room-visibility-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       _roomIsPrivate = btn.dataset.private !== 'false';
       const helpEl = $('create-room-visibility-help');
@@ -4166,7 +4166,7 @@ function initUI() {
 
   // Modal crear sala — confirmar
   $('btn-confirm-create-room')?.addEventListener('click', () => {
-    const visEl = document.querySelector('.room-visibility-btn.active[data-scope="normal"]');
+    const visEl = document.querySelector('.room-visibility-selector[data-scope="normal"] .room-visibility-btn.active');
     _roomIsPrivate = visEl ? visEl.dataset.private !== 'false' : true;
     $('modal-create-room')?.classList.add('hidden');
     withSocketReady(() => wsSend('CREATE_ROOM', {
@@ -4217,9 +4217,9 @@ function initUI() {
   });
 
   // Bot visibility selector
-  document.querySelectorAll('.room-visibility-btn[data-scope="bots"]').forEach(btn => {
+  document.querySelectorAll('.room-visibility-selector[data-scope="bots"] .room-visibility-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.room-visibility-btn[data-scope="bots"]').forEach(b => b.classList.remove('active'));
+      btn.closest('.room-visibility-selector').querySelectorAll('.room-visibility-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     });
   });
@@ -4239,7 +4239,7 @@ function initUI() {
     }
     const countEl = document.querySelector('.bot-count-btn.active');
     const diffEl = document.querySelector('.bot-diff-btn.active');
-    const visEl = document.querySelector('.room-visibility-btn.active[data-scope="bots"]');
+    const visEl = document.querySelector('.room-visibility-selector[data-scope="bots"] .room-visibility-btn.active');
     if (!countEl || !diffEl) { toast('Seleccioná cantidad y dificultad', 'error'); return; }
     const botCount = parseInt(countEl.dataset.count);
     const difficulty = diffEl.dataset.diff;
