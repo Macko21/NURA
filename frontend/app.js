@@ -4139,16 +4139,36 @@ function initUI() {
   };
 
   /* Lobby */
-  // Toggle de visibilidad de sala
-  const btnPriv = $('btn-visibility-private');
-  const btnPub = $('btn-visibility-public');
-  if (btnPriv && btnPub) {
-    btnPriv.onclick = () => { _roomIsPrivate = true; btnPriv.classList.add('active'); btnPub.classList.remove('active'); };
-    btnPub.onclick = () => { _roomIsPrivate = false; btnPub.classList.add('active'); btnPriv.classList.remove('active'); };
-  }
+  // Toggle de visibilidad de sala — solo en modales, no en lobby
+  _roomIsPrivate = true;
 
+  // Crear sala: abrir modal
   $('btn-create').onclick = () => {
     if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }
+    _roomIsPrivate = true;
+    $('modal-create-room')?.classList.remove('hidden');
+  };
+
+  // Modal crear sala — visibilidad selector
+  document.querySelectorAll('.room-visibility-btn[data-scope="normal"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.room-visibility-btn[data-scope="normal"]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _roomIsPrivate = btn.dataset.private !== 'false';
+      const helpEl = $('create-room-visibility-help');
+      if (helpEl) {
+        helpEl.textContent = _roomIsPrivate
+          ? 'Sólo entran con código. Si ya empezó, deben solicitar permiso.'
+          : 'Cualquier jugador puede encontrar la sala y unirse.';
+      }
+    });
+  });
+
+  // Modal crear sala — confirmar
+  $('btn-confirm-create-room')?.addEventListener('click', () => {
+    const visEl = document.querySelector('.room-visibility-btn.active[data-scope="normal"]');
+    _roomIsPrivate = visEl ? visEl.dataset.private !== 'false' : true;
+    $('modal-create-room')?.classList.add('hidden');
     withSocketReady(() => wsSend('CREATE_ROOM', {
       playerId:S.id,
       playerName:getPlayerName(),
@@ -4159,7 +4179,12 @@ function initUI() {
       equippedSpecial:S.specialEquipped,
       equippedSpecials:S.specialsEquipped
     }));
-  };
+  });
+
+  // Modal crear sala — cerrar
+  $('btn-close-create-room')?.addEventListener('click', () => {
+    $('modal-create-room')?.classList.add('hidden');
+  });
 
   $('btn-join-open').onclick = () => {
     if (!preparePlayerIdentity()) { toast(isLogged() ? 'No se pudo recuperar tu usuario. Volvé a iniciar sesión.' : 'Ingresá tu nombre'); return; }

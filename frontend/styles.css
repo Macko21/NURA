@@ -120,7 +120,7 @@ html,body{
 .screen.active{display:flex}
 
 /* Cuando el PWA bar está visible, las screens necesitan padding-bottom */
-.pwa-visible .screen{padding-bottom:38px}
+.pwa-visible .screen{padding-bottom:50px}
 .pwa-visible .pwa-install-bar{display:flex}
 body.game-active .pwa-install-bar{display:none!important}
 .native-app .pwa-install-bar,.native-app .notif-push-row{display:none!important}
@@ -264,16 +264,16 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 
 /* ── PWA Install Bar rediseñada ──────────────────────── */
 .pwa-install-bar{
-  position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
   max-width:340px;width:92%;z-index:250;
-  padding:8px 14px;margin-bottom:12px;
+  padding:8px 14px;
   background:var(--bg-surface);
   border:1px solid var(--border);border-radius:var(--r);
   box-shadow:var(--sh);
   display:flex;align-items:center;gap:8px;
   animation:slideUp .3s ease;
 }
-@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+@keyframes slideUp{from{transform:translateX(-50%) translateY(16px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
 .pwa-install-bar.hidden{display:none}
 .pwa-install-text{flex:1;font-size:10px;color:var(--text2);font-weight:500;white-space:normal;line-height:1.3}
 .pwa-install-btn{
