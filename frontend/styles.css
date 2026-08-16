@@ -424,7 +424,7 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 .lobby-content{
   position:relative;z-index:2;
   display:flex;flex-direction:column;align-items:center;gap:22px;
-  padding:20px;width:100%;max-width:360px;
+  padding:20px;padding-bottom:80px;width:100%;max-width:360px;
 }
 .logo-block{text-align:center}
 .logo-die{
@@ -459,14 +459,16 @@ body.pwa-visible.game-active .screen{padding-bottom:0}
 
 /* Toggle de visibilidad de sala */
 .room-visibility-toggle{
-  display:flex;align-items:center;gap:10px;
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;border-radius:var(--r-sm);
+  background:var(--bg-card);border:1px solid var(--border2);
 }
 .toggle-label{font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap}
-.toggle-group{display:flex;gap:0;border:1px solid var(--border2);border-radius:10px;overflow:hidden;flex:1}
+.toggle-group{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--border2)}
 .toggle-opt{
-  flex:1;padding:7px 10px;border:none;cursor:pointer;
-  font:600 11px inherit;background:var(--bg-card2);color:var(--text3);
-  transition:all .18s;text-align:center;
+  padding:6px 14px;border:none;cursor:pointer;
+  font:600 12px inherit;background:var(--bg-card2);color:var(--text3);
+  transition:all .18s;text-align:center;white-space:nowrap;
 }
 .toggle-opt:first-child{border-right:1px solid var(--border2)}
 .toggle-opt.active{background:var(--gold-bg);color:var(--gold);font-weight:700}
@@ -2592,7 +2594,7 @@ input[type=number]{-moz-appearance:textfield}
   .stat-box{padding:7px 4px}
   .action-zone{padding-top:4px}
   .action-zone{max-width:100%}
-  .lobby-content{gap:14px;padding:12px}
+  .lobby-content{gap:14px;padding:12px;padding-bottom:80px}
   .scoreboard{gap:3px;padding:4px}
   .sc-chip{flex-basis:94px;padding:7px 6px 6px}
   .sc-sc{font-size:11px}
