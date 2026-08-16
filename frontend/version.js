@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.10.0";
+const GAME_VERSION = "4.11.0";
 
 const CHANGELOG = [
+  {
+    version: "4.11.0",
+    date: "2026-08-16",
+    title: "🔧 UI limpieza y fixes",
+    scope: "ui",
+    files: ["index.html", "styles.css", "app.js"],
+    changes: [
+      "🔧 FIX: la visibilidad Privada/Pública ahora solo aparece en los modales de Crear Sala y Jugar vs Bots",
+      "🔧 FIX: el flotante de instalación PWA ya no tapa el menú inferior",
+      "🧹 LIMPIEZA: se removió el toggle de visibilidad del menú principal del lobby",
+      "📱 PWA: barra de instalación reposicionada para mejor UX"
+    ]
+  },
   {
     version: "4.10.0",
     date: "2026-08-15",
