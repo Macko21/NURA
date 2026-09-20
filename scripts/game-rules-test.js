@@ -15,7 +15,8 @@ const {
   destroyMatch,
   handleEntryRoll,
   handleRoll,
-  snapshotMatch
+  snapshotMatch,
+  setDiceRandomIntForTests
 } = require("../backend/diceManager");
 const { AUTO_BANK_DELAY_MS } = require("../backend/constants");
 const { DICE_SKINS, SHOP_DICE_PREVIEW } = require("../frontend/dice-renderer");
@@ -57,16 +58,17 @@ function makeRoom(id) {
 }
 
 function withDice(values, fn) {
-  const originalRandom = Math.random;
   const queue = [...values];
-  Math.random = () => {
+  setDiceRandomIntForTests((min, max) => {
     if (!queue.length) throw new Error("La prueba pidio mas dados de los preparados");
-    return (queue.shift() - 0.5) / 6;
-  };
+    const value = queue.shift();
+    if (value < min || value >= max) throw new Error("Dado preparado fuera de rango");
+    return value;
+  });
   try {
     return fn();
   } finally {
-    Math.random = originalRandom;
+    setDiceRandomIntForTests(null);
   }
 }
 

@@ -6286,6 +6286,10 @@ document.addEventListener('keydown', _tourKeydown);
 
 /* ── Arranque ────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
+  fetch('/api/version?ts=' + Date.now(), { cache: 'no-store' })
+    .then(response => response.json())
+    .then(data => { if (data.version) window.MACKO_SERVER_VERSION = data.version; })
+    .catch(() => {});
   const authSessionValid = await validateStoredAuthSession();
   initRulesTabs();
   // Detectar primer ingreso para tour guiado
@@ -6294,6 +6298,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Bind rules button
   const rulesBtn = $('btn-rules');
   if (rulesBtn) rulesBtn.onclick = openRules;
+  const missionsMobileBtn = $('btn-missions-mobile');
+  if (missionsMobileBtn) missionsMobileBtn.onclick = openMissionTab;
+  const sendRecoveryBtn = $('btn-send-recovery');
+  if (sendRecoveryBtn) sendRecoveryBtn.onclick = event => sendRecoveryEmail(event);
+  const cancelRecoveryBtn = $('btn-cancel-recovery');
+  if (cancelRecoveryBtn) cancelRecoveryBtn.onclick = () => $('modal-forgot').classList.add('hidden');
   
   const closeRulesBtn = $('btn-close-rules');
   if (closeRulesBtn) closeRulesBtn.onclick = closeRules;

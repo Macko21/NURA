@@ -189,9 +189,14 @@ async function login(req, res) {
     const player = await getPlayerByUserId(user.id);
     if (!player) return res.status(500).json({ error: "No se encontro el perfil del jugador" });
     const token = jwt.sign(
-      { userId: user.id, playerId: player.id, username: user.username },
+      {
+        userId: user.id,
+        playerId: player.id,
+        username: user.username,
+        sessionVersion: Number(user.session_version) || 0
+      },
       JWT_SECRET,
-      { algorithm: "HS256", expiresIn: "30d" }
+      { algorithm: "HS256", expiresIn: "7d" }
     );
     return res.json({
       message: "Login exitoso",
@@ -204,15 +209,34 @@ async function login(req, res) {
   }
 }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Debes iniciar sesion para ver esto" });
   }
   try {
-    req.user = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ["HS256"] });
+    const identity = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ["HS256"] });
+    if (identity.guest || !identity.userId) {
+      return res.status(403).json({ error: "Esta función requiere una cuenta" });
+    }
+    const result = await pool.query(
+      `SELECT session_version, banned_permanent, banned_until FROM users WHERE id = $1`,
+      [identity.userId]
+    );
+    const user = result.rows[0];
+    const sessionVersion = Number(identity.sessionVersion) || 0;
+    if (!user || Number(user.session_version) !== sessionVersion) {
+      return res.status(403).json({ error: "Sesión revocada. Volvé a iniciar sesión" });
+    }
+    if (user.banned_permanent || (Number(user.banned_until) > Date.now())) {
+      return res.status(403).json({ error: "Tu cuenta no tiene acceso" });
+    }
+    req.user = identity;
     next();
-  } catch (_) {
+  } catch (error) {
+    if (error?.name !== "JsonWebTokenError" && error?.name !== "TokenExpiredError") {
+      console.error("Auth validation error:", error.message);
+    }
     return res.status(403).json({ error: "Sesion expirada o invalida" });
   }
 }

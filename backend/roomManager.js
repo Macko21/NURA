@@ -1,6 +1,6 @@
 "use strict";
 
-const { randomUUID } = require("crypto");
+const { randomInt, randomUUID } = require("crypto");
 
 /**
 
@@ -62,9 +62,7 @@ function hasReadyCountdown(roomId) {
 let code = "";
 
 for (let i = 0; i < length; i++) {
-code += chars.charAt(
-Math.floor(Math.random() * chars.length)
-);
+code += chars.charAt(randomInt(0, chars.length));
 }
 
 return code;
@@ -80,7 +78,7 @@ return code;
   */
   function generateAlias(name) {
   const suffix =
-  Math.floor(1000 + Math.random() * 9000);
+  randomInt(1000, 10000);
 
 return `${name}#${suffix}`;
 }
@@ -100,10 +98,14 @@ return `${name}#${suffix}`;
   }) {
 
 const roomId = randomUUID();
+let roomCode = generateRoomCode();
+while ([...rooms.values()].some(existing => existing.code === roomCode)) {
+  roomCode = generateRoomCode();
+}
 
 const room = {
 id: roomId,
-code: generateRoomCode(),
+code: roomCode,
 private: isPrivate,
 status: "waiting",
 maxPlayers,
@@ -279,11 +281,7 @@ throw new Error(
 
 room.status = "playing";
 
-room.currentTurnIndex =
-Math.floor(
-Math.random() *
-room.players.length
-);
+room.currentTurnIndex = randomInt(0, room.players.length);
 
 return room.players[
 room.currentTurnIndex

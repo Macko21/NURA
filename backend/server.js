@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats, completeDailyChallenge } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const { canonicalDiceSkinId } = require("./cosmeticResolver");
@@ -89,10 +89,35 @@ app.use((req, res, next) => {
   next();
 });
 app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    const sendJson = res.json.bind(res);
+    res.json = body => {
+      if (res.statusCode >= 500 && body && typeof body === 'object' && 'error' in body) {
+        return sendJson({ error: 'Error interno del servidor' });
+      }
+      return sendJson(body);
+    };
+  }
+  next();
+});
+app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(self)');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "media-src 'self' data: blob:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+  ].join('; '));
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
@@ -202,7 +227,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     res.json(result);
   } catch (err) {
     console.error("Stripe webhook error:", err);
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: "Webhook de Stripe inválido" });
   }
 });
 
@@ -262,25 +287,16 @@ app.get("/ranking", requireAuth, async (req, res) => {
 });
 
 // Ruta para obtener el catálogo de la tienda (incluye ownership)
-app.get("/api/shop/catalog", requireAuth, async (req, res) => {
+app.get("/api/shop/catalog", async (req, res) => {
   try {
     const items = await getShopCatalog();
     let inv = { owned: [], equipped: {} };
     let boosts = {};
-    try {
-      inv = await getOwnedItems(req.user.userId);
-    } catch (inventoryError) {
-      console.warn("Shop inventory fallback:", inventoryError.message);
-    }
+    // El catálogo y sus precios no son secretos. La propiedad/equipamiento se
+    // obtiene por endpoints autenticados; así los invitados pueden navegar sin
+    // debilitar la validación de cuenta del resto de la API.
     const ownedIds = inv.owned.map(i => i.id);
     const equipped = inv.equipped;
-    try {
-      const pRes = await pool.query(`SELECT id FROM players WHERE user_id = $1`, [req.user.userId]);
-      const playerId = pRes.rows[0]?.id;
-      boosts = playerId ? (await getBoostStatus(playerId)).boosts : {};
-    } catch (boostError) {
-      console.warn("Shop boosts fallback:", boostError.message);
-    }
     res.json({ items, ownedIds, equipped, boosts });
   } catch (err) {
     console.error("Shop catalog error:", err);
@@ -376,7 +392,8 @@ app.post("/api/user/equip", requireAuth, async (req, res) => {
     const result = await equipItem(player.id, itemId, category);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("Equip item:", err.message);
+    res.status(400).json({ error: err.message || "No se pudo equipar el item" });
   }
 });
 
@@ -518,11 +535,19 @@ app.post("/api/games/invite", requireAuth, async (req, res) => {
     if (!targetPlayerId || !roomId) return res.status(400).json({ error: 'Faltan datos' });
     const room = rooms.get(roomId);
     if (!room) return res.status(404).json({ error: 'Sala no encontrada' });
+    if (!room.players.some(player => player.id === req.user.playerId)) {
+      return res.status(403).json({ error: 'No pertenecés a esta sala' });
+    }
+    const targetExists = await pool.query(
+      `SELECT 1 FROM players WHERE id = $1 AND user_id IS NOT NULL`,
+      [targetPlayerId]
+    );
+    if (!targetExists.rows.length) return res.status(404).json({ error: 'Jugador no encontrado' });
     // Enviar notificación WebSocket al jugador objetivo
     const targetSock = clients.get(targetPlayerId);
     const fromPlayer = await getUserProfile(req.user.userId);
     const inviterName = fromPlayer?.alias || req.user.username;
-    const inviteId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const inviteId = crypto.randomUUID();
     const inviteData = {
       inviteId,
       fromId: req.user.playerId,
@@ -628,11 +653,13 @@ app.get("/api/games/active", requireAuth, async (req, res) => {
     const activeGames = [];
     for (const [id, room] of rooms) {
       const match = getMatch(id);
-      if (room.status !== "playing" || match?.status !== "playing" || !room.players.length) continue;
+      // Las salas privadas solo se descubren mediante una invitación dirigida.
+      // No se publica ni su UUID interno ni su lista de participantes.
+      if (room.private || room.status !== "playing" || match?.status !== "playing" || !room.players.length) continue;
       activeGames.push({
         roomId: id,
-        code: room.private ? null : room.code,
-        private: !!room.private,
+        code: room.code,
+        private: false,
         isBotGame: !!room.isBotGame,
         status: room.status,
         players: room.players.map(p => ({ id: p.id, name: p.name })),
@@ -687,7 +714,7 @@ app.get("/api/tournaments/next", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/tournaments/:id", requireAuth, async (req, res) => {
+app.get("/api/tournaments/:id(\\d+)", requireAuth, async (req, res) => {
   try {
     const { getTournamentBracketData } = require("./database");
     const bracket = await getTournamentBracketData(req.params.id);
@@ -777,28 +804,7 @@ app.get("/api/daily-challenge/leaderboard", requireAuth, async (req, res) => {
 });
 
 app.post("/api/daily-challenge/submit", requireAuth, async (req, res) => {
-  try {
-    const { submitDailyScore } = require("./database");
-    const playerId = req.user.playerId || req.user.username;
-    const { playerName, score, rolls, completed } = req.body;
-    if (!playerName || typeof score !== 'number') {
-      return res.status(400).json({ error: 'Datos inválidos' });
-    }
-    await submitDailyScore(playerId, playerName, Math.floor(score), rolls || 0, !!completed);
-    // Recompensas si completó el desafío
-    if (completed && score >= 10000) {
-      const { ensureTodayChallenge } = require("./database");
-      const challenge = await ensureTodayChallenge();
-      try {
-        await pool.query('UPDATE players SET coins = coins + $1 WHERE id = $2', [challenge.reward, playerId]);
-        await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-          [playerId, challenge.reward, `Desafío diario completado: ${challenge.name}`, Date.now()]);
-      } catch(e) {}
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.status(410).json({ error: 'El resultado se confirma automáticamente al terminar la partida' });
 });
 
 // ── VERSIÓN Y CHANGELOG ──────────────────────────────────────
@@ -969,7 +975,7 @@ async function requireCeoAuth(req, res, next) {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, CEO_SECRET, { algorithms: ['HS256'] });
     const admin = await getAdminByUsername(decoded.username);
-    if (!admin) {
+    if (!admin || Number(admin.session_version || 0) !== Number(decoded.sessionVersion || 0)) {
       return res.status(401).json({ error: 'Token inválido' });
     }
     req.admin = admin;
@@ -1013,7 +1019,7 @@ app.post("/ceo-panel/api/login", async (req, res) => {
     if (!match) return res.status(401).json({ error: 'Credenciales inválidas' });
     // Token JWT con expiración de 24h
     const token = jwt.sign(
-      { username: admin.username, role: admin.role, id: admin.id },
+      { username: admin.username, role: admin.role, id: admin.id, sessionVersion: Number(admin.session_version) || 0 },
       CEO_SECRET,
       { algorithm: 'HS256', expiresIn: '8h' }
     );
@@ -1176,7 +1182,7 @@ app.post("/ceo-panel/api/users/reset-password", requireCeoAuth, requireCeoRole('
     if (!userId || !newPassword) return res.status(400).json({ error: 'userId y newPassword requeridos' });
     if (newPassword.length < 10 || newPassword.length > 128) return res.status(400).json({ error: 'La contraseña debe tener entre 10 y 128 caracteres' });
     const hash = await bcrypt.hash(newPassword, 12);
-    await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, userId]);
+    await pool.query(`UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE id = $2`, [hash, userId]);
     logAudit(req.admin.username, 'reset_user_password', userId, 'Contraseña reseteada por admin').catch(e => {});
     res.json({ success: true });
   } catch (err) {
@@ -1638,7 +1644,8 @@ app.post("/api/shop/create-payment", requireAuth, async (req, res) => {
     const result = await createCoinPurchase(packId, userId);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("Stripe payment intent:", err.message);
+    res.status(400).json({ error: "No se pudo iniciar el pago" });
   }
 });
 
@@ -1659,7 +1666,7 @@ app.post("/api/mercadopago/create-preference", requireAuth, async (req, res) => 
     res.json(result);
   } catch (err) {
     console.error("Error MP preference:", err);
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: "No se pudo iniciar el pago" });
   }
 });
 
@@ -1678,7 +1685,7 @@ app.post("/api/mercadopago/webhook", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("MP webhook error:", err);
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: "Webhook de Mercado Pago inválido" });
   }
 });
 
@@ -1975,13 +1982,15 @@ async function onMatchWon(match, roomId) {
     // ── Desafío Diario: guardar puntaje del jugador humano ──
     if (room?.isDailyChallenge) {
       try {
-        const { submitDailyScore } = require('./database');
         const humanPlayer = match.players.find(p => !p.isBot);
         if (humanPlayer) {
           const rolls = match.history?.filter(e => e.type === 'ROLL' && e.payload?.playerId === humanPlayer.id).length || 0;
-          const completed = humanPlayer.score >= 10000;
-          await submitDailyScore(humanPlayer.id, humanPlayer.name, humanPlayer.score, rolls, completed);
-          console.log(`🎯 Desafío diario: ${humanPlayer.name} score=${humanPlayer.score} completed=${completed}`);
+          const dailyResult = await completeDailyChallenge(humanPlayer.id, humanPlayer.name, humanPlayer.score, rolls);
+          console.log(`🎯 Desafío diario: ${humanPlayer.name} score=${humanPlayer.score} completed=${dailyResult.completed} rewarded=${dailyResult.rewarded}`);
+          if (dailyResult.rewarded) {
+            const playerSocket = clients.get(humanPlayer.id);
+            send(playerSocket, 'DAILY_REWARD', { coins: dailyResult.reward });
+          }
         }
       } catch(e) { console.error('Error guardando score diario:', e.message); }
     }
@@ -1992,9 +2001,25 @@ async function onMatchWon(match, roomId) {
         const HOUSE_EDGE = 0.1;
         const netPot = Math.floor(match.betPot * (1 - HOUSE_EDGE));
         if (netPot > 0 && winner.id && !winner.isBot) {
-          await rewardWinner(winner.id, netPot, { isWin: true });
-          await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-            [winner.id, netPot, `Ganó apuesta: pot ${match.betPot} - 10% comisión`, Date.now()]);
+          const payoutClient = await pool.connect();
+          try {
+            await payoutClient.query('BEGIN');
+            const credited = await payoutClient.query(
+              `UPDATE players SET coins = coins + $1 WHERE id = $2 RETURNING coins`,
+              [netPot, winner.id]
+            );
+            if (!credited.rows.length) throw new Error('Ganador no encontrado para acreditar la apuesta');
+            await payoutClient.query(
+              `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+              [winner.id, netPot, `Ganó apuesta: pot ${match.betPot} - 10% comisión`, Date.now()]
+            );
+            await payoutClient.query('COMMIT');
+          } catch (error) {
+            await payoutClient.query('ROLLBACK');
+            throw error;
+          } finally {
+            payoutClient.release();
+          }
           console.log(`💰 Apuesta cobrada: ${winner.name} ganó ${netPot} monedas (pot: ${match.betPot})`);
           // Notificar a todos
           broadcastRoom(roomId, 'BET_WON', {
@@ -2070,49 +2095,89 @@ function eliminatePlayer(roomId, playerId) {
 /* ── Helper: iniciar match para una sala ─────────────────── */
 async function startMatchForRoom(roomId, triggerData) {
   const room = getRoom(roomId);
-  if (!room || room.status !== "waiting") return null;
-  const firstPlayer = startGame(roomId);
-  const match = createMatch(room, onMatchWon);
-  for (const p of match.players) {
-    if (p.id) {
+  if (!room || room.status !== "waiting" || room.starting) return null;
+  room.starting = true;
+  let match = null;
+  try {
+    const unconfirmedBet = room.players.find(player => Number(player.bet) > 0 && !player.betConfirmed);
+    if (unconfirmedBet) throw new Error(`${unconfirmedBet.name} todavía no confirmó su apuesta`);
+
+    const firstPlayer = startGame(roomId);
+    match = createMatch(room, onMatchWon);
+
+    const betPlayers = room.players
+      .map(player => ({ id: player.id, name: player.name, bet: Math.max(0, Math.floor(Number(player.bet) || 0)) }))
+      .filter(player => player.bet > 0);
+    if (betPlayers.length) {
+      const client = await pool.connect();
       try {
-        const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, equipped_specials, win_streak, level FROM players WHERE id = $1`, [p.id]);
-        if (plRes.rows[0]) {
-          p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
-          p.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice) || null;
-          p.equippedSpecial = plRes.rows[0].equipped_special || null;
-          p.equippedSpecials = parseSpecialIds(plRes.rows[0].equipped_specials, plRes.rows[0].equipped_special);
-          p.winStreak = plRes.rows[0].win_streak || 0;
-          p.level = Number(plRes.rows[0].level) || 1;
+        await client.query('BEGIN');
+        for (const player of betPlayers) {
+          const debit = await client.query(
+            `UPDATE players SET coins = coins - $1
+             WHERE id = $2 AND user_id IS NOT NULL AND coins >= $1
+             RETURNING coins`,
+            [player.bet, player.id]
+          );
+          if (!debit.rows.length) throw new Error(`${player.name} no tiene saldo suficiente para la apuesta`);
+          await client.query(
+            `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+            [player.id, -player.bet, `Apuesta en partida ${roomId}`, Date.now()]
+          );
         }
-      } catch(e) {}
-      const roomP = room.players.find(rp => rp.id === p.id);
-      if (roomP) {
-        if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
-        if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
-        if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
-        if ((!p.equippedSpecials || !p.equippedSpecials.length) && roomP.equippedSpecials) p.equippedSpecials = roomP.equippedSpecials;
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
       }
-      if (triggerData && p.id === triggerData.playerId) {
-        if (!p.equippedDice && triggerData.equippedDice) p.equippedDice = triggerData.equippedDice;
-        if (!p.equippedAvatar && triggerData.equippedAvatar) p.equippedAvatar = triggerData.equippedAvatar;
-        if (!p.equippedSpecial && triggerData.equippedSpecial) p.equippedSpecial = triggerData.equippedSpecial;
-        if ((!p.equippedSpecials || !p.equippedSpecials.length) && triggerData.equippedSpecials) p.equippedSpecials = triggerData.equippedSpecials;
+      match.betPot = betPlayers.reduce((total, player) => total + player.bet, 0);
+      match.betPlayers = betPlayers;
+      console.log(`💰 Apuestas debitadas: pot=${match.betPot} monedas`);
+    }
+
+    for (const p of match.players) {
+      if (p.id) {
+        try {
+          const plRes = await pool.query(`SELECT equipped_avatar, equipped_dice, equipped_special, equipped_specials, win_streak, level FROM players WHERE id = $1`, [p.id]);
+          if (plRes.rows[0]) {
+            p.equippedAvatar = resolveAvatarIcon(plRes.rows[0].equipped_avatar);
+            p.equippedDice = await resolveDiceSkinId(plRes.rows[0].equipped_dice) || null;
+            p.equippedSpecial = plRes.rows[0].equipped_special || null;
+            p.equippedSpecials = parseSpecialIds(plRes.rows[0].equipped_specials, plRes.rows[0].equipped_special);
+            p.winStreak = plRes.rows[0].win_streak || 0;
+            p.level = Number(plRes.rows[0].level) || 1;
+          }
+        } catch(e) {}
+        const roomP = room.players.find(rp => rp.id === p.id);
+        if (roomP) {
+          if (!p.equippedDice && roomP.equippedDice) p.equippedDice = roomP.equippedDice;
+          if (!p.equippedAvatar && roomP.equippedAvatar) p.equippedAvatar = roomP.equippedAvatar;
+          if (!p.equippedSpecial && roomP.equippedSpecial) p.equippedSpecial = roomP.equippedSpecial;
+          if ((!p.equippedSpecials || !p.equippedSpecials.length) && roomP.equippedSpecials) p.equippedSpecials = roomP.equippedSpecials;
+        }
+        if (triggerData && p.id === triggerData.playerId) {
+          if (!p.equippedDice && triggerData.equippedDice) p.equippedDice = triggerData.equippedDice;
+          if (!p.equippedAvatar && triggerData.equippedAvatar) p.equippedAvatar = triggerData.equippedAvatar;
+          if (!p.equippedSpecial && triggerData.equippedSpecial) p.equippedSpecial = triggerData.equippedSpecial;
+          if ((!p.equippedSpecials || !p.equippedSpecials.length) && triggerData.equippedSpecials) p.equippedSpecials = triggerData.equippedSpecials;
+        }
       }
     }
-  }
-  // Guardar apuestas en el match para distribuir al finalizar
-  const { getBetPot } = require('./roomManager');
-  match.betPot = getBetPot(roomId);
-  if (match.betPot > 0) {
-    match.betPlayers = room.players.map(p => ({ id: p.id, name: p.name, bet: p.bet || 0 }));
-    console.log(`💰 Apuestas activas: pot=${match.betPot} monedas`);
-  }
 
-  broadcastRoom(roomId, "GAME_STARTED", {
-    firstPlayer, match: snapshotMatch(match)
-  });
-  startFirstTurnTimer(roomId, broadcastRoom);
+    broadcastRoom(roomId, "GAME_STARTED", { firstPlayer, match: snapshotMatch(match) });
+    startFirstTurnTimer(roomId, broadcastRoom);
+    return match;
+  } catch (error) {
+    if (match) destroyMatch(roomId);
+    room.status = "waiting";
+    broadcastRoom(roomId, "ERROR", { message: error.message || "No se pudo iniciar la partida" });
+    broadcastRoomState(roomId);
+    return null;
+  } finally {
+    room.starting = false;
+  }
 }
 
 /* ── Reconectar jugador a sala/partida ───────────────────── */
@@ -2291,7 +2356,7 @@ function requestPrivateJoin(socket, room, playerName) {
    ══════════════════════════════════════════════════════════ */
 const WS_ROOM_ACTIONS = new Set([
   "GET_ROOM_STATE", "PLAYER_READY", "ROLL", "BANK", "CHAT_MESSAGE", "CHAT_AUDIO",
-  "LEAVE_GAME", "LEAVE_ROOM", "CANCEL_ROOM", "GAME_INVITE"
+  "LEAVE_GAME", "LEAVE_ROOM", "CANCEL_ROOM", "GAME_INVITE", "SET_BET", "CONFIRM_BET", "USE_POWERUP"
 ]);
 const WS_REGISTERED_ACTIONS = new Set([
   "TOURNAMENT_REGISTER", "TOURNAMENT_GET_BRACKET", "TOURNAMENT_JOIN_MATCH", "FRIEND_REQUEST", "FRIEND_ACCEPT",
@@ -2393,6 +2458,15 @@ wss.on("connection", socket => {
         clearTimeout(socket.authDeadline);
 
         if (!socket.isGuest) {
+          const sessionResult = await pool.query(
+            `SELECT session_version FROM users WHERE id = $1`,
+            [socket.userId]
+          );
+          if (!sessionResult.rows.length || Number(sessionResult.rows[0].session_version) !== Number(identity.sessionVersion || 0)) {
+            send(socket, "ERROR", { message: "Sesión revocada. Volvé a iniciar sesión" });
+            socket.close(4003, "Sesión revocada");
+            return;
+          }
           const banStatus = await checkIfBanned(socket.userId);
           if (banStatus.banned) {
             send(socket, "ERROR", { message: "Tu cuenta no tiene acceso al juego" });
@@ -2457,6 +2531,10 @@ wss.on("connection", socket => {
         socket.lastActionAt ||= Object.create(null);
         if (now - (socket.lastActionAt[type] || 0) < cooldown) return;
         socket.lastActionAt[type] = now;
+      }
+      if (["ROLL", "BANK", "USE_POWERUP"].includes(type) && socket.gameActionPending) {
+        send(socket, "ERROR", { message: "Esperá a que termine la acción anterior" });
+        return;
       }
 
       if (socket.isGuest && WS_REGISTERED_ACTIONS.has(type)) {
@@ -2690,8 +2768,19 @@ wss.on("connection", socket => {
         const { roomId, amount } = data;
         const playerId = socket.playerId;
         if (!roomId || !playerId) return;
+        const requestedBet = Math.max(0, Math.min(5000, Math.floor(Number(amount) || 0)));
+        if (requestedBet > 0) {
+          const balance = await pool.query(
+            `SELECT coins FROM players WHERE id = $1 AND user_id IS NOT NULL`,
+            [playerId]
+          );
+          if (!balance.rows.length || Number(balance.rows[0].coins) < requestedBet) {
+            send(socket, "ERROR", { message: "No tenés saldo suficiente para esa apuesta" });
+            return;
+          }
+        }
         const { setPlayerBet } = require('./roomManager');
-        const result = setPlayerBet(roomId, playerId, amount);
+        const result = setPlayerBet(roomId, playerId, requestedBet);
         if (!result.ok) { send(socket, "ERROR", { message: result.error }); return; }
         broadcastRoomState(roomId);
         return;
@@ -2752,38 +2841,44 @@ wss.on("connection", socket => {
       /* ── POWER-UP ─────────────────────────────────────── */
       if (type === "USE_POWERUP") {
         const { roomId, playerId, powerUpId } = data;
-        const { handlePowerUp, getPowerUps } = require('./diceManager');
+        const { canUsePowerUp, handlePowerUp, getPowerUps } = require('./diceManager');
         const powerUps = getPowerUps();
         const pu = powerUps[powerUpId];
         if (!pu) { send(socket, "ERROR", { message: 'Power-up inválido' }); return; }
-        // Verificar y deducir monedas
+        const validation = canUsePowerUp(roomId, playerId, powerUpId);
+        if (!validation.ok) { send(socket, "ERROR", { message: validation.error }); return; }
+        socket.gameActionPending = true;
+        let result;
+        const client = await pool.connect();
         try {
-          const playerResult = await pool.query('SELECT coins FROM players WHERE id = $1', [playerId]);
-          const coins = Number(playerResult.rows[0]?.coins) || 0;
-          if (coins < pu.cost) {
+          await client.query('BEGIN');
+          const debit = await client.query(
+            `UPDATE players SET coins = coins - $1
+             WHERE id = $2 AND user_id IS NOT NULL AND coins >= $1
+             RETURNING coins`,
+            [pu.cost, playerId]
+          );
+          if (!debit.rows.length) {
+            await client.query('ROLLBACK');
             send(socket, "ERROR", { message: `No tenés suficientes monedas (necesitás ${pu.cost})` });
             return;
           }
-          await pool.query('UPDATE players SET coins = coins - $1 WHERE id = $2', [pu.cost, playerId]);
-          await pool.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+          await client.query(`INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
             [playerId, -pu.cost, `Power-up: ${pu.name}`, Date.now()]);
+          await client.query('COMMIT');
+          // No hay await entre el commit y la mutación: el lock del socket y la
+          // validación previa mantienen estable el turno durante este tramo.
+          result = handlePowerUp(roomId, playerId, powerUpId, broadcastRoom);
+          if (!result.ok) throw new Error(result.error);
+          send(socket, 'COINS_UPDATE', { coins: Number(debit.rows[0].coins) || 0 });
         } catch (e) {
+          try { await client.query('ROLLBACK'); } catch (_) {}
+          console.error('Power-up transaction:', e.message);
           send(socket, "ERROR", { message: 'Error procesando monedas' }); return;
+        } finally {
+          client.release();
+          socket.gameActionPending = false;
         }
-        // Activar power-up
-        const result = handlePowerUp(roomId, playerId, powerUpId, broadcastRoom);
-        if (!result.ok) {
-          // Reembolsar si falla
-          try {
-            await pool.query('UPDATE players SET coins = coins + $1 WHERE id = $2', [pu.cost, playerId]);
-          } catch(e) {}
-          send(socket, "ERROR", { message: result.error }); return;
-        }
-        // Enviar saldo actualizado
-        try {
-          const updated = await pool.query('SELECT coins FROM players WHERE id = $1', [playerId]);
-          send(socket, 'COINS_UPDATE', { coins: Number(updated.rows[0]?.coins) || 0 });
-        } catch(e) {}
         return;
       }
 
@@ -2927,7 +3022,7 @@ wss.on("connection", socket => {
         const room = rooms.get(roomId);
         const targetSock = clients.get(targetId);
         const inviterName = fromProfile?.alias || data.playerName || 'Jugador';
-        const inviteId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const inviteId = crypto.randomUUID();
         const inviteData = {
           inviteId,
           fromId: inviterId,
@@ -3483,10 +3578,17 @@ app.post("/api/reset-password", async (req, res) => {
 
   // Si llega aquí, actualizamos
   const hash = await bcrypt.hash(newPassword, 12);
-  await pool.query(
-    "UPDATE users SET password_hash = $1, reset_token = NULL, reset_expires = NULL WHERE id = $2",
-    [hash, row.id]
+  const updated = await pool.query(
+    `UPDATE users
+     SET password_hash = $1, reset_token = NULL, reset_expires = NULL,
+         session_version = session_version + 1
+     WHERE id = $2 AND reset_token = $3 AND reset_expires > NOW()
+     RETURNING id`,
+    [hash, row.id, tokenHash]
   );
+  if (!updated.rows.length) {
+    return res.status(400).json({ error: "El enlace es inválido, expiró o ya fue usado" });
+  }
   
   res.json({ message: "Contraseña actualizada" });
 });

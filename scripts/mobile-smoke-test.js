@@ -24,6 +24,8 @@ assert.strictEqual(pkg.version, gameVersion, 'package and game versions must mat
 assert(androidGradle.includes(`versionName "${gameVersion}"`), 'Android version must match the game');
 assert(iosProject.includes(`MARKETING_VERSION = ${gameVersion};`), 'iOS version must match the game');
 assert(androidManifest.includes('android:scheme="los10000"'), 'Android deep link is missing');
+assert(androidManifest.includes('android:allowBackup="false"'), 'Android backup must be disabled');
+assert(androidManifest.includes('android:usesCleartextTraffic="false"'), 'Android cleartext traffic must be disabled');
 assert(iosInfo.includes('<string>los10000</string>'), 'iOS deep link is missing');
 assert(preparedIndex.includes('/native-runtime.js'), 'native runtime was not injected');
 assert(exists('mobile-dist/native-runtime.js'), 'native runtime was not copied');

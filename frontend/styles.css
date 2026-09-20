@@ -2,7 +2,7 @@
    LOS 10.000 DE MACKO — styles.css  v4.1
    Game UI — Sharp / Bold / Alive
    ═══════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Sora:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -3060,3 +3060,310 @@ input[type=number]{-moz-appearance:textfield}
   25% { transform: translateY(-3px) rotate(-3deg); }
   75% { transform: translateY(-1px) rotate(2deg); }
 }
+
+/* ═══════════════════════════════════════════════════════
+   V5 — MIDNIGHT ARENA
+   Mobile-first, monochrome + one electric action color.
+   ═══════════════════════════════════════════════════════ */
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --color-lime-pulse:#b7ff2c;
+  --color-midnight-canvas:#111111;
+  --color-card-charcoal:#1f1f21;
+  --color-card-border-ink:#28282a;
+  --color-footer-rule:#39393b;
+  --color-steel-border:#707072;
+  --color-fog-border:#e5e5e5;
+  --color-pure-white:#fff;
+  --color-carbon-black:#000;
+  --accent:#b7ff2c;
+  --accent2:#b7ff2c;
+  --accent-dk:#94d51f;
+  --accent-lt:#d8ff89;
+  --accent-glow:rgba(183,255,44,.18);
+  --accent-bg:rgba(183,255,44,.07);
+  --gold:#b7ff2c;
+  --gold2:#b7ff2c;
+  --gold-dk:#94d51f;
+  --gold-lt:#d8ff89;
+  --gold-glow:rgba(183,255,44,.18);
+  --gold-bg:rgba(183,255,44,.07);
+  --bg-dark:#111111;
+  --bg-surface:#111111;
+  --bg-card:#1f1f21;
+  --bg-card2:#242426;
+  --bg-input:#171719;
+  --bg-hover:#28282a;
+  --border:#39393b;
+  --border2:#28282a;
+  --border-h:#707072;
+  --text:#fff;
+  --text2:#b9b9ba;
+  --text3:#7d7d80;
+  --green:#b7ff2c;
+  --green-lt:#b7ff2c;
+  --red:#fff;
+  --red-lt:#fff;
+  --blue:#fff;
+  --r:6px;
+  --r-sm:6px;
+  --r-lg:6px;
+  --sh:none;
+  --sh-sm:none;
+  --sh-lg:none;
+  --sh-gd:none;
+  --sh-in:none;
+  --font-display:'Inter',ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+
+html,body {
+  background:#111111;
+  color:#fff;
+  font-family:var(--font-display);
+  font-size:16px;
+  line-height:1.5;
+}
+
+body::selection { background:#b7ff2c;color:#000 }
+button,input,textarea,select { font:inherit }
+button { min-height:44px }
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible {
+  outline:2px solid #b7ff2c;
+  outline-offset:2px;
+}
+
+.bg-canvas,.game-bg-canvas { opacity:.08!important }
+#btn-theme-toggle { display:none!important }
+
+.auth-bg,
+#screen-lobby,
+#screen-join,
+#screen-room,
+#screen-game,
+#screen-ranking,
+#screen-profile,
+#screen-portal {
+  background:#111111!important;
+  background-image:none!important;
+}
+.auth-bg::before,
+#screen-lobby::before,
+#screen-lobby::after { background:none!important;filter:none!important }
+
+.auth-bg { justify-content:flex-end;align-items:stretch;padding:20px;overflow-y:auto }
+.auth-box { max-width:520px;margin:0 auto;width:100%;gap:16px;text-align:left }
+.auth-logo {
+  width:54px;height:54px;display:grid;place-items:center;
+  border:1px solid #707072;border-radius:6px;font-size:28px;
+  filter:none;animation:none;background:#1f1f21;
+}
+.auth-title,.logo-title {
+  font-family:var(--font-display)!important;
+  color:#fff!important;
+  font-weight:900!important;
+  text-transform:uppercase;
+  letter-spacing:-.07em!important;
+  line-height:.85!important;
+}
+.auth-title { font-size:clamp(54px,16vw,94px)!important;margin:8px 0 }
+.auth-title em,.logo-title em {
+  font-family:inherit!important;color:#fff!important;font-style:normal!important;
+  font-size:.42em!important;font-weight:700!important;letter-spacing:-.045em!important;
+  text-transform:uppercase!important;margin-top:10px!important;
+}
+.auth-sub,.logo-sub {
+  color:#b9b9ba!important;font-size:14px!important;letter-spacing:.01em!important;
+  text-transform:none!important;
+}
+.glass-panel,.modal-box,.sound-panel,.notif-panel,.user-menu-dropdown {
+  background:#1f1f21!important;
+  border:1px solid #28282a!important;
+  border-radius:6px!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+}
+.glass-panel { padding:20px!important }
+.glass-input,.chat-foot input,.ceo-input,input,textarea,select {
+  background:#171719;
+  color:#fff;
+  border:1px solid #39393b;
+  border-radius:6px;
+  min-height:48px;
+}
+.glass-input:focus,.chat-foot input:focus,input:focus,textarea:focus,select:focus {
+  border-color:#b7ff2c!important;box-shadow:none!important;
+}
+
+.btn,.btn-roll,.btn-bank,.chat-send-btn,.btn-shop,.notif-action-btn {
+  border-radius:6px!important;
+  box-shadow:none!important;
+  font-weight:700;
+  letter-spacing:-.01em;
+  transition:background-color .15s,color .15s,border-color .15s,transform .15s;
+  transform:none;
+}
+.btn-gold,.btn-roll,.chat-send-btn {
+  background:#b7ff2c!important;
+  background-image:none!important;
+  color:#000!important;
+  border:1px solid #b7ff2c!important;
+}
+.btn-gold:hover,.btn-roll:hover,.chat-send-btn:hover { background:#d8ff89!important;filter:none!important }
+.btn-ghost,.btn-bank,.btn-link,.btn-shop {
+  background:#1f1f21!important;
+  background-image:none!important;
+  color:#fff!important;
+  border:1px solid #707072!important;
+}
+.btn-ghost:hover,.btn-bank:hover,.btn-link:hover,.btn-shop:hover {
+  color:#b7ff2c!important;border-color:#b7ff2c!important;background:#1f1f21!important;
+}
+.btn-danger,.btn-danger-link { background:#1f1f21!important;color:#fff!important;border:1px solid #707072!important }
+.glow-btn { animation:none!important }
+.btn:disabled,.btn-roll:disabled,.btn-bank:disabled { opacity:.38;filter:none!important }
+
+/* Lobby — poster first, controls second */
+#screen-lobby { justify-content:flex-start!important;overflow-y:auto!important;overflow-x:hidden }
+.user-top-bar {
+  position:sticky!important;top:0!important;z-index:40;
+  width:100%!important;max-width:none!important;min-height:64px!important;
+  padding:10px 14px!important;background:#111!important;border:0!important;
+  border-bottom:1px solid #39393b!important;border-radius:0!important;
+  box-shadow:none!important;
+}
+.user-avatar {
+  width:40px!important;height:40px!important;border-radius:6px!important;
+  background:#fff!important;color:#000!important;border:0!important;
+}
+.user-menu-trigger,.user-wallet,.btn-notif-bell,.btn-music-toggle,.btn-chest-icon,
+.btn-wallet-toggle,.btn-room-sound,.btn-sound,.btn-emote,.btn-copy-code-inline,.btn-icon-sm {
+  background:#1f1f21!important;color:#fff!important;border:1px solid #39393b!important;
+  border-radius:6px!important;box-shadow:none!important;
+}
+.notif-badge,.push-badge { background:#b7ff2c!important;color:#000!important;border-color:#111!important }
+.lobby-content {
+  width:100%!important;max-width:600px!important;margin:0 auto!important;
+  padding:40px 16px 64px!important;gap:24px!important;position:relative;z-index:1;
+}
+.logo-block { text-align:left!important;align-items:flex-start!important;padding:0 2px }
+.logo-block::before {
+  content:'MIDNIGHT ARENA';display:block;color:#b9b9ba;font-size:11px;
+  font-weight:700;letter-spacing:.18em;margin-bottom:14px;
+}
+.logo-die { font-size:44px!important;filter:none!important;animation:none!important;margin-bottom:14px }
+.logo-title { font-size:clamp(58px,17vw,96px)!important }
+.logo-sub { margin-top:18px!important }
+.app-version { color:#7d7d80!important;font-size:11px!important;margin-top:8px }
+.lobby-form { margin:0!important;width:100%!important }
+.row-2,.lobby-grid-2 { display:grid!important;grid-template-columns:1fr!important;gap:10px!important }
+.lobby-grid-2 { margin-top:4px!important }
+.lobby-grid-2 .btn { justify-content:flex-start!important;text-align:left!important;padding:12px 14px!important }
+.lobby-missions-desktop { position:static!important;width:100%!important;max-width:none!important }
+
+/* Shared inner pages */
+.top-bar,.game-topbar {
+  min-height:64px!important;padding:10px 12px!important;background:#111!important;
+  border:0!important;border-bottom:1px solid #39393b!important;box-shadow:none!important;
+}
+.top-bar h2 {
+  font-family:var(--font-display)!important;color:#fff!important;font-size:20px!important;
+  font-weight:800!important;text-transform:uppercase;letter-spacing:-.04em;
+}
+.page-body { width:100%!important;max-width:720px!important;margin:0 auto!important;padding:20px 16px 40px!important }
+.hint { color:#b9b9ba!important;font-size:14px!important }
+.players-list,.betting-section,.ready-status,.profile-card,.portal-card,
+.tournament-card,.mission-card,.shop-item,.inv-item,.friend-card {
+  background:#1f1f21!important;background-image:none!important;
+  border:1px solid #28282a!important;border-radius:6px!important;box-shadow:none!important;
+}
+.player-row,.bet-player-row { border-color:#39393b!important }
+.code-badge,.game-room-value,.bet-pot {
+  background:#1f1f21!important;color:#fff!important;border:1px solid #707072!important;
+  border-radius:6px!important;box-shadow:none!important;
+}
+
+/* Game table — compact console on phones */
+#screen-game { overflow:hidden }
+.game-topbar { flex:0 0 auto }
+.scoreboard {
+  background:#111!important;border-bottom:1px solid #28282a!important;
+  padding:8px 10px!important;gap:8px!important;
+}
+.score-card,.score-player {
+  background:#1f1f21!important;border:1px solid #28282a!important;
+  border-radius:6px!important;box-shadow:none!important;
+}
+.score-card.active,.score-player.active { border-color:#b7ff2c!important }
+.game-table { background:#111!important;background-image:none!important }
+.turn-banner {
+  color:#fff!important;font-size:clamp(18px,5vw,28px)!important;font-weight:800!important;
+  text-transform:uppercase;letter-spacing:-.04em;
+}
+.timer-ring-bar { stroke:#b7ff2c!important }
+.dice-tray {
+  background:#1f1f21!important;background-image:none!important;
+  border:1px solid #28282a!important;border-radius:6px!important;box-shadow:none!important;
+}
+.stats-row { gap:8px!important }
+.stat-box {
+  background:#1f1f21!important;border:1px solid #28282a!important;
+  border-radius:6px!important;box-shadow:none!important;
+}
+.stat-label { color:#7d7d80!important;text-transform:uppercase;letter-spacing:.1em }
+.stat-val,.stat-val.gold { color:#fff!important;font-weight:800!important }
+.action-zone { background:#111!important;border-top:1px solid #28282a!important }
+.powerup-btn,.emote-option {
+  background:#1f1f21!important;color:#fff!important;border:1px solid #39393b!important;
+  border-radius:6px!important;box-shadow:none!important;
+}
+.powerup-btn:hover,.powerup-btn.active { border-color:#b7ff2c!important;color:#b7ff2c!important }
+.chat-bar { background:#111!important;border-top:1px solid #39393b!important;box-shadow:none!important }
+.cm { background:#1f1f21!important;border-radius:6px!important }
+.cn { color:#fff!important }
+
+/* Overlays */
+.modal { background:rgba(0,0,0,.86)!important;backdrop-filter:none!important;padding:12px!important }
+.modal-box { max-height:calc(100dvh - 24px)!important;padding:20px!important }
+.modal-box h2,.modal-title,.rules-modal-title {
+  color:#fff!important;font-family:var(--font-display)!important;font-weight:900!important;
+  text-transform:uppercase;letter-spacing:-.05em;
+}
+.close-modal-btn { background:#111!important;color:#fff!important;border:1px solid #39393b!important;border-radius:6px!important }
+.toast {
+  background:#fff!important;color:#000!important;border:0!important;border-radius:6px!important;
+  box-shadow:none!important;font-weight:700!important;
+}
+.reset-success { text-align:center;padding:20px }
+.reset-success-icon { width:54px;height:54px;margin:0 auto 16px;display:grid;place-items:center;background:#b7ff2c;color:#000;border-radius:6px;font-size:30px;font-weight:900 }
+.reset-success h2 { color:#fff;font-size:24px;line-height:1;margin-bottom:10px }
+.reset-success p { color:#b9b9ba }
+
+@media (min-width:700px) {
+  .auth-bg { justify-content:center;padding:40px }
+  .auth-box { display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);align-items:end;column-gap:48px }
+  .auth-logo,.auth-title,.auth-sub { grid-column:1 }
+  .auth-box>.glass-panel { grid-column:2;grid-row:1 / span 4 }
+  .auth-title { font-size:88px!important }
+  .lobby-content { max-width:980px!important;padding:72px 24px 80px!important;display:grid!important;grid-template-columns:1.05fr .95fr;align-items:start;column-gap:48px }
+  .logo-title { font-size:96px!important }
+  .row-2 { grid-template-columns:1fr 1fr!important }
+  .lobby-grid-2 { grid-template-columns:1fr 1fr!important }
+  .page-body { padding-top:32px!important }
+}
+
+@media (min-width:1100px) {
+  .auth-title { font-size:110px!important }
+  .lobby-content { max-width:1180px!important;column-gap:72px }
+  .logo-title { font-size:110px!important }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important }
+}
+
+/* La identidad V5 es estrictamente plana: incluso los efectos heredados y los
+   estilos inline usan Inter y superficies sólidas. */
+body *,body *::before,body *::after { background-image:none!important }
+body [style*="Cinzel"],body [style*="Sora"] { font-family:var(--font-display)!important }
