@@ -1,5 +1,7 @@
 "use strict";
 
+const { randomInt } = require("crypto");
+
 /**
  * ============================================================
  * LOS 10.000 DE MACKO — backend/diceManager.js
@@ -23,6 +25,7 @@ const {
 const matches    = new Map();
 const turnTimers = new Map();
 const autoBankTimers = new Map();
+let diceRandomInt = randomInt;
 
 /* ── Power-ups de partida ────────────────────────────── */
 const POWERUPS = {
@@ -40,8 +43,12 @@ const advancing  = new Set();
 function rollDice(count = TOTAL_DICE) {
   const r = [];
   for (let i = 0; i < count; i++)
-    r.push(Math.floor(Math.random() * (DICE_MAX - DICE_MIN + 1)) + DICE_MIN);
+    r.push(diceRandomInt(DICE_MIN, DICE_MAX + 1));
   return r;
+}
+
+function setDiceRandomIntForTests(randomIntFn) {
+  diceRandomInt = typeof randomIntFn === 'function' ? randomIntFn : randomInt;
 }
 
 /* ── Historial ───────────────────────────────────────────── */
@@ -746,7 +753,7 @@ function removeTurnCallback(roomId) {
 }
 
 /* ── Power-ups ──────────────────────────────────────── */
-function handlePowerUp(roomId, playerId, powerUpId, broadcast) {
+function canUsePowerUp(roomId, playerId, powerUpId) {
   const match = matches.get(roomId);
   if (!match || match.status !== 'playing') return { ok: false, error: 'Partida no activa' };
   const cur = getCurrentPlayer(match);
@@ -759,6 +766,14 @@ function handlePowerUp(roomId, playerId, powerUpId, broadcast) {
   // Verificar que no tenga ya un power-up activo del mismo tipo
   if (!cur.activePowerUps) cur.activePowerUps = {};
   if (cur.activePowerUps[powerUpId]) return { ok: false, error: 'Ya tenés este power-up activo' };
+
+  return { ok: true, match, player: cur, powerUp };
+}
+
+function handlePowerUp(roomId, playerId, powerUpId, broadcast) {
+  const validation = canUsePowerUp(roomId, playerId, powerUpId);
+  if (!validation.ok) return validation;
+  const { match, player: cur, powerUp } = validation;
 
   // Verificar monedas (el cliente ya verificó, pero validamos en server también)
   // Nota: la deducción de monedas se hace en server.js antes de llamar a esta función
@@ -773,14 +788,20 @@ function handlePowerUp(roomId, playerId, powerUpId, broadcast) {
   }
 
   pushHistory(match, 'POWER_UP', { playerId, powerUpId, powerUpName: powerUp.name });
-  broadcast(roomId, 'POWER_UP_ACTIVATED', {
-    playerId,
-    playerName: cur.name,
-    powerUpId,
-    powerUpName: powerUp.name,
-    powerUpIcon: powerUp.icon,
-    match: snapshotMatch(match)
-  });
+  try {
+    broadcast(roomId, 'POWER_UP_ACTIVATED', {
+      playerId,
+      playerName: cur.name,
+      powerUpId,
+      powerUpName: powerUp.name,
+      powerUpIcon: powerUp.icon,
+      match: snapshotMatch(match)
+    });
+  } catch (error) {
+    // El efecto ya quedó aplicado y cobrado. Un cliente desconectado no debe
+    // transformar una compra válida en un estado ambiguo.
+    console.error('Power-up broadcast:', error.message);
+  }
 
   return { ok: true, powerUpId, remainingDice: cur.remainingDice };
 }
@@ -791,7 +812,7 @@ function getPowerUps() {
 
 module.exports = {
   createMatch, startFirstTurnTimer, getMatch, destroyMatch,
-  handleEntryRoll, handleRoll, handleBank, handlePowerUp, getPowerUps,
+  handleEntryRoll, handleRoll, handleBank, canUsePowerUp, handlePowerUp, getPowerUps,
   handleDisconnect, handleReconnect, snapshotMatch, addLatePlayer, rollDice,
-  setTurnCallback, removeTurnCallback
+  setTurnCallback, removeTurnCallback, setDiceRandomIntForTests
 };

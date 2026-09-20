@@ -170,6 +170,8 @@ async function runTests() {
     assert('Header X-Content-Type-Options', res.headers['x-content-type-options'] === 'nosniff');
     assert('Header X-Frame-Options', res.headers['x-frame-options'] === 'DENY');
     assert('Header Referrer-Policy', res.headers['referrer-policy'] === 'strict-origin-when-cross-origin');
+    assert('Content-Security-Policy blocks scripts externos',
+      (res.headers['content-security-policy'] || '').includes("script-src 'self'"));
   } catch (e) {
     assert('GET /', false, e.message);
   }
@@ -312,6 +314,15 @@ async function runTests() {
     } catch (e) {
       assert('Shop catalog survives DB fallback', false, e.message);
     }
+  }
+
+  try {
+    const res = await postUrl('/api/daily-challenge/submit', {
+      playerName: 'Atacante', score: 10000, rolls: 1, completed: true
+    });
+    assert('Daily rewards reject unauthenticated client claims', res.status === 401, `Status ${res.status}`);
+  } catch (e) {
+    assert('Daily rewards reject unauthenticated client claims', false, e.message);
   }
 
   try {

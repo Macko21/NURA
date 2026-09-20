@@ -10,9 +10,23 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "4.13.0";
+const GAME_VERSION = "5.0.0";
 
 const CHANGELOG = [
+  {
+    version: "5.0.0",
+    date: "2026-09-20",
+    title: "Arena nocturna — seguridad y rediseño mobile first",
+    scope: "platform",
+    files: ["backend", "frontend", "android", "ios"],
+    changes: [
+      "Nueva identidad visual monocromática con acento lima, tipografía de torneo y superficies compactas",
+      "Recompensas diarias verificadas por el servidor y acreditadas una sola vez",
+      "Apuestas debitadas de forma transaccional antes de comenzar cada partida",
+      "Sesiones revocables, CSP estricta, TLS verificable y accesos privados reforzados",
+      "Versiones web, PWA, Android e iOS sincronizadas"
+    ]
+  },
   {
     version: "4.13.0",
     date: "2026-08-16",

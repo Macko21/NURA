@@ -230,3 +230,37 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Sora',
   .ceo-user-detail-info{grid-template-columns:1fr 1fr}
   .ceo-modal-box-lg{max-width:95%}
 }
+/* ═══════════════════════════════════════════════════════
+   V5 — MIDNIGHT ARENA / OPERATIONS
+   El panel comparte el mismo sistema visual plano del juego.
+   ═══════════════════════════════════════════════════════ */
+:root{
+  --gold:#b7ff2c;--gold2:#b7ff2c;--gold-dk:#94d51f;
+  --bg:#111111;--bg-card:#1f1f21;--bg-card2:#242426;
+  --border:#39393b;--border2:#28282a;
+  --text:#fff;--text2:#b9b9ba;--text3:#7d7d80;
+  --green:#b7ff2c;--red:#fff;--r:6px;--r-sm:6px;
+}
+html,body,button,input,textarea,select{font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+html,body{background:#111;color:#fff}
+body *,body *::before,body *::after{background-image:none!important;box-shadow:none!important}
+#ceo-login{background:#111;padding:20px}
+.ceo-login-box{max-width:420px;background:#1f1f21;border:1px solid #28282a;border-radius:6px;text-align:left}
+.ceo-logo{width:52px;height:52px;display:grid;place-items:center;background:#fff;color:#000;border-radius:6px;font-size:26px}
+.ceo-login-box h1,.ceo-topbar-logo,.ceo-stat-num,.ceo-modal-box h3,.ceo-txn-amount,.ceo-server-val,.ceo-shop-price,.ceo-shop-cat-header{font-family:'Inter',sans-serif;color:#fff}
+.ceo-login-box h1{font-size:clamp(42px,13vw,68px);font-weight:900;line-height:.88;letter-spacing:-.07em;text-transform:uppercase}
+.ceo-input{min-height:48px;background:#171719;border:1px solid #39393b;border-radius:6px;color:#fff}
+.ceo-input:focus{border-color:#b7ff2c;box-shadow:none}
+.ceo-btn,.ceo-btn-sm,.ceo-tab,.ceo-stat-card,.ceo-panel,.ceo-modal-box{border-radius:6px}
+.ceo-btn-gold{background:#b7ff2c;color:#000;border:1px solid #b7ff2c}
+.ceo-btn-gold:hover{background:#d8ff89;filter:none}
+.ceo-btn-ghost,.ceo-btn-sm{background:#1f1f21;color:#fff;border:1px solid #707072}
+.ceo-btn-ghost:hover,.ceo-btn-sm:hover{border-color:#b7ff2c;color:#b7ff2c}
+.ceo-topbar{background:#111;border-bottom:1px solid #39393b;padding:10px 12px}
+.ceo-body{padding:14px}
+.ceo-stat-card,.ceo-panel,.ceo-modal-box{background:#1f1f21;border:1px solid #28282a}
+.ceo-stat-num,.ceo-tab.active{color:#b7ff2c}
+.ceo-tab.active{background:#1f1f21;border-color:#b7ff2c}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #b7ff2c;outline-offset:2px}
+@media(min-width:700px){.ceo-body{padding:20px}.ceo-login-box{padding:28px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important}}

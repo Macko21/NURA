@@ -16,10 +16,16 @@ const {
   isTournamentRegistrationOpen,
 } = require("./tournamentRules");
 
+const databaseUrl = String(process.env.DATABASE_URL || "");
+const databaseHost = databaseUrl.replace(/^postgres(?:ql)?:\/\//, "");
+const isLocalDatabase = /^(localhost|127\.0\.0\.1)(:|\/)/.test(databaseHost);
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
+  ssl: isLocalDatabase ? false : {
+    rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
+    ...(process.env.DATABASE_CA_CERT
+      ? { ca: process.env.DATABASE_CA_CERT.replace(/\\n/g, "\n") }
+      : {})
   }
 });
 
@@ -237,6 +243,9 @@ async function initializeDatabase() {
     try {
       await pool.query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'editor'`);
     } catch(e) {}
+    try {
+      await pool.query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`);
+    } catch(e) {}
     // Tabla de feedback de usuarios
     try {
       await pool.query(`
@@ -253,6 +262,9 @@ async function initializeDatabase() {
     // Columnas de baneo en users
     try {
       await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_permanent BOOLEAN DEFAULT FALSE`);
+    } catch(e) {}
+    try {
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`);
     } catch(e) {}
     try {
       await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until BIGINT DEFAULT 0`);
@@ -422,9 +434,11 @@ async function initializeDatabase() {
           rolls INTEGER DEFAULT 0,
           completed BOOLEAN DEFAULT FALSE,
           completed_at BIGINT,
+          reward_claimed BOOLEAN NOT NULL DEFAULT FALSE,
           UNIQUE(challenge_date, player_id)
         )
       `);
+      await pool.query(`ALTER TABLE daily_scores ADD COLUMN IF NOT EXISTS reward_claimed BOOLEAN NOT NULL DEFAULT FALSE`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(challenge_date, score DESC)`);
     } catch(e) { console.error('Error creating daily_challenges tables:', e.message); }
     for (const sql of migraciones) {
@@ -1578,7 +1592,7 @@ async function getAdminByUsername(username) {
 // ── BANEO ──────────────────────────────────────────────────
 async function banPlayer(userId) {
   try {
-    await pool.query(`UPDATE users SET banned_permanent = TRUE WHERE id = $1`, [userId]);
+    await pool.query(`UPDATE users SET banned_permanent = TRUE, session_version = session_version + 1 WHERE id = $1`, [userId]);
     return { success: true };
   } catch(e) { throw e; }
 }
@@ -1586,7 +1600,7 @@ async function banPlayer(userId) {
 async function suspendPlayer(userId, hours) {
   try {
     const until = Date.now() + hours * 60 * 60 * 1000;
-    await pool.query(`UPDATE users SET banned_until = $1 WHERE id = $2`, [until, userId]);
+    await pool.query(`UPDATE users SET banned_until = $1, session_version = session_version + 1 WHERE id = $2`, [until, userId]);
     return { success: true, until };
   } catch(e) { throw e; }
 }
@@ -1762,7 +1776,7 @@ async function updateAdminRole(adminId, newRole) {
   const validRoles = ['viewer', 'editor', 'admin'];
   if (!validRoles.includes(newRole)) throw new Error('Rol inválido');
   try {
-    await pool.query(`UPDATE admins SET role = $1 WHERE id = $2`, [newRole, adminId]);
+    await pool.query(`UPDATE admins SET role = $1, session_version = session_version + 1 WHERE id = $2`, [newRole, adminId]);
     return { success: true };
   } catch(e) { throw e; }
 }
@@ -1776,7 +1790,7 @@ async function deleteAdmin(adminId) {
 
 async function changeAdminPassword(username, newHash) {
   try {
-    await pool.query(`UPDATE admins SET password_hash = $1 WHERE username = $2`, [newHash, username]);
+    await pool.query(`UPDATE admins SET password_hash = $1, session_version = session_version + 1 WHERE username = $2`, [newHash, username]);
     return { success: true };
   } catch(e) { throw e; }
 }
@@ -2794,6 +2808,64 @@ async function submitDailyScore(playerId, playerName, score, rolls, completed) {
   } catch(e) { console.error('submitDailyScore:', e.message); }
 }
 
+// El resultado y la recompensa se confirman únicamente desde una partida
+// terminada en el servidor. reward_claimed vuelve idempotente cada día.
+async function completeDailyChallenge(playerId, playerName, score, rolls) {
+  const challenge = getTodayChallenge();
+  const safeScore = Math.max(0, Math.floor(Number(score) || 0));
+  const safeRolls = Math.max(0, Math.floor(Number(rolls) || 0));
+  const completed = safeScore >= Number(challenge.target || 10000);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO daily_scores
+       (challenge_date, player_id, player_name, score, rolls, completed, completed_at, reward_claimed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+       ON CONFLICT (challenge_date, player_id) DO UPDATE SET
+         player_name = EXCLUDED.player_name,
+         score = GREATEST(daily_scores.score, EXCLUDED.score),
+         rolls = CASE WHEN EXCLUDED.score >= daily_scores.score THEN EXCLUDED.rolls ELSE daily_scores.rolls END,
+         completed = daily_scores.completed OR EXCLUDED.completed,
+         completed_at = COALESCE(daily_scores.completed_at, EXCLUDED.completed_at)`,
+      [challenge.date, playerId, String(playerName || "Jugador").slice(0, 24), safeScore, safeRolls, completed, completed ? Date.now() : null]
+    );
+
+    let rewarded = false;
+    if (completed) {
+      const player = await client.query(
+        `SELECT id FROM players WHERE id = $1 AND user_id IS NOT NULL FOR UPDATE`,
+        [playerId]
+      );
+      if (player.rows.length) {
+        const claim = await client.query(
+          `UPDATE daily_scores SET reward_claimed = TRUE
+           WHERE challenge_date = $1 AND player_id = $2
+             AND completed = TRUE AND reward_claimed = FALSE
+           RETURNING id`,
+          [challenge.date, playerId]
+        );
+        if (claim.rows.length) {
+          const reward = Math.max(0, Math.floor(Number(challenge.reward) || 0));
+          await client.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [reward, playerId]);
+          await client.query(
+            `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
+            [playerId, reward, `Desafío diario completado: ${challenge.name}`, Date.now()]
+          );
+          rewarded = true;
+        }
+      }
+    }
+    await client.query("COMMIT");
+    return { completed, rewarded, reward: rewarded ? Number(challenge.reward) : 0 };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function getDailyLeaderboard(limit = 20) {
   const challenge = getTodayChallenge();
   try {
@@ -2880,6 +2952,7 @@ module.exports = {
   // Desafío Diario
   ensureTodayChallenge,
   submitDailyScore,
+  completeDailyChallenge,
   getDailyLeaderboard,
   getDailyPlayerScore,
   getTodayChallenge
