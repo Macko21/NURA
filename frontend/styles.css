@@ -3225,7 +3225,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .btn:disabled,.btn-roll:disabled,.btn-bank:disabled { opacity:.38;filter:none!important }
 
 /* Lobby — poster first, controls second */
-#screen-lobby { justify-content:flex-start!important;overflow-y:auto!important;overflow-x:hidden }
+#screen-lobby {
+  position:fixed!important;inset:0!important;
+  justify-content:flex-start!important;overflow-y:auto!important;overflow-x:hidden
+}
 .user-top-bar {
   position:sticky!important;top:0!important;z-index:40;
   width:100%!important;max-width:none!important;min-height:64px!important;
@@ -3367,3 +3370,126 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
    estilos inline usan Inter y superficies sólidas. */
 body *,body *::before,body *::after { background-image:none!important }
 body [style*="Cinzel"],body [style*="Sora"] { font-family:var(--font-display)!important }
+
+/* ═══════════════════════════════════════════════════════
+   V5.0.1 — RESPONSIVE LAYOUT CORRECTIONS
+   Explicit areas replace the implicit grid placement that clipped the auth
+   hero, stranded missions below the fold, and misaligned shop actions.
+   ═══════════════════════════════════════════════════════ */
+.auth-title,.logo-title { overflow-wrap:normal;word-break:normal }
+.shop-grid { align-items:stretch;grid-auto-rows:1fr }
+.shop-item {
+  width:100%;height:100%;min-width:0;min-height:310px;
+  padding:18px 14px!important;gap:10px!important;text-align:center;
+}
+.shop-item-preview {
+  min-height:58px;display:flex;align-items:center;justify-content:center;
+  line-height:1;
+}
+.shop-item h3 {
+  min-height:42px;margin:0;display:flex;align-items:center;justify-content:center;
+  line-height:1.25;text-align:center;
+}
+.shop-item-desc {
+  min-height:48px;margin:0;display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:2;overflow:hidden;line-height:1.45;text-align:center;
+}
+.shop-item-hint { min-height:18px;margin:0!important }
+.shop-item>.btn,.shop-item>.shop-item-timer,.shop-item>.shop-owned-badge {
+  margin-top:auto!important;width:100%;min-height:48px;
+}
+
+@media (max-width:699px) {
+  .auth-bg { justify-content:flex-start;padding:20px 16px 96px }
+  .auth-box { max-width:520px }
+  .auth-title { font-size:clamp(52px,16vw,76px)!important }
+  .lobby-content { padding:32px 16px 104px!important }
+  .logo-title { font-size:clamp(54px,16vw,76px)!important }
+  .shop-box { width:calc(100vw - 16px)!important;padding:18px 12px!important }
+  .shop-grid { grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important }
+  .shop-item { min-height:286px;padding:14px 10px!important }
+  .shop-item-preview { min-height:48px;font-size:32px!important }
+  .shop-item h3 { min-height:36px;font-size:12px!important }
+  .shop-item-desc { min-height:42px;font-size:12px;line-height:1.35 }
+}
+
+@media (min-width:700px) and (max-width:959px) {
+  .auth-box {
+    display:flex!important;flex-direction:column!important;max-width:560px!important;
+    align-items:stretch!important;
+  }
+  .auth-title { font-size:clamp(64px,11vw,86px)!important }
+  .lobby-content {
+    display:flex!important;flex-direction:column!important;max-width:680px!important;
+    padding:48px 24px 96px!important;
+  }
+  .logo-title { font-size:clamp(72px,11vw,92px)!important }
+}
+
+@media (min-width:960px) {
+  .auth-bg { align-items:center!important;justify-content:center!important;padding:40px!important }
+  .auth-box {
+    display:grid!important;width:min(1080px,calc(100vw - 80px))!important;
+    max-width:1080px!important;grid-template-columns:minmax(430px,1fr) minmax(360px,420px)!important;
+    grid-template-areas:"auth-logo auth-panel" "auth-title auth-panel" "auth-sub auth-panel";
+    column-gap:clamp(48px,6vw,88px)!important;align-items:center!important;
+  }
+  .auth-logo { grid-area:auth-logo!important;align-self:end }
+  .auth-title {
+    grid-area:auth-title!important;font-size:clamp(76px,7vw,106px)!important;
+    max-width:620px;margin:8px 0!important;
+  }
+  .auth-sub { grid-area:auth-sub!important;align-self:start;margin:0!important }
+  .auth-box>.glass-panel { grid-area:auth-panel!important;width:100%;margin:0!important }
+
+  .lobby-content {
+    min-height:calc(100dvh - 64px);padding:clamp(32px,6vh,64px) 28px 72px!important;
+    align-items:center!important;
+  }
+  .logo-block { grid-area:hero;align-self:center }
+  .lobby-form { grid-area:actions;align-self:center }
+  #next-tournament-banner { grid-area:banner;margin:0!important;width:100% }
+  .lobby-missions-desktop {
+    grid-area:missions;align-self:center;max-height:520px;overflow:auto;
+    padding:18px!important;background:#1f1f21!important;border:1px solid #28282a!important;
+    border-radius:6px!important;
+  }
+  .logo-title { font-size:clamp(76px,7vw,96px)!important }
+  .shop-box {
+    width:min(1120px,calc(100vw - 40px))!important;max-width:1120px!important;
+    max-height:calc(100dvh - 32px)!important;padding:28px!important;
+  }
+  .shop-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important }
+}
+
+@media (min-width:960px) and (max-width:1199px) {
+  .lobby-content {
+    max-width:980px!important;grid-template-columns:minmax(0,.9fr) minmax(380px,1.1fr)!important;
+    grid-template-areas:"hero actions" "missions actions" "banner banner"!important;
+    column-gap:48px!important;row-gap:24px!important;
+  }
+}
+
+@media (min-width:1200px) {
+  .lobby-content {
+    max-width:1440px!important;
+    grid-template-columns:minmax(430px,1.2fr) minmax(390px,.9fr) minmax(280px,.68fr)!important;
+    grid-template-areas:"hero actions missions" "banner banner banner"!important;
+    column-gap:clamp(32px,4vw,64px)!important;row-gap:20px!important;
+  }
+  .lobby-content:has(.lobby-missions-desktop.hidden) {
+    max-width:1120px!important;
+    grid-template-columns:minmax(430px,1.15fr) minmax(390px,.85fr)!important;
+    grid-template-areas:"hero actions" "banner banner"!important;
+  }
+}
+
+@media (max-height:760px) and (min-width:960px) {
+  .auth-box { transform:scale(.9);transform-origin:center }
+  .lobby-content { padding-top:24px!important;padding-bottom:32px!important }
+  .logo-title { font-size:74px!important }
+  .logo-die { font-size:36px!important;margin-bottom:8px!important }
+  .logo-block::before { margin-bottom:8px }
+  .lobby-form { gap:8px!important;padding:16px!important }
+  .lobby-form .btn { min-height:44px;padding-block:9px!important }
+}

@@ -10,9 +10,22 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "5.0.0";
+const GAME_VERSION = "5.0.1";
 
 const CHANGELOG = [
+  {
+    version: "5.0.1",
+    date: "2026-09-20",
+    title: "Correcciones responsive de login, lobby y tienda",
+    scope: "ui",
+    files: ["frontend/styles.css", "frontend/index.html"],
+    changes: [
+      "Login de escritorio sin recortes ni superposición entre título y formulario",
+      "Lobby reorganizado con áreas explícitas para acciones y misiones",
+      "Cards de tienda con altura, texto y botones alineados",
+      "Ajustes verificados para pantallas móviles, tablets y escritorio"
+    ]
+  },
   {
     version: "5.0.0",
     date: "2026-09-20",
