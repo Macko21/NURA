@@ -1,19 +1,36 @@
 {
-  "name": "appnura",
-  "version": "1.0.0",
-  "description": "PWA para gestión de artículos de limpieza",
-  "main": "env.js",
+  "name": "nura",
+  "version": "3.0.0",
+  "description": "NURA — Gestión de artículos de limpieza (ventas, stock, clientes, combos, deudas, reportes)",
   "type": "module",
+  "private": true,
   "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write ."
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "eslint": "^9.39.4"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.4",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "html2canvas": "^1.4.1",
+    "html2pdf.js": "^0.14.0",
+    "jspdf": "^4.2.1",
+    "sweetalert2": "^11.26.25"
   }
 }

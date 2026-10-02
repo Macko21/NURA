@@ -10,36 +10,17 @@
   <meta name="apple-mobile-web-app-title" content="NURA" />
   <title>NURA — Gestión</title>
 
-  <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="logo.png" />
-  <link rel="icon" href="logo.png" type="image/png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="icon" href="/logo.png" type="image/png" />
+  <link rel="stylesheet" href="/src/styles.css" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-  <script src="env.js"></script>
-
-  <script defer src="app/db.js"></script>
-  <script defer src="app/ui.js"></script>
-  <script defer src="app/auth.js"></script>
-  <script defer src="app/productos.js"></script>
-  <script defer src="app/clientes.js"></script>
-  <script defer src="app/ventas.js"></script>
-  <script defer src="app/compras.js"></script>
-  <script defer src="app/stock.js"></script>
-  <script defer src="app/combos.js"></script>
-  <script defer src="app/deudas.js"></script>
-  <script defer src="app/reportes.js"></script>
-  <script defer src="app/main.js"></script>
 </head>
 <body>
 
   <!-- SPLASH -->
   <div id="splash" style="position:fixed;inset:0;background:#0c1220;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s;">
-    <img src="logo.png" style="width:96px;height:96px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(82,218,210,0.5));animation:splashPulse 1.5s ease-in-out infinite alternate;" />
+    <img src="/logo.png" style="width:96px;height:96px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(82,218,210,0.5));animation:splashPulse 1.5s ease-in-out infinite alternate;" />
     <div style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900;letter-spacing:6px;color:#fff;margin-top:8px;">NUR<span style="color:#a78bfa;">A</span></div>
     <div style="font-size:8px;color:rgba(255,255,255,0.25);letter-spacing:2.5px;text-transform:uppercase;margin-top:4px;">artículos de limpieza</div>
     <div style="margin-top:24px;width:40px;height:2.5px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
@@ -48,17 +29,13 @@
   </div>
 
   <!-- LOGIN SCREEN -->
-  <div id="loginScreen">
+  <div id="loginScreen" style="display:none;">
     <div class="login-box">
-      <img src="logo.png" alt="Nura" class="logo-img" />
+      <img src="/logo.png" alt="Nura" class="logo-img" />
       <h2>NUR<span style="color:#a78bfa;">A</span></h2>
       <div class="sub">artículos de limpieza</div>
-      <input type="text" id="loginUser" placeholder="Usuario" autocomplete="off" />
-      <input type="password" id="loginPass" placeholder="Contraseña" />
-      <select id="loginRole">
-        <option value="admin">🔐 Admin</option>
-        <option value="vendedor">🏪 Vendedor</option>
-      </select>
+      <input type="email" id="loginUser" placeholder="Email" autocomplete="email" />
+      <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password" />
       <button id="loginBtn">Ingresar</button>
       <div class="error" id="loginError">Usuario o contraseña incorrectos</div>
     </div>
@@ -72,7 +49,7 @@
     <nav class="sidebar" id="sidebar">
       <button id="sidebarClose" style="position:absolute;top:8px;right:8px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:20px;z-index:101;padding:8px;">✕</button>
       <div class="sidebar-logo">
-        <img src="logo.png" alt="Nura" class="logo-img" />
+        <img src="/logo.png" alt="Nura" class="logo-img" />
         <div class="logo-text">
           <span class="logo-brand">NUR<span class="letra-a">A</span></span>
           <span class="logo-sub">artículos de limpieza</span>
@@ -133,52 +110,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
-
-  <script>
-    function initApp() {
-      if (!window._FB_READY) { document.addEventListener('fb-ready', initApp, { once:true }); return; }
-      if (window._nuraInit) { window._nuraInit(); return; }
-      const check = setInterval(() => {
-        if (window._nuraInit) { clearInterval(check); window._nuraInit(); }
-      }, 50);
-      setTimeout(() => clearInterval(check), 5000);
-    }
-    initApp();
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
-    }
-
-    let _dip = null;
-    window.addEventListener('beforeinstallprompt', e => {
-      e.preventDefault(); _dip = e;
-      setTimeout(() => { if(document.getElementById('app').style.display!=='none') mostrarInstall(); }, 5000);
-    });
-    function mostrarInstall() {
-      if (!_dip || document.getElementById('installBanner')) return;
-      const b = document.createElement('div'); b.id = 'installBanner';
-      b.innerHTML = `<div style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#161d27;border:1px solid rgba(82,218,210,0.25);border-radius:var(--r-md);padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:7000;max-width:320px;width:calc(100% - 24px);">
-        <img src="logo.png" style="width:34px;height:34px;object-fit:contain;flex-shrink:0;">
-        <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:800;color:#fff;font-size:12px;">Instalá NURA</div><div style="font-size:10px;color:rgba(255,255,255,0.35);">Accedé desde la pantalla de inicio</div></div>
-        <button onclick="instalarPWA()" style="background:linear-gradient(135deg,#1ab8af,#52dad2);color:#fff;border:none;border-radius:var(--r-sm);padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;cursor:pointer;">Instalar</button>
-        <button onclick="this.closest('#installBanner').remove()" style="background:none;border:none;color:rgba(255,255,255,0.25);cursor:pointer;font-size:16px;padding:2px 4px;">✕</button>
-      </div>`;
-      document.body.appendChild(b);
-    }
-    window.instalarPWA = async function() {
-      if (!_dip) return;
-      _dip.prompt(); await _dip.userChoice; _dip = null;
-      const b = document.getElementById('installBanner'); if(b) b.remove();
-    };
-
-    document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
-    let lastTouchEnd = 0;
-    document.addEventListener('touchend', function (event) {
-      const now = Date.now();
-      if (now - lastTouchEnd <= 300) event.preventDefault();
-      lastTouchEnd = now;
-    }, false);
-  </script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
