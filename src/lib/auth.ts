@@ -55,7 +55,7 @@ export async function login() {
 
   // Compatibilidad con la versión legacy: se puede ingresar con el username
   // simple (ej: "admin") y se completa el dominio @nura.app.
-  const email = rawEmail.includes('@') ? rawEmail : `${rawEmail}@nura.app`;
+  const email = (rawEmail.includes('@') ? rawEmail : `${rawEmail}@nura.app`).toLowerCase();
 
   btn.disabled = true;
   btn.textContent = 'Ingresando...';
