@@ -16,7 +16,7 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.0, primera etapa. El plan comple
 ## Pruebas y límites
 
 - 23 pruebas de reglas, 22 pruebas de controles de producción, regresiones de seguridad, 52 comprobaciones HTTP/WebSocket y comprobación estática de bundle móvil pasan localmente. Auditoría npm de producción y desarrollo: cero vulnerabilidades informadas en esta revisión; no equivale a auditoría de seguridad integral.
-- Nueva suite PostgreSQL prueba migración repetida, 20 notificaciones concurrentes, una sola entrega, contenido congelado distinto del catálogo, importe incorrecto, reembolso/replay y bandeja persistente tras error del proveedor. Ejecuta únicamente contra localhost y base terminada en `_test`; nunca contra producción. Pendiente de resultado en GitHub al redactar este documento.
+- Nueva suite PostgreSQL prueba migración repetida, 20 notificaciones concurrentes, una sola entrega, contenido congelado distinto del catálogo, importe incorrecto, reembolso/replay y bandeja persistente tras error del proveedor. Ejecuta únicamente contra localhost y base terminada en `_test`; nunca contra producción. Aprobada en GitHub Actions con PostgreSQL 16: https://github.com/Macko21/LOS10MILDEMACKO/actions/runs/37146081665 (commit de implementación a351ae9).
 - La firma sigue el manifiesto de la documentación oficial de Mercado Pago. Los reintentos firmados no se descartan por antigüedad; su efecto se deduplica en base de datos.
 - No se realizaron pagos reales ni verificación de firma real del proveedor. No activar compras por el solo hecho de que CI pase.
 
@@ -30,6 +30,8 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.0, primera etapa. El plan comple
 6. P1/P2: revisar progresión y power-ups frente a monetización cosmética; publicación nativa con Billing/StoreKit solo después de su integración y validación.
 
 ## Requisitos externos aún no comprobados
+
+La implementación está en `codex/production-foundation`; no se integró a `main` y no se disparó el despliegue de esta etapa a Render. Antes de esa integración se necesita inventario de pagos pendientes y confirmación de backup/restauración. Cambiar el protocolo de compras sin esa comprobación puede dejar compradores antiguos esperando acreditación.
 
 - Acceso operativo a Render y al proveedor real de PostgreSQL para staging, plan, instancias, backups, exportación externa cifrada y ensayo de restauración. No modificar el plan pago sin autorización.
 - Dominio HTTPS, SMTP entregando mensajes, reputación y registros DNS.
