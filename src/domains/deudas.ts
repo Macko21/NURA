@@ -1,8 +1,10 @@
 import { store, saveVenta } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, fmt, fmtDate, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, registerRenderer, exposeGlobal } from '../lib/ui';
+import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, moneyInput, registerRenderer, exposeGlobal } from '../lib/ui';
+import { fmtDate } from '../lib/format';
+import { genId } from '../lib/id';
 import { waLink } from '../config';
-import type { Venta, VentaPago } from '../types';
+import type { Venta, VentaPago, MedioPago } from '../types';
 
 function getSaldoVenta(venta: Venta) {
   const pagado = (venta.pagos || []).reduce((s, p) => s + p.monto, 0);
@@ -118,18 +120,16 @@ export async function modalRegistrarPago(key: string) {
     <div class="form-group"><label>Monto</label>${moneyInput('pagoMonto', String(deuda))}</div>
     <div class="form-group"><label>Medio</label><select id="pagoMedio"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
     <div class="form-group"><label>Fecha</label><input id="pagoFecha" type="date" value="${new Date().toISOString().slice(0,10)}" /></div>
-    <div class="form-group full"><label>Observaciones</label><textarea id="pagoObs" rows="2"></textarea></div>
   </div>`, async () => {
     const monto = parseFloat((document.getElementById('pagoMonto') as HTMLInputElement).value) || 0;
     if (!monto) { swalError('Ingresá un monto'); return; }
-    const medio = (document.getElementById('pagoMedio') as HTMLSelectElement).value;
+    const medio = (document.getElementById('pagoMedio') as HTMLSelectElement).value as MedioPago;
     const fecha = new Date((document.getElementById('pagoFecha') as HTMLInputElement).value).getTime() || Date.now();
-    const obs = (document.getElementById('pagoObs') as HTMLTextAreaElement).value.trim();
 
     const venta = store.ventas.find((v) => (v.clienteId === key || v.clienteNombre === key) && getSaldoVenta(v).saldo > 0);
     if (!venta) { swalError('No hay deuda pendiente'); return; }
 
-    const pago = { id: genId(), fecha: new Date((document.getElementById('pagoFecha') as HTMLInputElement).value).getTime() || Date.now(), monto, medio, obs };
+    const pago: VentaPago = { id: genId(), fecha, monto, medio };
     venta.pagos = [...(venta.pagos || []), pago];
     closeModal();
     await saveVenta(venta);
@@ -171,17 +171,6 @@ export function wspDeudaCliente(key: string) {
   msg += `--------------------------\n💰 *TOTAL ADEUDADO: ${fmt(deuda)}*\n\nPodés pagar por efectivo o transferencia.\n📷 @nura.neco`;
   const telNum = tel.replace(/\D/g, '');
   window.open(`https://wa.me/${telNum}?text=${encodeURIComponent(msg)}`, '_blank');
-}
-
-function getTotalDeudaCliente(key: string) {
-  return store.ventas
-    .filter((v) => (v.clienteId === key || v.clienteNombre === key) && v.estado !== 'cancelado' && v.estado !== 'pagado')
-    .reduce((s, v) => s + getSaldoVenta(v).saldo, 0);
-}
-
-function getSaldoVenta(venta: any) {
-  const pagado = (venta.pagos || []).reduce((s, p) => s + p.monto, 0);
-  return { pagado, saldo: Math.max(0, venta.total - pagado) };
 }
 
 registerRenderer('deudas', renderDeudas);

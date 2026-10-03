@@ -1,6 +1,7 @@
 import { store, saveVenta, removeVenta, descontarStock, reponerStock, loadAll } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, fmt, fmtL, fmtDate, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, moneyInput, unitInput, registerRenderer, navigate, exposeGlobal, currentPage, buildVendibles } from '../lib/ui';
+import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, swalInfo, openModal, closeModal, moneyInput, unitInput, registerRenderer, exposeGlobal, currentPage, renderPage } from '../lib/ui';
+import { fmtDate } from '../lib/format';
 import { genId } from '../lib/id';
 import { waLink } from '../config';
 import type { Venta, VentaItem, VentaPago, Cliente, Combo, Producto, Presentacion } from '../types';
@@ -81,6 +82,7 @@ export function estadoSelect(v: any) {
 export async function cambiarEstadoVenta(id: string, estado: string) {
   const v = store.ventas.find((x) => x.id === id);
   if (!v) return;
+  if (estado !== 'pagado' && estado !== 'pendiente' && estado !== 'cancelado') return;
   v.estado = estado;
   await saveVenta(v);
   if (estado === 'pagado') {
@@ -107,26 +109,32 @@ export function buildVendibles(): any[] {
   return vendibles;
 }
 
-function buildVentaModalContent(vendibles: any[]) {
+function buildVentaModalContent() {
+  const vendibles = buildVendibles();
+  const combos = vendibles.filter((v) => v.esCombo);
   return `<div style="display:flex;flex-direction:column;gap:12px;">
-    <div class="form-group full"><label>Cliente</label><select id="vCliente" onchange="onClienteChange()"><option value="">Seleccioná...</option>${store.clientes.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)}${c.esMayorista ? ' (Mayorista)' : ''}</option>`).join('')}</select></div>
-    <div class="form-group"><label>Envío</label>${moneyInput('vEnvio', '0')}</div>
-    <div class="form-group"><label>Descuento</label>${moneyInput('vDescuento', '0')}</div>
+    <div class="form-group full"><label>Cliente</label><select id="vCliente"><option value="">Seleccioná...</option>${store.clientes.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)}${c.esMayorista ? ' (Mayorista)' : ''}</option>`).join('')}</select></div>
     <div class="form-group"><label>Observaciones</label><textarea id="vObs" rows="2"></textarea></div>
     <div class="form-group full"><label>Items</label>
+      <div class="flex gap-8 mb-8">
+        <select id="vItemSel" style="flex:1;"><option value="">Producto / presentación...</option>${vendibles.filter((v) => !v.esCombo).map((v) => `<option value="${v.id}">${escapeHTML(v.nombre)} ${v.detalle ? ' — ' + escapeHTML(v.detalle) : ''} — ${fmt(v.precio)} (Stock: ${v.stock})</option>`).join('')}</select>
+        <input id="vCant" type="number" min="0" step="0.001" value="1" style="width:70px;" title="Cantidad" />
+        <button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarItemVenta()">+ Agregar</button>
+      </div>
+      ${combos.length ? `<div class="flex gap-8 mb-8">
+        <select id="vComboSel" style="flex:1;"><option value="">Combo...</option>${combos.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)} — ${fmt(c.precio)}</option>`).join('')}</select>
+        <input id="vCantCombo" type="number" min="0" step="1" value="1" style="width:70px;" title="Cantidad" />
+        <button class="btn btn-secondary" style="flex-shrink:0;" onclick="agregarComboVenta()">+ Combo</button>
+      </div>` : ''}
       <div id="ventaItemsWrap" style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:var(--r-sm);padding:8px;">
         ${renderVentaItems()}
-      </div>
-      <div class="flex gap-8 mt-8">
-        <button class="btn btn-primary" onclick="agregarItemVenta()">+ Agregar item</button>
-        <button class="btn btn-secondary" onclick="agregarComboVenta()">+ Combo</button>
       </div>
     </div>
     <div class="cost-calc-box" style="margin-top:12px;">
       <h4>Totales</h4>
+      <div class="cost-row"><span>Descuento</span><span>${moneyInput('vDescuento', '0', 'updateVentaTotals()')}</span></div>
+      <div class="cost-row"><span>Envío</span><span>${moneyInput('vEnvio', '0', 'updateVentaTotals()')}</span></div>
       <div class="cost-row"><span>Subtotal</span><span id="vSubtotal">${fmt(0)}</span></div>
-      <div class="cost-row"><span>Descuento</span><span>${moneyInput('vDescuento', '0', 'updateVentaTotals()')}</div>
-      <div class="cost-row"><span>Envío</span><span>${moneyInput('vEnvio', '0', 'updateVentaTotals()')}</div>
       <div class="cost-row total"><span>Total</span><span id="vTotal" class="fw-700">${fmt(0)}</span></div>
     </div>
   </div>`;
@@ -137,47 +145,64 @@ function renderVentaItems() {
   return ventaItems.map((it, i) => `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
     <div class="flex-1"><div class="fw-700" style="font-size:13px;">${escapeHTML(it.nombre)}</div><div style="font-size:11px;color:var(--text-muted);">${escapeHTML(it.detalle)} · x${it.cantidad} · ${fmt(it.precioAplicado)} c/u</div></div>
     <div class="flex gap-8 flex-wrap">
-      <div class="form-group" style="min-width:80px;"><label>Cant.</label>${unitInput(`viCant${i}`, String(it.cantidad), it.esAcc ? 'un' : 'L', it.esAcc ? '1' : '0.001', `ventaItems[${i}].cantidad=+this.value;updateVentaTotals()`)}</div>
-      <div class="form-group" style="min-width:120px;"><label>Precio</label>${moneyInput(`viPrecio${i}`, String(it.precioAplicado), `ventaItems[${i}].precioAplicado=+this.value;updateVentaTotals()`)}</div>
-      <button class="btn btn-danger btn-sm btn-icon" onclick="ventaItems.splice(${i},1);document.getElementById('ventaItemsWrap')!.innerHTML=renderVentaItems();updateVentaTotals()">✕</button>
+      <div class="form-group" style="min-width:80px;"><label>Cant.</label>${unitInput(`viCant${i}`, String(it.cantidad), it.esAcc ? 'un' : 'L', it.esAcc ? '1' : '0.001', 'updateVentaTotals()')}</div>
+      <div class="form-group" style="min-width:120px;"><label>Precio</label>${moneyInput(`viPrecio${i}`, String(it.precioAplicado), 'updateVentaTotals()')}</div>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVentaItem(${i})">✕</button>
     </div>
   </div>`).join('');
 }
 
 export function formVenta() {
   ventaItems = [];
-  openModal('🛒 Nueva Venta', buildVentaModalContent(buildVendibles()), guardarVenta, true);
+  openModal('🛒 Nueva Venta', buildVentaModalContent(), guardarVenta, true);
+}
+
+function rerenderVentaItems() {
+  const wrap = document.getElementById('ventaItemsWrap');
+  if (wrap) wrap.innerHTML = renderVentaItems();
+  updateVentaTotals();
 }
 
 export function agregarItemVenta() {
-  const vendibles = buildVendibles();
-  openModal('Agregar item', `<div class="form-group full"><label>Producto / Presentación</label><select id="viProducto" style="width:100%;"><option value="">Seleccioná...</option>${buildVendibles().filter((v) => !v.esCombo).map((v) => `<option value="${v.id}">${escapeHTML(v.nombre)} ${v.detalle ? ' — ' + escapeHTML(v.detalle) : ''} — ${fmt(v.precio)} (Stock: ${v.stock})</option>`).join('')}</select></div><div class="form-group"><label>Cantidad</label>${unitInput('viCant', '1', 'L', '0.001')}</div>`, async () => {
-    const prodId = (document.getElementById('viProducto') as HTMLSelectElement).value;
-    const cant = parseFloat((document.getElementById('viCant') as HTMLInputElement).value) || 0;
-    if (!prodId || !cant) { await swalError('Completá todo'); return; }
-    const v = buildVendibles().find((x) => x.id === prodId);
-    if (!v) return;
-    ventaItems.push({ ...v, cantidad: cant, subtotal: v.precio * cant });
-    closeModal();
-    document.getElementById('ventaItemsWrap')!.innerHTML = renderVentaItems();
-    updateVentaTotals();
-  });
+  const prodId = (document.getElementById('vItemSel') as HTMLSelectElement).value;
+  const cant = parseFloat((document.getElementById('vCant') as HTMLInputElement)?.value || '1') || 1;
+  if (!prodId) { toast('Seleccioná un producto', 'info'); return; }
+  const v = buildVendibles().find((x) => x.id === prodId);
+  if (!v) return;
+  if (!v.esCombo && (v.stock ?? 0) < cant) { void swalError(`Stock insuficiente. Disponible: <strong>${v.stock ?? 0} un</strong>`); return; }
+  const vendKey = String(v.comboId || v.id || '');
+  const exist = ventaItems.find((x) => x.key === vendKey);
+  if (exist) {
+    exist.cantidad += cant;
+    exist.precioAplicado = v.precio;
+    exist.subtotal = exist.cantidad * exist.precioAplicado;
+  } else {
+    ventaItems.push({ ...v, key: vendKey, cantidad: cant, precioAplicado: v.precio, subtotal: v.precio * cant });
+  }
+  rerenderVentaItems();
 }
 
 export function agregarComboVenta() {
-  const combos = buildVendibles().filter((v) => v.esCombo);
-  if (!combos.length) { toast('No hay combos', 'info'); return; }
-  openModal('Agregar combo', `<div class="form-group full"><label>Combo</label><select id="viCombo" style="width:100%;"><option value="">Seleccioná...</option>${combos.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)} — ${fmt(c.precio)}</option>`).join('')}</select></div><div class="form-group"><label>Cantidad</label>${unitInput('viCant', '1', 'un', '1')}</div>`, () => {
-    const comboId = (document.getElementById('viCombo') as HTMLSelectElement).value;
-    const cant = parseFloat((document.getElementById('viCant') as HTMLInputElement).value) || 0;
-    if (!comboId || !cant) { toast('Completá todo', 'info'); return; }
-    const c = buildVendibles().find((x) => x.id === comboId);
-    if (!c) return;
-    ventaItems.push({ ...c, cantidad: cant, subtotal: c.precio * cant, esCombo: true });
-    document.getElementById('ventaItemsWrap')!.innerHTML = renderVentaItems();
-    updateVentaTotals();
-    closeModal();
-  });
+  const comboId = (document.getElementById('vComboSel') as HTMLSelectElement)?.value;
+  const cant = parseFloat((document.getElementById('vCantCombo') as HTMLInputElement)?.value || '1') || 1;
+  if (!comboId) { toast('Seleccioná un combo', 'info'); return; }
+  const c = buildVendibles().find((x) => x.id === comboId);
+  if (!c) return;
+  const vendKey = String(c.comboId || c.id || '');
+  const exist = ventaItems.find((x) => x.key === vendKey);
+  if (exist) {
+    exist.cantidad += cant;
+    exist.precioAplicado = c.precio;
+    exist.subtotal = exist.cantidad * exist.precioAplicado;
+  } else {
+    ventaItems.push({ ...c, key: vendKey, cantidad: cant, esCombo: true, precioAplicado: c.precio, subtotal: c.precio * cant });
+  }
+  rerenderVentaItems();
+}
+
+export function eliminarVentaItem(i: number) {
+  ventaItems.splice(i, 1);
+  rerenderVentaItems();
 }
 
 export function updateVentaTotals() {
@@ -239,8 +264,9 @@ async function guardarVenta() {
 export async function verVenta(id: string) {
   const v = store.ventas.find((x) => x.id === id);
   if (!v) return;
+  const num = [...store.ventas].sort((a, b) => a.fecha - b.fecha).findIndex((x) => x.id === id) + 1;
   const cl = store.clientes.find((c) => c.id === v.clienteId);
-  openModal(`👁 Venta #${v.num || '?'}`, `<div style="display:flex;flex-direction:column;gap:8px;">
+  openModal(`👁 Venta #${num}`, `<div style="display:flex;flex-direction:column;gap:8px;">
     <div class="m-card-row"><span class="m-card-row-label">Cliente</span><span class="m-card-row-value">${escapeHTML(cl?.nombre || v.clienteNombre || '—')}</span></div>
     <div class="m-card-row"><span class="m-card-row-label">Fecha</span><span class="m-card-row-value">${fmtDate(v.fecha)}</span></div>
     <div class="m-card-row"><span class="m-card-row-label">Estado</span><span class="m-card-row-value">${v.estado}</span></div>
@@ -281,15 +307,9 @@ export function resumenPendientesModal() {
   openModal('📋 Ventas pendientes', `<div class="mobile-card-list">${pendientes.map((v) => `<div class="m-card"><div class="m-card-title">${escapeHTML(v.clienteNombre || '—')} · ${fmt(v.total)}</div><div class="m-card-subtitle">${fmtDate(v.fecha)}</div><div class="m-card-footer"><button class="btn btn-primary btn-sm" onclick="cambiarEstadoVenta('${v.id}', 'pagado')">✅ Marcar pagado</button><button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button></div></div>`).join('')}</div>`, null, true);
 }
 
-export function verPendientesCliente(key: string) { /* ... */ }
-export function wspPendientesCliente(key: string) { /* ... */ }
-export function estadoSelect(v: any) { /* ... */ }
-export function cambiarEstadoVenta(id: string, estado: string) { /* ... */ }
-
 registerRenderer('ventas', renderVentas);
 exposeGlobal({
-  formVenta, agregarItemVenta, agregarComboVenta, updateVentaTotals,
+  formVenta, agregarItemVenta, agregarComboVenta, eliminarVentaItem, updateVentaTotals,
   guardarVenta, verVenta, wspVenta, eliminarVenta,
-  resumenPendientesModal, verPendientesCliente, wspPendientesCliente,
-  estadoSelect, cambiarEstadoVenta,
+  resumenPendientesModal, estadoSelect, cambiarEstadoVenta,
 });

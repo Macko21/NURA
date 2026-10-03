@@ -1,7 +1,9 @@
 import { store, saveCombo, removeCombo } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, registerRenderer, exposeGlobal, buildVendibles } from '../lib/ui';
+import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, moneyInput, unitInput, registerRenderer, exposeGlobal } from '../lib/ui';
+import { buildVendibles } from './ventas';
 import { genId } from '../lib/id';
+import html2canvas from 'html2canvas';
 import { waLink } from '../config';
 import type { Combo, ComboItem, Producto, Presentacion } from '../types';
 
@@ -54,10 +56,12 @@ export function renderCombos() {
 }
 
 let _comboItems: any[] = [];
+let _comboEditId: string | null = null;
 
 export function formCombo(id: string | null) {
   const c = id ? store.combos.find((x) => x.id === id) ?? null : null;
   _comboItems = c ? c.items.map((x) => ({ ...x })) : [];
+  _comboEditId = id;
 
   const vendibles = buildVendibles();
   const esVendedor = Sesion.esVendedor();
@@ -80,19 +84,26 @@ export function formCombo(id: string | null) {
   openModal(c ? 'Editar Combo' : 'Nuevo Combo', html, guardarCombo, true);
 }
 
-function renderComboItems() {
-  const wrap = document.getElementById('comboItemsWrap');
-  if (!wrap) return;
+function renderComboItems(): string {
   if (!_comboItems.length) {
-    wrap.innerHTML = `<div class="empty-state" style="padding:16px;"><p>Sin items</p></div>`;
-    return;
+    return `<div class="empty-state" style="padding:16px;"><p>Sin items</p></div>`;
   }
-  wrap.innerHTML = _comboItems.map((item, i) => `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+  return _comboItems.map((item, i) => `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
     <div class="flex-1"><div class="fw-700" style="font-size:13px;">${escapeHTML(item.nombre)}</div></div>
     <div class="flex gap-8 flex-wrap">
-      <div class="form-group" style="min-width:80px;"><label>Cant.</label>${unitInput(`ciCant${i}`, String(item.cantidad), 'un', '1', `_comboItems[${i}].cantidad=+this.value;`)}</div>
-      <button class="btn btn-danger btn-sm btn-icon" onclick="_comboItems.splice(${i},1);document.getElementById('comboItemsWrap')!.innerHTML=renderComboItems()">✕</button>
+      <div class="form-group" style="min-width:80px;"><label>Cant.</label>${unitInput(`ciCant${i}`, String(item.cantidad), 'un', '1', `setComboItemCant(${i}, this.value)`)}</div>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarComboItem(${i})">✕</button>
     </div></div>`).join('');
+}
+
+export function setComboItemCant(i: number, val: string) {
+  if (_comboItems[i]) _comboItems[i].cantidad = parseFloat(val) || 1;
+}
+
+export function eliminarComboItem(i: number) {
+  _comboItems.splice(i, 1);
+  const wrap = document.getElementById('comboItemsWrap');
+  if (wrap) wrap.innerHTML = renderComboItems();
 }
 
 export function agregarComboItem() {
@@ -109,15 +120,24 @@ export function agregarComboItem() {
 async function guardarCombo() {
   const nombre = (document.getElementById('cbNombre') as HTMLInputElement).value.trim();
   if (!nombre) { await swalError('El nombre es obligatorio'); return; }
+  if (!_comboItems.length) { await swalError('Agregá al menos un producto al combo'); return; }
+  const c = _comboEditId ? store.combos.find((x) => x.id === _comboEditId) ?? null : null;
   const esVendedor = Sesion.esVendedor();
+  const precio = parseFloat((document.getElementById('cbPrecio') as HTMLInputElement).value) || 0;
+  if (!precio) { await swalError('Ingresá el precio del combo'); return; }
+  const costoMayorista = _comboItems.reduce((s, i) => s + ((i.precioMayorista || i.precio) || 0) * (i.cantidad || 1), 0);
+  if (esVendedor && precio < costoMayorista) {
+    await swalError(`El precio no puede ser menor que el costo del combo (${fmt(costoMayorista)})`);
+    return;
+  }
   const combo: any = {
     id: c ? c.id : genId(),
-    nombre: (document.getElementById('cbNombre') as HTMLInputElement).value.trim(),
+    nombre,
     descripcion: (document.getElementById('cbDesc') as HTMLInputElement).value.trim(),
-    precio: parseFloat((document.getElementById('cbPrecio') as HTMLInputElement).value) || 0,
-    precioMayorista: esVendedor ? (c ? c.precioMayorista || 0 : 0) : parseFloat((document.getElementById('cbPrecioMay') as HTMLInputElement).value) || 0,
-    vendedorId: Sesion.esVendedor() ? Sesion.uid() : null,
-    items: _comboItems,
+    precio,
+    precioMayorista: esVendedor ? costoMayorista : parseFloat((document.getElementById('cbPrecioMay') as HTMLInputElement).value) || 0,
+    vendedorId: esVendedor ? Sesion.uid() : null,
+    items: _comboItems.map((x) => ({ ...x })),
   };
   closeModal();
   await saveCombo(combo);
@@ -167,4 +187,4 @@ function imagenCombosWsp(esMayorista = false) {
 }
 
 registerRenderer('combos', renderCombos);
-exposeGlobal({ formCombo, agregarComboItem, wspCombo, imprimirCombos, imagenCombosWsp, eliminarCombo });
+exposeGlobal({ formCombo, agregarComboItem, setComboItemCant, eliminarComboItem, wspCombo, imprimirCombos, imagenCombosWsp, eliminarCombo });

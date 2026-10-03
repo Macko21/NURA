@@ -1,9 +1,11 @@
 import { store, saveProducto, removeProducto, descontarStock, reponerStock } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, toast, swalError, swalConfirm, swalSuccess, openModal, closeModal, moneyInput, unitInput, EMOJIS_CAT, PRES_RAPIDAS, CATEGORIAS, registerRenderer, exposeGlobal, currentPage, navigate, fmt, fmtL, fmtDate } from '../lib/ui';
+import { escapeHTML, toast, swalError, swalConfirm, swalSuccess, openModal, closeModal, moneyInput, unitInput, EMOJIS_CAT, PRES_RAPIDAS, CATEGORIAS, registerRenderer, exposeGlobal, fmt } from '../lib/ui';
+import { fmtL } from '../lib/format';
 import { genId } from '../lib/id';
 import { waLink } from '../config';
-import type { Producto, Presentacion } from '../types';
+import { wspReporte } from './reportes';
+import type { Producto } from '../types';
 
 let catalogoSearch = '', catalogoFiltro = '', catalogoView = 'grid';
 
@@ -21,8 +23,8 @@ export function renderCatalogo() {
       <div class="search-bar" style="max-width:100%;"><span class="search-icon">🔍</span><input type="text" placeholder="Buscar nombre, código..." id="catSearch" value="${escapeHTML(catalogoSearch)}" /></div>
       <select id="catFiltro" style="max-width:180px;"><option value="">Todas</option>${CATEGORIAS.map((c) => `<option value="${c}" ${catalogoFiltro === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
       <div class="flex gap-6" style="margin-left:auto;">
-        <button class="btn btn-${catalogoView === 'grid' ? 'primary' : 'secondary'} btn-sm" onclick="catalogoView='grid';refreshCat()">⊞</button>
-        <button class="btn btn-${catalogoView === 'list' ? 'primary' : 'secondary'} btn-sm" onclick="catalogoView='list';refreshCat()">☰</button>
+        <button class="btn btn-${catalogoView === 'grid' ? 'primary' : 'secondary'} btn-sm" onclick="setCatalogoView('grid')">⊞</button>
+        <button class="btn btn-${catalogoView === 'list' ? 'primary' : 'secondary'} btn-sm" onclick="setCatalogoView('list')">☰</button>
       </div>
     </div>
     <div id="catRes">${catHTML()}</div>`;
@@ -32,6 +34,8 @@ export function renderCatalogo() {
 }
 
 function refreshCat() { const r = document.getElementById('catRes'); if (r) r.innerHTML = catHTML(); }
+
+export function setCatalogoView(v: string) { catalogoView = v; refreshCat(); }
 
 function filtrarProds() {
   return store.productos.filter((p) =>
@@ -112,21 +116,18 @@ function catList(prods: Producto[]) {
   }).join('')}</div>`;
 }
 
-function catHTML() { return catalogoView === 'grid' ? catGrid(filtrarProds()) : catList(filtrarProds()); }
-
 let _presList: any[] = [];
 export function formProducto(id: string | null) {
   const p = id ? store.productos.find((x) => x.id === id) ?? null : null;
   _presList = p ? [...p.presentaciones] : [];
   openModal(p ? 'Editar Producto' : 'Nuevo Producto', `<div class="form-grid">
-    <div class="form-group full"><label>Nombre</label><input id="pNombre" value="${escapeHTML(id ? store.productos.find((x) => x.id === id)?.nombre || '') : ''}" required /></div>
+    <div class="form-group full"><label>Nombre</label><input id="pNombre" value="${escapeHTML(id ? (store.productos.find((x) => x.id === id)?.nombre || '') : '')}" required /></div>
     <div class="form-group"><label>Código</label><input id="pCodigo" value="${id ? store.productos.find((x) => x.id === id)?.codigo || '' : ''}" /></div>
     <div class="form-group"><label>Categoría</label><select id="pCategoria">${CATEGORIAS.map((c) => `<option value="${c}" ${c === (id ? store.productos.find((x) => x.id === id)?.categoria : '') ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
     <div class="form-group"><label>Tipo</label><select id="pTipo" onchange="onTipoChange()"><option value="liquido" ${!id || store.productos.find((x) => x.id === id)?.tipo === 'liquido' ? 'selected' : ''}>Líquido</option><option value="accesorio" ${id && store.productos.find((x) => x.id === id)?.tipo === 'accesorio' ? 'selected' : ''}>Accesorio</option></select></div>
     <div class="form-group full"><label>Descripción</label><textarea id="pDescripcion" rows="2">${id ? escapeHTML(store.productos.find((x) => x.id === id)?.descripcion || '') : ''}</textarea></div>
     <div id="pAccFields" style="display:${id && store.productos.find((x) => x.id === id)?.tipo === 'accesorio' ? 'block' : 'none'};"></div>
     <div id="pLiqFields" style="display:${!id || store.productos.find((x) => x.id === id)?.tipo !== 'accesorio' ? 'block' : 'none'};"></div>
-    <div class="form-group full"><label>Descripción</label><textarea id="pDescripcion" rows="2"></div>
   </div>`, async () => {
     const nombre = (document.getElementById('pNombre') as HTMLInputElement).value.trim();
     if (!nombre) { await swalError('El nombre es obligatorio'); return; }
@@ -149,10 +150,11 @@ export function formProducto(id: string | null) {
       producto.precioVenta = Math.round(producto.costoUnidad * (1 + (producto.gananciaAcc || 0) / 100));
       producto.precioMayorista = Math.round(producto.precioVenta * (1 - (producto.descMayorista || 0) / 100));
     } else {
-      producto.stockLitros = parseFloat((document.getElementById('pStockLitros') as HTMLInputElement).value) || 0;
-      producto.stockMinLitros = parseFloat((document.getElementById('pStockMinLitros') as HTMLInputElement).value) || 0;
-      producto.costoLitro = parseFloat((document.getElementById('pCostoLitro') as HTMLInputElement).value) || 0;
-      producto.presentaciones = _presList.map((pr) => ({ ...pr, precioVenta: Math.round((pr.costoLitro || 0) * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0)), precioMayorista: Math.round(((pr.costoLitro || 0) * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0)) * (1 - (pr.descMayorista || 0) / 100)) }));
+      const costoLitro = parseFloat((document.getElementById('pCostoLitro') as HTMLInputElement).value) || 0;
+      producto.presentaciones = _presList.map((pr) => {
+        const base = Math.round(costoLitro * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0));
+        return { ...pr, precioVenta: base, precioMayorista: Math.round(base * (1 - (pr.descMayorista || 0) / 100)) };
+      });
     }
     closeModal();
     await saveProducto(producto);
@@ -182,10 +184,9 @@ export function onTipoChange() {
       liq.innerHTML = `
         <div class="form-group"><label>Stock litros</label>${unitInput('pStockLitros', '0', 'L', '0.001')}</div>
         <div class="form-group"><label>Stock mín. litros</label>${unitInput('pStockMinLitros', '0', 'L', '0.001')}</div>
-        <div class="form-group"><label>Costo por litro</label>${moneyInput('pCostoLitro', '0')}</div>
+        <div class="form-group"><label>Costo por litro</label>${moneyInput('pCostoLitro', '0', 'recalcTodasPres()')}</div>
         <div class="form-group"><label>Presentaciones</label><div id="presListWrap"></div><div class="flex gap-8 mt-8"><button class="btn btn-primary" onclick="agregarPresRapida()">+ Rápida</button><button class="btn btn-secondary" onclick="agregarPresPersonalizada()">+ Personalizada</button></div>`;
-        renderPresList();
-      }
+      renderPresList();
     }
   }
 }
@@ -197,12 +198,12 @@ function renderPresList() {
   wrap.innerHTML = _presList.map((pr, i) => `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
     <div class="fw-700" style="font-size:13px;">${escapeHTML(pr.nombre)}</div>
     <div class="flex gap-8 flex-wrap">
-      <div class="form-group" style="min-width:80px;"><label>Litros</label>${unitInput(`prLitros${i}`, String(pr.litros), 'L', '0.001', `_presList[${i}].litros=+this.value;recalcPres(${i})`)}</div>
-      <div class="form-group" style="min-width:120px;"><label>Costo envase</label>${moneyInput(`prCostoEnvase${i}`, String(pr.costoEnvase || 0))}</div>
-      <div class="form-group" style="min-width:120px;"><label>Costo etiqueta</label>${moneyInput(`prCostoEtiqueta${i}`, String(pr.costoEtiqueta || 0))}</div>
-      <div class="form-group" style="min-width:100px;"><label>Ganancia %</label>${moneyInput(`prGanancia${i}`, String(pr.ganancia || 0))}</div>
-      <div class="form-group" style="min-width:100px;"><label>Desc. mayorista %</label>${moneyInput(`prDescMayorista${i}`, String(pr.descMayorista || 0))}</div>
-      <button class="btn btn-danger btn-sm btn-icon" onclick="_presList.splice(${i},1);renderPresList();recalcTodasPres()">✕</button>
+      <div class="form-group" style="min-width:80px;"><label>Litros</label>${unitInput(`prLitros${i}`, String(pr.litros), 'L', '0.001', `setPresCampo(${i}, 'litros', this.value)`)}</div>
+      <div class="form-group" style="min-width:120px;"><label>Costo envase</label>${moneyInput(`prCostoEnvase${i}`, String(pr.costoEnvase || 0), `setPresCampo(${i}, 'costoEnvase', this.value)`)}</div>
+      <div class="form-group" style="min-width:120px;"><label>Costo etiqueta</label>${moneyInput(`prCostoEtiqueta${i}`, String(pr.costoEtiqueta || 0), `setPresCampo(${i}, 'costoEtiqueta', this.value)`)}</div>
+      <div class="form-group" style="min-width:100px;"><label>Ganancia %</label>${moneyInput(`prGanancia${i}`, String(pr.ganancia || 0), `setPresCampo(${i}, 'ganancia', this.value)`)}</div>
+      <div class="form-group" style="min-width:100px;"><label>Desc. mayorista %</label>${moneyInput(`prDescMayorista${i}`, String(pr.descMayorista || 0), `setPresCampo(${i}, 'descMayorista', this.value)`)}</div>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarPresItem(${i})">✕</button>
     </div></div>`).join('');
 }
 
@@ -217,9 +218,15 @@ export function agregarPresPersonalizada() {
   renderPresList();
 }
 
+function costoLitroActual(): number {
+  return parseFloat((document.getElementById('pCostoLitro') as HTMLInputElement)?.value || '0') || 0;
+}
+
 function recalcPres(i: number) {
   const pr = _presList[i];
-  pr.precioVenta = Math.round((pr.costoLitro || 0) * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0));
+  if (!pr) return;
+  const cl = pr.costoLitro ?? costoLitroActual();
+  pr.precioVenta = Math.round(cl * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0));
   pr.precioMayorista = Math.round(pr.precioVenta * (1 - (pr.descMayorista || 0) / 100));
 }
 
@@ -227,17 +234,17 @@ function recalcTodasPres() {
   _presList.forEach((_, i) => recalcPres(i));
 }
 
-function recalcTodasPresFinal(p: any) {
-  (p.presentaciones || []).forEach((pr: any) => {
-    pr.precioVenta = Math.round((pr.costoLitro || 0) * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0));
-    pr.precioMayorista = Math.round(pr.precioVenta * (1 - (pr.descMayorista || 0) / 100));
-  });
+export function setPresCampo(i: number, campo: 'litros' | 'costoEnvase' | 'costoEtiqueta' | 'ganancia' | 'descMayorista', val: string) {
+  const pr = _presList[i];
+  if (!pr) return;
+  (pr as any)[campo] = parseFloat(val) || 0;
+  recalcPres(i);
 }
 
-async function saveProductoFinal(p: any) {
-  if (p.tipo === 'liquido') recalcTodasPresFinal(p);
-  await saveProducto(p);
-  toast(id ? 'Producto actualizado ✅' : 'Producto creado ✅');
+export function eliminarPresItem(i: number) {
+  _presList.splice(i, 1);
+  renderPresList();
+  recalcTodasPres();
 }
 
 export async function eliminarProducto(id: string) {
@@ -258,22 +265,14 @@ export function wspProducto(id: string) {
   window.open(waLink(msg), '_blank');
 }
 
-function wspCatalogo() { wspReporte(); }
-function wspCatalogoPDF() { exportarCatalogo(); }
-async function exportarCatalogo() { /* implementar PDF */ toast('Exportar PDF — pendiente', 'info'); }
-function listaMayoristaModal() { openModal('🏪 Lista Mayorista', '<div class="empty-state" style="padding:20px;">Función pendiente</div>', null, true); }
+function wspCatalogoPDF() { wspReporte(); }
 async function exportarCatalogo() { toast('Exportar PDF — pendiente', 'info'); }
-function generarPDFMayorista() { /* ... */ }
-function descargarPDF() { /* ... */ }
-function wspMayorista() { /* ... */ }
-function wspCatalogoPDF() { /* ... */ }
-function verDetalleProducto(id: string) { /* ... */ }
-function openProductDetail(id: string) { /* ... */ }
+function listaMayoristaModal() { openModal('🏪 Lista Mayorista', '<div class="empty-state" style="padding:20px;">Función pendiente</div>', null, true); }
 
 registerRenderer('catalogo', renderCatalogo);
 exposeGlobal({
   formProducto, onTipoChange, eliminarProducto, wspProducto,
   agregarPresRapida, agregarPresPersonalizada, renderPresList,
-  recalcPres, recalcTodasPres, recalcTodasPresFinal,
-  wspProducto, wspCatalogoPDF, listaMayoristaModal, exportarCatalogo,
+  setPresCampo, eliminarPresItem, setCatalogoView,
+  wspCatalogoPDF, listaMayoristaModal, exportarCatalogo,
 });

@@ -132,5 +132,6 @@ document.addEventListener('touchend', (event) => {
 
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  // BASE_URL respeta el subpath de GitHub Pages (/NURA/)
+  window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {}));
 }

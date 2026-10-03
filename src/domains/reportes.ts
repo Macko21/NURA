@@ -1,6 +1,7 @@
-import { store } from '../lib/db';
+import { store, getLastUpdateStr } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, fmt, fmtL, fmtDate, toast, swalInfo, openModal, closeModal, registerRenderer, exposeGlobal, verNotasVersion } from '../lib/ui';
+import { escapeHTML, fmt, toast, swalInfo, openModal, closeModal, registerRenderer, exposeGlobal, verNotasVersion, EMOJIS_CAT } from '../lib/ui';
+import { fmtL, fmtDate } from '../lib/format';
 import { waLink, contactFooter } from '../config';
 import type { Venta, VentaItem, ComboItem, Producto, Combo } from '../types';
 
