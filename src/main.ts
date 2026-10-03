@@ -135,6 +135,15 @@ if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
   const CACHE_VIGENTE = 'nura-v27'; // debe coincidir con CACHE en public/sw.js
 
+  // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
+  // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
   // Limpieza: desregistrar SWs de versiones anteriores (p. ej. el viejo de la
   // raíz '/') que servían la app legacy desde caché, y purgar cachés obsoletos.
   void navigator.serviceWorker.getRegistrations().then((regs) => {

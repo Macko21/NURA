@@ -96,7 +96,7 @@ function renderReportes() {
   if (!el) return;
   document.getElementById('topbarActions')!.innerHTML = `<button class="btn btn-sm btn-outline" onclick="wspReporte()">📲 WSP</button>`;
 
-  const tipoFiltro = (document.getElementById('repFiltro') as HTMLSelectElement)?.value || 'mes';
+  const tipoFiltro = (document.getElementById('repFiltro') as HTMLSelectElement)?.value || 'todo';
   const hoy = new Date();
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).getTime();
   const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59).getTime();
@@ -201,7 +201,7 @@ export function wspReporte() {
 }
 
 function limpiarFiltroReportes() {
-  (document.getElementById('repFiltro') as HTMLSelectElement).value = 'mes';
+  (document.getElementById('repFiltro') as HTMLSelectElement).value = 'todo';
   renderReportes();
 }
 
