@@ -4,10 +4,16 @@ services:
     runtime: node
     buildCommand: npm ci --omit=dev
     startCommand: npm start
-    healthCheckPath: /api/version
+    healthCheckPath: /health/ready
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 24.18.0
+      - key: PAYMENTS_ENABLED
+        value: 'false'
+      - key: PAID_COMPETITION_ENABLED
+        value: 'false'
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

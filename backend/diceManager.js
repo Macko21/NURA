@@ -18,7 +18,7 @@ const {
 } = require("./gameEngine");
 
 const {
-  createMatchState, getCurrentPlayer, getPlayerById,
+  createMatchState, createPlayerState, getCurrentPlayer, getPlayerById,
   startTurn, addHistoryEvent, setWinner
 } = require("./matchState");
 

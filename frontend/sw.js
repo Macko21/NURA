@@ -11,7 +11,7 @@
 
 // ⚠️ ACTUALIZAR ESTA VERSIÓN CADA VEZ QUE CAMBIE EL JUEGO
 // Debe coincidir con GAME_VERSION en version.js
-const GAME_VERSION = '5.0.2';
+const GAME_VERSION = '5.1.0';
 const CACHE_NAME = 'macko-v' + GAME_VERSION;
 
 const ASSETS = [

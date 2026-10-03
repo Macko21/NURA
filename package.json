@@ -1,12 +1,13 @@
 {
   "name": "los10000-macko",
-  "version": "5.0.2",
+  "version": "5.1.0",
   "description": "Juego de dados familiar - Los 10.000 de Macko",
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
-    "dev": "nodemon backend/server.js",
-    "test": "node scripts/game-rules-test.js && node scripts/security-regression-test.js && node scripts/smoke-test.js",
+    "dev": "node --watch backend/server.js",
+    "test": "node scripts/game-rules-test.js && node scripts/security-regression-test.js && node scripts/production-security-test.js && node scripts/smoke-test.js",
+    "test:production-db": "node scripts/production-db-test.js",
     "test:rules": "node scripts/game-rules-test.js",
     "mobile:prepare": "node scripts/prepare-mobile.js",
     "mobile:sync": "npm run mobile:prepare && cap sync",
@@ -32,7 +33,7 @@
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "mercadopago": "^3.2.0",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^10.0.14",
     "pg": "^8.21.0",
     "stripe": "^22.3.0",
     "three": "^0.185.1",
@@ -40,10 +41,9 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.4.2",
-    "nodemon": "^3.1.0"
+    "@capacitor/cli": "^8.4.2"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24 <25"
   }
 }

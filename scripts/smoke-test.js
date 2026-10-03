@@ -161,6 +161,11 @@ async function runTests() {
   }
 
   // ── 2. Endpoints básicos ─────────────────────────
+  assert('Liveness endpoint responds', (await fetchUrl('/health/live')).status === 200);
+  const ready = await fetchUrl('/health/ready');
+  assert('Readiness truthfully reports database availability', [200,503].includes(ready.status) && JSON.parse(ready.body).ready === (ready.status === 200));
+  assert('Unsigned payment webhook is rejected', (await postUrl('/api/mercadopago/webhook', { type: 'payment', data: { id: '123' } })).status === 401);
+  assert('Order history requires authentication', (await fetchUrl('/api/commerce/orders')).status === 401);
   console.log('\n── Endpoints básicos ──');
 
   try {
@@ -349,6 +354,23 @@ async function runTests() {
       wsTwo.waitForType('GAME_STARTED', 8000)
     ]);
     assert('Real-player room starts after both are ready', true);
+
+    const third = await createGuest('Smoke Tres');
+    const wsThree = await openGameSocket(third.token, 'Smoke Tres');
+    try {
+      wsThree.send(JSON.stringify({ type: 'REQUEST_JOIN_ACTIVE', data: { roomId: firstRoom.id } }));
+      const denied = await wsThree.waitForType('ERROR');
+      assert('Private UUID alone cannot grant access', denied.data.message.includes('código'));
+      wsThree.send(JSON.stringify({ type: 'JOIN_ROOM', data: { code: firstRoom.code } }));
+      await wsThree.waitForType('JOIN_REQUEST_SENT');
+      const approval = await wsOne.waitForType('JOIN_REQUEST_RECEIVED');
+      assert('Private late join waits for creator approval', approval.data.playerId === third.player.id);
+      wsOne.send(JSON.stringify({ type: 'RESPOND_JOIN_REQUEST', data: { roomId: firstRoom.id, requesterId: third.player.id, accept: true } }));
+      const joined = await wsThree.waitForType('JOIN_ACTIVE_SUCCESS');
+      assert('Approved private late join is playable', joined.data.match.players.some(p => p.id === third.player.id && p.joinedLate));
+      wsThree.send(JSON.stringify({ type: 'LEAVE_CONTEXT', data: {} }));
+      await wsThree.waitForType('LEFT_CONTEXT');
+    } finally { wsThree.close(); }
 
     wsOne.send(JSON.stringify({ type: 'LEAVE_CONTEXT', data: {} }));
     await wsOne.waitForType('LEFT_CONTEXT');

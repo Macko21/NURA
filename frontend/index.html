@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=5.0.2"></head>
+<!-- ⚠️ Al cambiar GAME_VERSION en version.js, actualizar ?v= acá abajo --><link rel="stylesheet" href="/styles.css?v=5.1.0"></head>
 <body>
 
 <!-- ══ AUTH ══ -->
@@ -104,7 +104,7 @@
       <div class="logo-die">🎲</div>
       <h1 class="logo-title">Los 10.000<br><em>de Macko</em></h1>
       <p class="logo-sub">Juego de dados · 2 a 10 jugadores</p>
-      <p class="app-version">v5.0.2</p>
+      <p class="app-version">v5.1.0</p>
       <div id="boost-badge" class="boost-badge hidden">⏫ Boost +50% activo</div>
     </div>
 
@@ -619,6 +619,12 @@
     <div id="shop-tab-store" class="shop-tab-content" style="display:none">
       <p class="shop-section-title">🪙 <span>Packs con dinero real</span></p>
       <div class="shop-grid" id="coin-packs-grid"></div>
+      <section aria-label="Historial de compras">
+        <h3>Mis compras</h3>
+        <p>El pago se confirma en el servidor. Volver de la tienda no acredita contenido por sí solo.</p>
+        <button id="btn-refresh-orders" class="btn btn-ghost" type="button">Actualizar compras</button>
+        <div id="commerce-order-history" aria-live="polite"></div>
+      </section>
     </div>
   </div>
 </div>
@@ -894,10 +900,10 @@
 <!-- ══ TOAST ══ -->
 <div id="toast" class="toast hidden"></div>
 
-<script src="/version.js?v=5.0.2"></script>
-  <script src="/dice-renderer.js?v=5.0.2"></script>
-  <script src="/audio.js?v=5.0.2"></script>
-  <script src="/app.js?v=5.0.2"></script>
+<script src="/version.js?v=5.1.0"></script>
+  <script src="/dice-renderer.js?v=5.1.0"></script>
+  <script src="/audio.js?v=5.1.0"></script>
+  <script src="/app.js?v=5.1.0"></script>
 <!-- FIN ⚠️ -->
 
 

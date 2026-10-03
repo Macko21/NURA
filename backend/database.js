@@ -17,8 +17,9 @@ const {
 } = require("./tournamentRules");
 
 const databaseUrl = String(process.env.DATABASE_URL || "");
-const databaseHost = databaseUrl.replace(/^postgres(?:ql)?:\/\//, "");
-const isLocalDatabase = /^(localhost|127\.0\.0\.1)(:|\/)/.test(databaseHost);
+let databaseHost = '';
+try { databaseHost = new URL(databaseUrl).hostname; } catch (_) { /* pg reports malformed configuration */ }
+const isLocalDatabase = ['localhost', '127.0.0.1', '[::1]'].includes(databaseHost);
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isLocalDatabase ? false : {
@@ -2306,6 +2307,7 @@ async function registerForTournament(tournamentId, playerId, playerName) {
     const tourneyRes = await client.query(`SELECT * FROM tournaments WHERE id = $1 FOR UPDATE`, [tournamentId]);
     const tourney = tourneyRes.rows[0];
     if (!tourney) throw new Error('Torneo no encontrado');
+    if (Number(tourney.fee) > 0 && !require('./productionPolicy').paidCompetitionEnabled()) throw new Error('La inscripción paga está temporalmente deshabilitada');
     if (tourney.status !== 'registration') throw new Error('El torneo no está en período de registro');
     if (!isTournamentRegistrationOpen(tourney)) throw new Error('La inscripción ya cerró');
 

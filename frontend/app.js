@@ -5943,6 +5943,7 @@ async function loadShopCatalog() {
 
 /* ── Cargar paquetes de monedas (Mercado Pago) ─────── */
 async function loadCoinPacks() {
+  loadCommerceOrders();
   const token = localStorage.getItem('gameToken');
   if (!token) return;
   
@@ -5951,7 +5952,7 @@ async function loadCoinPacks() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) return;
-    const { packs } = await res.json();
+    const { packs, enabled } = await res.json();
     const grid = $('coin-packs-grid');
     if (!grid) return;
     
@@ -5967,7 +5968,7 @@ async function loadCoinPacks() {
         <div class="coin-pack-label">${esc(pack.name)}</div>
         <div class="coin-pack-contents">${contents.map(esc).join('<br>')}</div>
         <div class="coin-pack-price">${esc(pack.priceDisplay)}</div>
-        <button class="btn btn-gold btn-buy-coins" data-pack="${esc(id)}" style="margin-top:4px" ${IS_NATIVE_APP ? 'disabled' : ''}>${IS_NATIVE_APP ? 'Próximamente en la tienda móvil' : 'Comprar'}</button>
+        <button class="btn btn-gold btn-buy-coins" data-pack="${esc(id)}" style="margin-top:4px" ${IS_NATIVE_APP || !enabled ? 'disabled' : ''}>${IS_NATIVE_APP ? 'Próximamente en la tienda móvil' : !enabled ? 'Compras temporalmente deshabilitadas' : 'Comprar'}</button>
       `;
       grid.appendChild(div);
     }
@@ -5976,6 +5977,7 @@ async function loadCoinPacks() {
     document.querySelectorAll('.btn-buy-coins').forEach(btn => {
       btn.onclick = async (e) => {
         const packId = e.target.dataset.pack;
+        if (IS_NATIVE_APP || !enabled) return;
         e.target.textContent = '⏳';
         e.target.disabled = true;
         
@@ -5986,14 +5988,14 @@ async function loadCoinPacks() {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer ' + token
             },
-            body: JSON.stringify({ packId })
+            body: JSON.stringify({ packId, requestKey: getCheckoutRequestKey(packId) })
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
           
-          // En app nativa el checkout se abre seguro fuera del WebView.
-          if (IS_NATIVE_APP && window.openMackoExternalUrl) await window.openMackoExternalUrl(data.redirectUrl);
-          else window.location.href = data.redirectUrl;
+          sessionStorage.setItem('macko-last-order', data.orderId);
+          sessionStorage.setItem(`macko-checkout-order:${packId}`, data.orderId);
+          window.location.href = data.redirectUrl;
         } catch (err) {
           toast('⚠ ' + err.message);
           e.target.textContent = 'Comprar';
@@ -6004,6 +6006,42 @@ async function loadCoinPacks() {
   } catch (err) {
     console.error("Error cargando paquetes:", err);
   }
+}
+
+function getCheckoutRequestKey(packId) {
+  const key = `macko-checkout:${packId}`;
+  let requestKey = sessionStorage.getItem(key);
+  if (!requestKey) {
+    requestKey = crypto.randomUUID();
+    sessionStorage.setItem(key, requestKey);
+  }
+  return requestKey;
+}
+
+async function loadCommerceOrders() {
+  const target = $('commerce-order-history');
+  const refresh = $('btn-refresh-orders');
+  if (!target) return;
+  if (refresh) refresh.onclick = loadCommerceOrders;
+  const token = localStorage.getItem('gameToken');
+  if (!token || IS_NATIVE_APP) { target.textContent = 'Compras disponibles únicamente en web/PWA con cuenta registrada.'; return; }
+  try {
+    const response = await fetch('/api/commerce/orders', { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error('No se pudo consultar el historial. Podés volver a intentar.');
+    const { orders } = await response.json();
+    const statuses = { created: 'Compra creada', pending: 'Pago pendiente', in_process: 'Procesando pago', delivered: 'Contenido entregado', rejected: 'Pago rechazado', cancelled: 'Pago cancelado', refunded: 'Pago reembolsado: revisión de contenido', charged_back: 'Contracargo: revisión de soporte', review: 'Revisión de soporte' };
+    target.replaceChildren();
+    if (!orders.length) target.textContent = 'Todavía no tenés compras registradas.';
+    for (const order of orders) {
+      const row = document.createElement('p');
+      row.textContent = `${order.name} — ${(Number(order.amount_cents) / 100).toLocaleString('es-AR')} ${order.currency} — ${statuses[order.status] || 'En revisión'} — Orden ${order.id}`;
+      target.appendChild(row);
+      if (['delivered','rejected','cancelled','refunded','charged_back'].includes(order.status) && sessionStorage.getItem(`macko-checkout-order:${order.pack_id}`) === order.id) {
+        sessionStorage.removeItem(`macko-checkout:${order.pack_id}`);
+        sessionStorage.removeItem(`macko-checkout-order:${order.pack_id}`);
+      }
+    }
+  } catch (error) { target.textContent = error.message; }
 }
 
 window.addEventListener('macko-native-resume', () => {

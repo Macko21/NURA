@@ -35,8 +35,8 @@ function listCommercePacks(catalog, currency = "ARS") {
   }));
 }
 
-async function grantCommercePack(client, userId, packId, provider) {
-  const pack = getCommercePack(packId);
+async function grantCommercePack(client, userId, packId, provider, snapshot = null) {
+  const pack = snapshot || getCommercePack(packId);
   if (!pack) throw new Error("Paquete no válido");
   const playerResult = await client.query("SELECT id, xp FROM players WHERE user_id = $1 FOR UPDATE", [userId]);
   if (!playerResult.rows.length) throw new Error(`Usuario ${userId} sin jugador`);

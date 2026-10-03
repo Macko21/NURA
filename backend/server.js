@@ -19,8 +19,14 @@ const express   = require("express");
 const WebSocket = require("ws");
 const bcrypt    = require("bcrypt");
 const jwt       = require("jsonwebtoken");
-const { createCoinPurchase, handleStripeWebhook, getCoinPacks } = require("./paymentManager");
-const { createCheckoutPreference, handleMPWebhook, getCoinPacks: getMPCoinPacks } = require("./paymentManagerMP");
+const { paymentsEnabled, paidCompetitionEnabled, assertJoinAllowed, createAttemptLimiter } = require('./productionPolicy');
+const allowRoomLookup = createAttemptLimiter();
+const PRIVATE_JOIN_APPROVAL = Symbol('privateJoinApproval');
+let databaseReady = false;
+const { handleStripeWebhook, getCoinPacks } = require("./paymentManager");
+const { createCheckoutPreference, handleMPWebhook, retryPendingPayments, getCoinPacks: getMPCoinPacks } = require("./paymentManagerMP");
+const { verifyMPSignature } = require('./mpSignature');
+const { migrateProduction, schemaVersion } = require('./productionMigrations');
 
 const {
   rooms,
@@ -817,7 +823,7 @@ app.get("/api/version", (req, res) => {
       const versionData = require(path.join(__dirname, "../frontend/version.js"));
       _versionCache = { version: versionData.GAME_VERSION, changelog: versionData.CHANGELOG };
     }
-    res.json(_versionCache);
+    res.json({ ..._versionCache, build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_SHA || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1637,24 +1643,26 @@ app.get("/api/shop/packs", requireAuth, (req, res) => {
 
 // Ruta para crear intención de pago Stripe (protegida)
 app.post("/api/shop/create-payment", requireAuth, async (req, res) => {
-  const { packId } = req.body;
-  const userId = req.user.userId;
-  
-  try {
-    const result = await createCoinPurchase(packId, userId);
-    res.json(result);
-  } catch (err) {
-    console.error("Stripe payment intent:", err.message);
-    res.status(400).json({ error: "No se pudo iniciar el pago" });
-  }
+  return res.status(503).json({ error: 'Stripe no está habilitado para compras en esta versión' });
 });
 
 // Stripe webhook ya fue declarado arriba (antes de express.json())
+
+app.get('/health/live', (req, res) => res.json({ live: true }));
+app.get('/health/ready', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!databaseReady) throw new Error('schema_not_ready');
+    await pool.query('SELECT 1');
+    res.json({ ready: true, schemaVersion, build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_SHA || null });
+  } catch (_) { res.status(503).json({ ready: false }); }
+});
 
 // ── MERCADO PAGO ───────────────────────────────────────────
 
 // Ruta para crear preferencia de pago MP
 app.post("/api/mercadopago/create-preference", requireAuth, async (req, res) => {
+  if (!paymentsEnabled()) return res.status(503).json({ error: 'Las compras están temporalmente deshabilitadas' });
   const { packId } = req.body;
   const userId = req.user.userId;
 
@@ -1662,7 +1670,7 @@ app.post("/api/mercadopago/create-preference", requireAuth, async (req, res) => 
     const userResult = await pool.query("SELECT email FROM users WHERE id = $1", [userId]);
     if (!userResult.rows.length) return res.status(404).json({ error: "Usuario no encontrado" });
     const userEmail = userResult.rows[0].email;
-    const result = await createCheckoutPreference(packId, userId, userEmail);
+    const result = await createCheckoutPreference(packId, userId, userEmail, req.body.requestKey);
     res.json(result);
   } catch (err) {
     console.error("Error MP preference:", err);
@@ -1672,20 +1680,31 @@ app.post("/api/mercadopago/create-preference", requireAuth, async (req, res) => 
 
 // Ruta para obtener paquetes MP
 app.get("/api/mercadopago/packs", requireAuth, (req, res) => {
-  res.json({ packs: getMPCoinPacks(SHOP_CATALOG) });
+  res.json({ packs: getMPCoinPacks(SHOP_CATALOG), enabled: paymentsEnabled() });
 });
 
-// Webhook IPN de Mercado Pago
+app.get('/api/commerce/orders', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT id,pack_id,pack_snapshot->>'name' AS name,amount_cents,currency,status,delivered_at,created_at
+      FROM commerce_orders WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.user.userId]);
+    res.set('Cache-Control', 'no-store').json({ orders: result.rows });
+  } catch (_) { res.status(503).json({ error: 'No se pudo consultar tus compras' }); }
+});
+
+// Webhook firmado de Mercado Pago
 app.post("/api/mercadopago/webhook", async (req, res) => {
-  const { id, topic } = req.query;
-  const paymentId = id || req.body?.data?.id || req.body?.id;
-  const paymentTopic = topic || req.body?.topic || req.body?.type;
+  const paymentId = req.query['data.id'];
+  if (!verifyMPSignature({ signature: req.headers['x-signature'], requestId: req.headers['x-request-id'], dataId: paymentId, secret: process.env.MP_WEBHOOK_SECRET })) {
+    return res.status(401).json({ error: 'Firma de notificación inválida' });
+  }
+  const paymentTopic = req.body?.type;
+  if (String(req.body?.data?.id || '') !== paymentId) return res.status(400).json({ error: 'Recurso de notificación inconsistente' });
   try {
     const result = await handleMPWebhook(paymentId, paymentTopic, pool);
     res.json(result);
   } catch (err) {
     console.error("MP webhook error:", err);
-    res.status(400).json({ error: "Webhook de Mercado Pago inválido" });
+    res.status(503).json({ error: "Notificación pendiente de procesamiento" });
   }
 });
 
@@ -2271,7 +2290,7 @@ function rejectAllJoinRequests(roomId, message = 'La partida ya no acepta ingres
   joinRequests.delete(roomId);
 }
 
-async function joinActiveMatch(socket, room, playerName) {
+async function joinActiveMatch(socket, room, playerName, approval = null) {
   const playerId = socket.playerId;
   const match = getMatch(room.id);
   if (!match || room.status !== 'playing' || match.status !== 'playing') {
@@ -2281,14 +2300,21 @@ async function joinActiveMatch(socket, room, playerName) {
     doReconnect(socket, playerId, room, match);
     return;
   }
+  assertJoinAllowed(room, playerId, { approved: approval === PRIVATE_JOIN_APPROVAL });
+  if (socket.readyState !== WebSocket.OPEN || socket.superseded) throw new Error('La conexión cambió; volvé a solicitar ingreso');
   if (room.players.length >= room.maxPlayers) throw new Error('La partida está llena');
   const previousRoom = findActivePlayerRoom(playerId, room.id);
   if (previousRoom) throw new Error('Primero salí de tu partida activa');
 
+  const equipped = {};
+  await loadEquippedToRoomPlayer(equipped, playerId);
+  if (getRoom(room.id) !== room || getMatch(room.id) !== match || room.status !== 'playing' || match.status !== 'playing') throw new Error('La partida cambió; volvé a solicitar ingreso');
+  if (socket.superseded || socket.readyState !== WebSocket.OPEN) throw new Error('La conexión cambió');
+  assertJoinAllowed(room, playerId, { approved: approval === PRIVATE_JOIN_APPROVAL });
+  if (room.players.length >= room.maxPlayers || findActivePlayerRoom(playerId, room.id)) throw new Error('No se puede ingresar a esta partida');
   leaveWaitingRooms(playerId, room.id);
   const roomPlayer = addPlayer(room.id, playerId, playerName, { isGuest:!!socket.isGuest });
-  roomPlayer.joinedLate = true;
-  await loadEquippedToRoomPlayer(roomPlayer, playerId);
+  Object.assign(roomPlayer, equipped, { joinedLate: true });
   const joined = addLatePlayer(room.id, roomPlayer);
   if (!joined.ok) {
     removePlayer(room.id, playerId);
@@ -2308,6 +2334,7 @@ async function joinActiveMatch(socket, room, playerName) {
 }
 
 function requestPrivateJoin(socket, room, playerName) {
+  if (room.isTournamentMatch || room.players.some(p => Number(p.bet) > 0)) throw new Error('Esta partida no acepta nuevos jugadores');
   const playerId = socket.playerId;
   const match = getMatch(room.id);
   if (!match || room.status !== 'playing' || match.status !== 'playing') {
@@ -2391,7 +2418,10 @@ function filterChatMessage(value, maxLength = 500) {
   return message;
 }
 
-wss.on("connection", socket => {
+wss.on("connection", (socket, request) => {
+  // Same one-hop proxy trust as HTTP, avoiding one shared limiter for all Render users.
+  const forwarded = String(request.headers['x-forwarded-for'] || '').split(',').at(-1).trim();
+  socket.clientIp = require('net').isIP(forwarded) ? forwarded : socket._socket.remoteAddress;
 
   /* Ping/pong para detectar conexiones caídas */
   socket.isAlive = true;
@@ -2403,7 +2433,13 @@ wss.on("connection", socket => {
   socket.messageCount = 0;
   socket.on("pong", () => { socket.isAlive = true; });
 
-  socket.on("message", async rawMsg => {
+  let messageQueue = Promise.resolve();
+  let queuedMessages = 0;
+  socket.on('message', rawMsg => {
+    if (++queuedMessages > 20) { queuedMessages--; socket.close(4008, 'Demasiadas acciones pendientes'); return; }
+    messageQueue = messageQueue.then(() => processSocketMessage(rawMsg)).finally(() => { queuedMessages--; });
+  });
+  async function processSocketMessage(rawMsg) {
     try {
       const now = Date.now();
       if (now - socket.messageWindowStartedAt >= 10_000) {
@@ -2428,11 +2464,12 @@ wss.on("connection", socket => {
 
       /* ── IDENTIFY ──────────────────────────────────────── */
       if (type === "IDENTIFY") {
-        if (socket.authenticated) {
+        if (socket.authenticated || socket.authenticating) {
           send(socket, "ERROR", { message: "La conexión ya fue identificada" });
           return;
         }
 
+        socket.authenticating = true;
         let identity;
         try { identity = verifyGameToken(data.token); }
         catch (_) {
@@ -2454,8 +2491,8 @@ wss.on("connection", socket => {
           ? sanitizeWsPlayerName(data.playerName)
           : sanitizeWsPlayerName(identity.username);
         socket.roomId = null;
-        socket.authenticated = true;
-        clearTimeout(socket.authDeadline);
+        socket.sessionVersion = Number(identity.sessionVersion || 0);
+        socket.tokenExpiresAt = Number(identity.exp) * 1000;
 
         if (!socket.isGuest) {
           const sessionResult = await pool.query(
@@ -2479,6 +2516,8 @@ wss.on("connection", socket => {
           } catch (e) { console.error("DB guest identify:", e.message); }
         }
 
+        socket.authenticated = true;
+        clearTimeout(socket.authDeadline);
         const previousSocket = clients.get(playerId);
         if (previousSocket && previousSocket !== socket) {
           previousSocket.superseded = true;
@@ -2514,6 +2553,18 @@ wss.on("connection", socket => {
         socket.close(4003, "Autenticación requerida");
         return;
       }
+      if (Date.now() >= socket.tokenExpiresAt) {
+        socket.close(4003, 'Sesión expirada');
+        return;
+      }
+      if (!socket.isGuest) {
+        const currentSession = await pool.query('SELECT session_version FROM users WHERE id = $1', [socket.userId]);
+        if (!currentSession.rows.length || Number(currentSession.rows[0].session_version) !== socket.sessionVersion) {
+          socket.close(4003, 'Sesión revocada');
+          return;
+        }
+      }
+      if (socket.superseded || socket.readyState !== WebSocket.OPEN) return;
 
       if (socket.isGuest && ["CREATE_ROOM", "JOIN_ROOM", "START_BOT_GAME"].includes(type)) {
         socket.playerName = sanitizeWsPlayerName(data.playerName);
@@ -2631,6 +2682,10 @@ wss.on("connection", socket => {
 
       /* ── UNIRSE ────────────────────────────────────────── */
       if (type === "REQUEST_JOIN_ACTIVE") {
+        if (!allowRoomLookup(`player:${socket.playerId}`) || !allowRoomLookup(`ip:${socket.clientIp}`)) {
+          send(socket, 'ERROR', { message: 'Demasiados intentos de ingreso; esperá un minuto' });
+          return;
+        }
         const room = getRoom(data.roomId);
         if (!room) {
           send(socket, "ERROR", { message:"Partida no encontrada" });
@@ -2638,7 +2693,11 @@ wss.on("connection", socket => {
         }
         const playerName = String(data.playerName || socket.playerName || 'Jugador').trim() || 'Jugador';
         try {
-          await joinActiveMatch(socket, room, playerName);
+          if (room.private && !room.players.some(p => p.id === socket.playerId)) {
+            if (String(data.code || '') !== String(room.code)) throw new Error('Necesitás el código de la sala privada');
+            if (room.isTournamentMatch) throw new Error('Sala exclusiva del torneo');
+            requestPrivateJoin(socket, room, playerName);
+          } else await joinActiveMatch(socket, room, playerName);
         } catch (error) {
           send(socket, "ERROR", { message:error.message });
         }
@@ -2662,7 +2721,7 @@ wss.on("connection", socket => {
           return;
         }
         try {
-          await joinActiveMatch(request.socket, room, request.playerName);
+          await joinActiveMatch(request.socket, room, request.playerName, PRIVATE_JOIN_APPROVAL);
           send(socket, "JOIN_REQUEST_RESOLVED", { playerId:request.playerId, accepted:true });
         } catch (error) {
           send(request.socket, "JOIN_REQUEST_REJECTED", { message:error.message });
@@ -2672,6 +2731,10 @@ wss.on("connection", socket => {
       }
 
       if (type === "JOIN_ROOM") {
+        if (!allowRoomLookup(`player:${socket.playerId}`) || !allowRoomLookup(`ip:${socket.clientIp}`)) {
+          send(socket, 'ERROR', { message: 'Demasiados intentos de ingreso; esperá un minuto' });
+          return;
+        }
         const joiningPlayerId = data.playerId || socket.playerId;
         const joiningPlayerName = String(data.playerName || socket.playerName || 'Jugador').trim() || 'Jugador';
         if (!joiningPlayerId) {
@@ -2692,6 +2755,10 @@ wss.on("connection", socket => {
           doReconnect(socket, joiningPlayerId, room, match || null);
           return;
         }
+        if (room.isTournamentMatch) {
+          send(socket, 'ERROR', { message: 'Sala exclusiva para los participantes del torneo' });
+          return;
+        }
 
         const previousRoom = findActivePlayerRoom(joiningPlayerId, room.id);
         if (previousRoom) {
@@ -2706,10 +2773,16 @@ wss.on("connection", socket => {
 
         // Sala de espera: entrada normal
         if (room.status === "waiting") {
+          const equipped = {};
+          await loadEquippedToRoomPlayer(equipped, joiningPlayerId);
+          if (getRoom(room.id) !== room || room.status !== 'waiting' || room.players.length >= room.maxPlayers || socket.superseded || socket.readyState !== WebSocket.OPEN || findActivePlayerRoom(joiningPlayerId, room.id)) {
+            send(socket, 'ERROR', { message: 'La sala cambió; intentá ingresar nuevamente' });
+            return;
+          }
           leaveWaitingRooms(joiningPlayerId, room.id);
           const player = addPlayer(room.id, joiningPlayerId, joiningPlayerName, { isGuest:!!socket.isGuest });
           // Cargar items equipados del jugador para que todos lo vean
-          await loadEquippedToRoomPlayer(player, joiningPlayerId);
+          Object.assign(player, equipped);
           clients.set(joiningPlayerId, socket);
           socket.playerId = joiningPlayerId;
           socket.playerName = joiningPlayerName;
@@ -2721,7 +2794,8 @@ wss.on("connection", socket => {
 
         if (room.status === "playing") {
           try {
-            await joinActiveMatch(socket, room, joiningPlayerName);
+            if (room.private) requestPrivateJoin(socket, room, joiningPlayerName);
+            else await joinActiveMatch(socket, room, joiningPlayerName);
           } catch (error) {
             send(socket, "ERROR", { message:error.message });
           }
@@ -2769,6 +2843,10 @@ wss.on("connection", socket => {
         const playerId = socket.playerId;
         if (!roomId || !playerId) return;
         const requestedBet = Math.max(0, Math.min(5000, Math.floor(Number(amount) || 0)));
+        if (requestedBet > 0 && !paidCompetitionEnabled()) {
+          send(socket, 'ERROR', { message: 'Las apuestas están deshabilitadas hasta completar la verificación de producción' });
+          return;
+        }
         if (requestedBet > 0) {
           const balance = await pool.query(
             `SELECT coins FROM players WHERE id = $1 AND user_id IS NOT NULL`,
@@ -3461,7 +3539,7 @@ wss.on("connection", socket => {
       console.error("WS error:", err);
       send(socket, "ERROR", { message: "Error procesando mensaje" });
     }
-  });
+  }
 
   /* ── DESCONEXIÓN ─────────────────────────────────────── */
   socket.on("close", async () => {
@@ -3550,6 +3628,7 @@ app.post("/api/forgot-password", requestPasswordReset);
 
 // Cambiar la clave (se llama desde reset-password.html)
 app.post("/api/reset-password", async (req, res) => {
+  try {
   const { token, newPassword } = req.body;
   if (typeof token !== 'string' || token.length < 32 || typeof newPassword !== 'string') {
     return res.status(400).json({ error: 'Solicitud inválida' });
@@ -3591,6 +3670,10 @@ app.post("/api/reset-password", async (req, res) => {
   }
   
   res.json({ message: "Contraseña actualizada" });
+  } catch (error) {
+    console.error('Password reset:', error.message);
+    res.status(503).json({ error: 'No se pudo actualizar la contraseña. Intentá nuevamente' });
+  }
 });
 
 /* ── Limpieza periódica de invitados fantasma ──────────── */
@@ -3617,8 +3700,19 @@ cleanupGuestPlayers(); // también al iniciar
 async function startServer() {
   try {
     await initializeDatabase();
+    await migrateProduction(pool);
+    databaseReady = true;
   } catch(e) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('Inicio bloqueado: base de datos o esquema no disponible:', e.message);
+      await pool.end();
+      process.exit(1);
+    }
     console.error('⚠️ DB no disponible, arrancando en modo limitado:', e.message);
+  }
+  if (databaseReady) {
+    retryPendingPayments().catch(error => console.error('Payment retries:', error.message));
+    setInterval(() => retryPendingPayments().catch(error => console.error('Payment retries:', error.message)), 30_000).unref();
   }
   try { await initPush(); } catch(e) { console.error('⚠️ Push no disponible:', e.message); }
   try { initEmail(); } catch(e) { console.error('⚠️ Email no disponible:', e.message); }

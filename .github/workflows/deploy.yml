@@ -2,19 +2,32 @@ name: CI/CD — Los 10.000 de Macko
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
   pull_request:
     branches: [main]
 
 env:
-  NODE_VERSION: 18
+  NODE_VERSION: 24
 
 jobs:
   # ── JOB 1: Smoke tests ───────────────────────────────
   test:
     name: 🧪 Smoke tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: los10000_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: 📥 Checkout
@@ -32,6 +45,9 @@ jobs:
       - name: 🔍 Syntax check (Node parse)
         run: npm run test:syntax
 
+      - name: Dependency security gate
+        run: npm audit --audit-level=high
+
       - name: 🧪 Run smoke tests (npm test)
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/los10000_test
@@ -44,10 +60,19 @@ jobs:
           EMAIL_PASS: ''
           VAPID_PUBLIC_KEY: ''
           VAPID_PRIVATE_KEY: ''
-          MERCADOPAGO_ACCESS_TOKEN: ''
+          MP_ACCESS_TOKEN: ''
+          PAYMENTS_ENABLED: 'false'
+          PAID_COMPETITION_ENABLED: 'false'
           STRIPE_SECRET_KEY: ''
           STRIPE_WEBHOOK_SECRET: ''
         run: npm test
+
+      - name: PostgreSQL production integration tests
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/los10000_test
+          MP_ACCESS_TOKEN: test-only-fake-token
+          MP_COLLECTOR_ID: '42'
+        run: node scripts/production-db-test.js
 
   # ── JOB 2: Deploy a Render (solo en push a main) ────
   deploy:
@@ -61,7 +86,7 @@ jobs:
       - name: 🚀 Trigger Render deploy
         run: |
           echo "Triggering deploy to Render..."
-          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+          curl --fail --silent --show-error -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
             -H "Accept: application/json" \
             -H "Content-Type: application/json" \
             --data '{}'
@@ -77,15 +102,15 @@ jobs:
           MAX_RETRIES=30
           RETRY=0
           while [ $RETRY -lt $MAX_RETRIES ]; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "${RENDER_APP_URL}/api/version" \
-              --connect-timeout 5 --max-time 10)
-            if [ "$STATUS" = "200" ]; then
+            BODY=$(curl --fail --silent --show-error \
+              "${RENDER_APP_URL}/health/ready" \
+              --connect-timeout 5 --max-time 10 || true)
+            if echo "$BODY" | jq -e --arg sha "$GITHUB_SHA" '.ready == true and .build == $sha' >/dev/null; then
               echo "✅ Deploy successful! Server is live."
               exit 0
             fi
             RETRY=$((RETRY + 1))
-            echo "  Attempt $RETRY/$MAX_RETRIES — status $STATUS, waiting..."
+            echo "  Attempt $RETRY/$MAX_RETRIES — waiting for ready database and expected commit..."
             sleep 10
           done
           echo "⚠️  Timeout waiting for deployment. Check Render dashboard."

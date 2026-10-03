@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "5.0.2";
+const GAME_VERSION = "5.1.0";
 
 const CHANGELOG = [
+  {
+    version: "5.1.0",
+    date: "2026-10-03",
+    title: "Primera etapa de seguridad para producción",
+    scope: "security",
+    files: ["backend/server.js", "backend/paymentManagerMP.js", "backend/productionMigrations.js"],
+    changes: [
+      "Ingreso privado con aprobación del creador y salas de torneo exclusivas",
+      "Compras y competencia paga deshabilitadas por defecto hasta completar validaciones",
+      "Órdenes de compra persistentes, firma de notificaciones y entrega idempotente",
+      "Reintentos de pagos fallidos y consulta de compras de la cuenta",
+      "Sesiones revocadas verificadas en acciones WebSocket",
+      "Comprobación de disponibilidad de base de datos y del commit desplegado"
+    ]
+  },
   {
     version: "5.0.2",
     date: "2026-10-03",
