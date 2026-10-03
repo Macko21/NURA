@@ -43,22 +43,33 @@ export async function login() {
   const passEl = document.getElementById('loginPass') as HTMLInputElement;
   const errorEl = document.getElementById('loginError') as HTMLElement;
   const btn = document.getElementById('loginBtn') as HTMLButtonElement;
-  const email = emailEl.value.trim();
+  const rawEmail = emailEl.value.trim();
   const password = passEl.value;
   clearLoginError();
 
-  if (!email || !password) {
-    errorEl.textContent = 'Completá email y contraseña';
+  if (!rawEmail || !password) {
+    errorEl.textContent = 'Completá usuario y contraseña';
     errorEl.style.display = 'block';
     return;
   }
+
+  // Compatibilidad con la versión legacy: se puede ingresar con el username
+  // simple (ej: "admin") y se completa el dominio @nura.app.
+  const email = rawEmail.includes('@') ? rawEmail : `${rawEmail}@nura.app`;
 
   btn.disabled = true;
   btn.textContent = 'Ingresando...';
   try {
     const { data, error } = await sb().auth.signInWithPassword({ email, password });
     if (error || !data.user) {
-      errorEl.textContent = 'Email o contraseña incorrectos';
+      const msg = error?.message ?? '';
+      if (/invalid login credentials/i.test(msg)) {
+        errorEl.textContent = 'Usuario o contraseña incorrectos';
+      } else if (/email not confirmed/i.test(msg)) {
+        errorEl.textContent = 'Email sin confirmar — revisá tu casilla';
+      } else {
+        errorEl.textContent = msg ? `Error: ${msg}` : 'Usuario o contraseña incorrectos';
+      }
       errorEl.style.display = 'block';
       return;
     }
