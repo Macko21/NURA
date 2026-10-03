@@ -132,6 +132,21 @@ document.addEventListener('touchend', (event) => {
 
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  // BASE_URL respeta el subpath de GitHub Pages (/NURA/)
-  window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {}));
+  const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
+  const CACHE_VIGENTE = 'nura-v27'; // debe coincidir con CACHE en public/sw.js
+
+  // Limpieza: desregistrar SWs de versiones anteriores (p. ej. el viejo de la
+  // raíz '/') que servían la app legacy desde caché, y purgar cachés obsoletos.
+  void navigator.serviceWorker.getRegistrations().then((regs) => {
+    for (const r of regs) {
+      if (!r.scope.endsWith(currentScope)) void r.unregister();
+    }
+  });
+  void caches.keys().then((keys) => {
+    for (const k of keys) {
+      if (k !== CACHE_VIGENTE) void caches.delete(k);
+    }
+  });
+
+  window.addEventListener('load', () => navigator.serviceWorker.register(`${currentScope}sw.js`).catch(() => {}));
 }
