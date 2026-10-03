@@ -10,9 +10,21 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "5.0.1";
+const GAME_VERSION = "5.0.2";
 
 const CHANGELOG = [
+  {
+    version: "5.0.2",
+    date: "2026-10-03",
+    title: "Vista mobile y PWA sin recortes",
+    scope: "ui",
+    files: ["frontend/styles.css", "frontend/index.html"],
+    changes: [
+      "La interfaz respeta la barra de estado, el notch y el gesto inferior del telefono",
+      "El codigo de sala permanece visible en pantallas angostas",
+      "La partida usa el alto dinamico real y conserva accesibles sus controles"
+    ]
+  },
   {
     version: "5.0.1",
     date: "2026-09-20",

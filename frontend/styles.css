@@ -3400,10 +3400,49 @@ body [style*="Cinzel"],body [style*="Sora"] { font-family:var(--font-display)!im
 }
 
 @media (max-width:699px) {
+  /* La PWA ocupa el viewport visual y respeta notch, status bar y gesto inferior. */
+  html,body { height:100dvh }
+  .screen { height:100dvh }
+  .user-top-bar {
+    min-height:calc(64px + env(safe-area-inset-top, 0px))!important;
+    padding-top:calc(10px + env(safe-area-inset-top, 0px))!important;
+  }
+  .top-bar,.game-topbar {
+    min-height:calc(64px + env(safe-area-inset-top, 0px))!important;
+    padding-top:calc(10px + env(safe-area-inset-top, 0px))!important;
+  }
+  .page-body {
+    padding-bottom:calc(40px + env(safe-area-inset-bottom, 0px))!important;
+  }
+  .chat-foot {
+    padding-bottom:calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* El encabezado de sala debe conservar el codigo aun en 320 px de ancho. */
+  #screen-room .top-bar { padding-inline:8px!important;gap:5px }
+  #screen-room .top-bar h2 {
+    flex:1 1 auto;min-width:0;white-space:nowrap;
+    font-size:clamp(12px,4vw,16px)!important;
+  }
+  #screen-room .room-header-actions { flex:0 0 auto;gap:3px }
+  #screen-room .code-badge { font-size:13px!important;letter-spacing:2px!important }
+
+  /* En partida se priorizan el codigo y las acciones esenciales. */
+  #screen-game .game-topbar { gap:5px;padding-inline:8px!important }
+  #screen-game .game-room-code { min-width:0;gap:4px }
+  #screen-game .game-room-label { display:none }
+  #screen-game .game-room-value { font-size:13px!important;letter-spacing:2px!important }
+  #screen-game .game-user-info { min-width:0;gap:4px }
+  #screen-game .game-coins-display { display:none!important }
+
   .auth-bg { justify-content:flex-start;padding:20px 16px 96px }
+  .auth-bg {
+    padding-top:calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(96px + env(safe-area-inset-bottom, 0px));
+  }
   .auth-box { max-width:520px }
   .auth-title { font-size:clamp(52px,16vw,76px)!important }
-  .lobby-content { padding:32px 16px 104px!important }
+  .lobby-content { padding:32px 16px calc(104px + env(safe-area-inset-bottom, 0px))!important }
   .logo-title { font-size:clamp(54px,16vw,76px)!important }
   .shop-box { width:calc(100vw - 16px)!important;padding:18px 12px!important }
   .shop-grid { grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important }

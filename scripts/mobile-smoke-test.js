@@ -17,6 +17,7 @@ const androidManifest = read('android/app/src/main/AndroidManifest.xml');
 const iosProject = read('ios/App/App.xcodeproj/project.pbxproj');
 const iosInfo = read('ios/App/App/Info.plist');
 const preparedIndex = read('mobile-dist/index.html');
+const styles = read('frontend/styles.css');
 
 assert.strictEqual(capacitor.appId, 'com.macko.los10000');
 assert.strictEqual(capacitor.webDir, 'mobile-dist');
@@ -31,5 +32,9 @@ assert(preparedIndex.includes('/native-runtime.js'), 'native runtime was not inj
 assert(exists('mobile-dist/native-runtime.js'), 'native runtime was not copied');
 assert(exists('mobile-dist/vendor/three.module.js'), 'Three.js module was not copied');
 assert(exists('mobile-dist/vendor/three.core.min.js'), 'Three.js core was not copied');
+assert(styles.includes('height:100dvh'), 'Mobile layout must use the dynamic viewport height');
+assert(styles.includes('env(safe-area-inset-top, 0px)'), 'Mobile layout must respect the top safe area');
+assert(styles.includes('env(safe-area-inset-bottom, 0px)'), 'Mobile layout must respect the bottom safe area');
+assert(/#screen-room \.code-badge \{[^}]*font-size:13px!important;letter-spacing:2px!important/.test(styles), 'Room code must remain compact and visible on phones');
 
 console.log(`Mobile integration OK — v${gameVersion}, Android + iOS projects ready`);
