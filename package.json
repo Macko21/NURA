@@ -1,13 +1,13 @@
 {
   "name": "los10000-macko",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "description": "Juego de dados familiar - Los 10.000 de Macko",
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
     "test": "node scripts/game-rules-test.js && node scripts/security-regression-test.js && node scripts/production-security-test.js && node scripts/smoke-test.js",
-    "test:production-db": "node scripts/production-db-test.js",
+    "test:production-db": "node scripts/production-db-test.js && node scripts/settlement-db-test.js",
     "test:rules": "node scripts/game-rules-test.js",
     "mobile:prepare": "node scripts/prepare-mobile.js",
     "mobile:sync": "npm run mobile:prepare && cap sync",

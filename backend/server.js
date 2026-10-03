@@ -6,7 +6,7 @@ require("dotenv").config();
  * ============================================================
  */
 
-const { initializeDatabase, buyShopItem, getShopCatalog, rewardWinner, pool, getUserProfile, awardXP, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats, completeDailyChallenge } = require("./database");
+const { initializeDatabase, buyShopItem, getShopCatalog, pool, getUserProfile, getPlayerMissions, claimMissionReward, checkMissionsCompleted, getLevel, getRank, getOwnedItems, equipItem, claimDailyChest, getChestStatus, getPlayerTransactions, getBoostStatus, SHOP_CATALOG, getFriends, addFriend, removeFriend, searchPlayers, acceptFriendRequest, rejectFriendRequest, getPendingFriendRequests, saveGlobalMessage, getGlobalMessages, updateLastSeen, updateHideLastSeen, savePrivateMessage, getPrivateMessages, cleanupPortalChats, createAdmin, getAdminByUsername, banPlayer, suspendPlayer, unbanPlayer, checkIfBanned, saveFeedback, getFeedback, respondFeedback, deleteFeedback, getCeoStats, getAllUsers, adjustPlayerCoins, logAudit, getAuditLog, getAllAdmins, deleteAdmin, changeAdminPassword, updateAdminRole, getUsersPerDay, getTransactionsPerDay, getGamesPlayedPerDay, getRevenuePerDay, getLevelDistribution, getActivityHeatmap, getServerInfo, savePushSubscription, removePushSubscription, getAllPushSubscriptions, getPushSubscriptionsCount, savePlayerNotification, getPlayerNotifications, deletePlayerNotification, consumePlayerNotification, cleanupExpiredNotifications, getShopItemDetail, generateWeeklyReport, getShopItemsFromDB, createShopItem, updateShopItemDB, deleteShopItemDB, getShopStats } = require("./database");
 const { initPush, isPushReady, getVapidPublicKey, sendPushNotification } = require("./pushManager");
 const { initEmail, isEmailReady, sendReportEmail } = require("./emailManager");
 const { canonicalDiceSkinId } = require("./cosmeticResolver");
@@ -27,6 +27,7 @@ const { handleStripeWebhook, getCoinPacks } = require("./paymentManager");
 const { createCheckoutPreference, handleMPWebhook, retryPendingPayments, getCoinPacks: getMPCoinPacks } = require("./paymentManagerMP");
 const { verifyMPSignature } = require('./mpSignature');
 const { migrateProduction, schemaVersion } = require('./productionMigrations');
+const { saveFinishedMatch, settleFinishedMatch, retryFinishedMatches } = require('./matchSettlement');
 
 const {
   rooms,
@@ -38,8 +39,7 @@ const {
 } = require("./roomManager");
 
 const {
-  createOrLoadPlayer, recordMatchResults,
-  registerStraight, registerFiveOnes,
+  createOrLoadPlayer,
   registerDisconnect, getTopRanking
 } = require("./playerManager");
 
@@ -1728,14 +1728,13 @@ const clients      = new Map(); // playerId → socket
 const reconnTimers = new Map(); // playerId → timeoutId
 const botTurnTimers = new Map(); // timerId → {roomId, playerId} bot turns timeout
 const joinRequests = new Map(); // roomId → Map(playerId, request)
+const settlementOptions = {
+  completeTournament: (...args) => completeTournamentMatch(...args, clients, send)
+};
 // Las apps móviles pueden quedar suspendidas varios minutos sin cerrar sesión.
 // Se conserva el lugar para permitir una reconexión real, no sólo una reconexión rápida.
 const RECONN_MS    = 15 * 60_000;
 const JOIN_REQUEST_MS = 30_000;
-const XP_PER_GAME   = 25;
-const XP_PER_WIN    = 50;
-const XP_PER_TOP3   = 15;
-const XP_PER_STREAK_WIN = 20;
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function send(socket, type, data = {}) {
@@ -1842,242 +1841,72 @@ async function loadEquippedToRoomPlayer(roomPlayer, playerId) {
 /* ── Post-victoria ───────────────────────────────────────── */
 async function onMatchWon(match, roomId) {
   const winner = match.winner;
-  if (!winner || match.finalizing) return;
+  if (!winner || match.finalizing || match.finalized) return;
   match.finalizing = true;
-  // Envolver todo el pre-broadcast en try/catch para que GAME_OVER
-  // siempre se envíe aunque algo falle antes.
-  let room = null;
-  let isTournamentMatch = false;
+  const room = getRoom(roomId);
+  const isTournamentMatch = !!room?.isTournamentMatch;
+  let settlementPending = false;
   try {
-    try { rejectAllJoinRequests(roomId, 'La partida terminó'); } catch(e) { console.error('rejectJoinRequests:', e.message); }
-
-    room = getRoom(roomId);
-    isTournamentMatch = !!room?.isTournamentMatch;
-
-    // En torneos el resultado se confirma antes de destruir la partida. Si la
-    // base se cae unos segundos, se conserva el estado ganador y se reintenta:
-    // nunca se pierde un resultado ni se habilita una revancha accidental.
-    if (isTournamentMatch) {
+    // A confirmed GAME_OVER must have a durable result before freeing the room.
+    if (databaseReady) {
+      await saveFinishedMatch(match, room);
       try {
-        await completeTournamentMatch(
-          room.tournamentId,
-          room.tournamentMatchId,
-          winner.id,
-          match.players[0]?.score || 0,
-          match.players[1]?.score || 0,
-          clients,
-          send
-        );
-      } catch (e) {
-        console.error('Error avanzando match de torneo; se reintentara:', e.message);
-        match.finalizing = false;
-        broadcastRoom(roomId, "ERROR", {
-          message: "Estamos confirmando el resultado del torneo. No cierres la partida."
-        });
-        setTimeout(() => {
-          const pendingMatch = getMatch(roomId);
-          if (pendingMatch === match && match.winner && !match.finalizing) {
-            onMatchWon(match, roomId).catch(err => {
-              console.error("Reintento de resultado de torneo:", err.message);
-            });
-          }
-        }, 3000);
-        return;
+        await settleFinishedMatch(match.id, settlementOptions);
+      } catch (error) {
+        settlementPending = true;
+        console.error('Resultado guardado; liquidación pendiente:', match.id, error.message);
+        if (isTournamentMatch) throw error;
       }
+    } else if (process.env.NODE_ENV === 'production' || match.players.some(p => !p.isBot && !p.isGuest)) {
+      throw new Error('La base de datos no está lista para confirmar el resultado');
     }
 
-    // Cerrar la partida y resetear la sala antes de tocar la base de datos.
-    // Asi el boton Revancha nunca compite con las recompensas o estadisticas.
+    rejectAllJoinRequests(roomId, 'La partida terminó');
     const finalSnapshot = snapshotMatch(match);
     if (room) {
       cancelReadyCountdown(roomId);
-      room.status = "waiting";
-      for (const p of room.players) {
-        p.ready   = false;
-        p.score   = 0;
-        p.entered = false;
+      room.status = 'waiting';
+      for (const player of room.players) {
+        player.ready = false;
+        player.score = 0;
+        player.entered = false;
+        // Never carry stakes into a rematch.
+        player.bet = 0;
+        player.betConfirmed = false;
       }
+      room.betting = { enabled: false, pot: 0 };
     }
-    broadcastRoom(roomId, "GAME_OVER", {
-      winner,
-      match: finalSnapshot,
-      room,
-      tournamentMatch: isTournamentMatch
+    broadcastRoom(roomId, 'GAME_OVER', {
+      winner, match: finalSnapshot, room,
+      tournamentMatch: isTournamentMatch, settlementPending
     });
+    match.finalized = true;
     destroyMatch(roomId);
-  } catch (preBroadcastErr) {
-    // Último recurso: si algo falló antes de GAME_OVER, enviarlo ahora
-    console.error('onMatchWon pre-broadcast error:', preBroadcastErr.message);
-    try {
-      if (room && room.status !== 'waiting') {
-        room.status = 'waiting';
-        for (const p of room.players) { p.ready = false; p.score = 0; p.entered = false; }
+    if (isTournamentMatch && room) {
+      for (const player of room.players) {
+        const socket = clients.get(player.id);
+        if (socket?.roomId === roomId) socket.roomId = null;
       }
-      broadcastRoom(roomId, 'GAME_OVER', {
-        winner,
-        match: snapshotMatch(match),
-        room,
-        tournamentMatch: isTournamentMatch
-      });
-      destroyMatch(roomId);
-    } catch (lastResortErr) {
-      console.error('onMatchWon last-resort GAME_OVER failed:', lastResortErr.message);
-    }
-  }
-
-  const isBotGame = !!room?.isBotGame;
-  try {
-    const winnerId = winner.isBot ? null : winner.id;
-    const registeredPlayerIds = await recordMatchResults(match.players, winnerId);
-    const registeredIdSet = new Set(registeredPlayerIds);
-
-    if (!isBotGame) {
-      if (!isTournamentMatch) {
-        // 💰 Sistema de recompensas: top 3 ganan monedas escalonadas
-        const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
-        const rewards = [500, 200, 100];
-        for (let i = 0; i < Math.min(sortedByScore.length, 3); i++) {
-          const player = sortedByScore[i];
-          const amount = rewards[i];
-          if (amount > 0 && player.id) {
-            try {
-              await rewardWinner(player.id, amount, { isWin: i === 0 });
-              console.log(`💰 ${amount} monedas → ${player.name || player.id} (puesto ${i + 1})`);
-            } catch (e) {
-              console.error(`Error al premiar a ${player.id}:`, e.message);
-            }
-          }
+      rooms.delete(roomId);
+    } else if (room) {
+      for (const player of [...room.players]) {
+        if (player.disconnected && player.isGuest) {
+          clearTimeout(reconnTimers.get(player.id));
+          reconnTimers.delete(player.id);
+          removePlayer(roomId, player.id);
         }
       }
+      broadcastRoomState(roomId);
     }
-
-    // XP por puesto + boost XP
-    const sortedByScore = [...match.players].sort((a, b) => (b.score || 0) - (a.score || 0));
-    for (let i = 0; i < sortedByScore.length; i++) {
-      const p = sortedByScore[i];
-      if (!registeredIdSet.has(p.id)) continue;
-      let xpTotal = XP_PER_GAME; // 15 base
-      if (i === 0) { // 1° puesto (ganador)
-        xpTotal += XP_PER_WIN; // +35
-        // 25 monedas extra al ganador (con boosts de monedas por ganar)
-        try { await rewardWinner(p.id, 25, { isWin: true }); } catch(e) {}
-      } else if (i <= 2) { // 2° y 3° puesto
-        xpTotal += XP_PER_TOP3; // +10
-      }
-      // Racha de victorias
-      if (p.winStreak >= 2) xpTotal += XP_PER_STREAK_WIN; // +20
-      // Boost de XP 100% (item 52)
-      if (p.id) {
-        try {
-          const xpBoostRes = await pool.query(`SELECT boost_xp_expires FROM players WHERE id = $1`, [p.id]);
-          if (xpBoostRes.rows[0]?.boost_xp_expires && Date.now() < Number(xpBoostRes.rows[0].boost_xp_expires)) {
-            xpTotal *= 2;
-          }
-        } catch(e) {}
-      }
-      try { await awardXP(p.id, xpTotal); } catch(e) {}
-      // Mejor turno individual: escanear historial de la partida
-      if (match.history) {
-        let bestThisGame = 0;
-        for (const ev of match.history) {
-          if ((ev.type === 'BANKED' || ev.type === 'SCORED') && ev.payload?.playerId === p.id) {
-            const gained = ev.payload.gained || 0;
-            if (gained > bestThisGame) bestThisGame = gained;
-          }
-        }
-        if (bestThisGame > 0) {
-          try { await pool.query(`UPDATE players SET best_turn = GREATEST(COALESCE(best_turn,0), $1) WHERE id = $2`, [bestThisGame, p.id]); } catch(e) {}
-        }
-      }
-      // Mejor racha de victorias
-      try {
-        await pool.query(`UPDATE players SET best_win_streak = GREATEST(COALESCE(best_win_streak,0), COALESCE(win_streak,0)) WHERE id = $1`, [p.id]);
-      } catch(e) {}
-      if (p.straights > 0) await registerStraight(p.id);
-      if (p.fiveOnes > 0 && p.id === winner.id) await registerFiveOnes(p.id);
-    }
-    if (isBotGame) console.log(`🤖 Partida contra bots registrada. Ganador: ${winner.name || winner.id}`);
-
-    // ── Desafío Diario: guardar puntaje del jugador humano ──
-    if (room?.isDailyChallenge) {
-      try {
-        const humanPlayer = match.players.find(p => !p.isBot);
-        if (humanPlayer) {
-          const rolls = match.history?.filter(e => e.type === 'ROLL' && e.payload?.playerId === humanPlayer.id).length || 0;
-          const dailyResult = await completeDailyChallenge(humanPlayer.id, humanPlayer.name, humanPlayer.score, rolls);
-          console.log(`🎯 Desafío diario: ${humanPlayer.name} score=${humanPlayer.score} completed=${dailyResult.completed} rewarded=${dailyResult.rewarded}`);
-          if (dailyResult.rewarded) {
-            const playerSocket = clients.get(humanPlayer.id);
-            send(playerSocket, 'DAILY_REWARD', { coins: dailyResult.reward });
-          }
-        }
-      } catch(e) { console.error('Error guardando score diario:', e.message); }
-    }
-
-    // ── Apuestas: distribuir pot al ganador ──
-    if (match.betPot > 0 && match.betPlayers) {
-      try {
-        const HOUSE_EDGE = 0.1;
-        const netPot = Math.floor(match.betPot * (1 - HOUSE_EDGE));
-        if (netPot > 0 && winner.id && !winner.isBot) {
-          const payoutClient = await pool.connect();
-          try {
-            await payoutClient.query('BEGIN');
-            const credited = await payoutClient.query(
-              `UPDATE players SET coins = coins + $1 WHERE id = $2 RETURNING coins`,
-              [netPot, winner.id]
-            );
-            if (!credited.rows.length) throw new Error('Ganador no encontrado para acreditar la apuesta');
-            await payoutClient.query(
-              `INSERT INTO transactions (player_id, amount, reason, created_at) VALUES ($1, $2, $3, $4)`,
-              [winner.id, netPot, `Ganó apuesta: pot ${match.betPot} - 10% comisión`, Date.now()]
-            );
-            await payoutClient.query('COMMIT');
-          } catch (error) {
-            await payoutClient.query('ROLLBACK');
-            throw error;
-          } finally {
-            payoutClient.release();
-          }
-          console.log(`💰 Apuesta cobrada: ${winner.name} ganó ${netPot} monedas (pot: ${match.betPot})`);
-          // Notificar a todos
-          broadcastRoom(roomId, 'BET_WON', {
-            winnerId: winner.id,
-            winnerName: winner.name,
-            pot: match.betPot,
-            netWin: netPot
-          });
-        }
-      } catch(e) { console.error('Error distribuyendo apuesta:', e.message); }
-    }
-  } catch (e) {
-    console.error("DB post-win:", e.message);
-  }
-
-  if (isTournamentMatch && room) {
-    for (const p of room.players) {
-      const sock = clients.get(p.id);
-      if (sock?.roomId === roomId) sock.roomId = null;
-    }
-    rooms.delete(roomId);
-    return;
-  }
-
-  if (room && room.status === "waiting") {
-    // Limpiar invitados desconectados al terminar la partida
-    for (const p of [...room.players]) {
-      if (p.disconnected) {
-        try {
-          const isG = await checkIfGuest(p.id);
-          if (isG) {
-            reconnTimers.delete(p.id);
-            clients.delete(p.id);
-            removePlayer(roomId, p.id);
-          }
-        } catch(e) {}
-      }
-    }
-    broadcastRoomState(roomId);
+  } catch (error) {
+    // Do not destroy an unrecorded result or silently discard owed rewards.
+    console.error('No se pudo confirmar la partida:', match.id, error.message);
+    broadcastRoom(roomId, 'ERROR', { message: 'Estamos guardando el resultado. No inicies otra partida todavía.' });
+    setTimeout(() => {
+      if (getMatch(roomId) === match && !match.finalized) onMatchWon(match, roomId).catch(err => console.error('Match finalization:', err.message));
+    }, 3000).unref();
+  } finally {
+    match.finalizing = false;
   }
 }
 
@@ -3711,6 +3540,8 @@ async function startServer() {
     console.error('⚠️ DB no disponible, arrancando en modo limitado:', e.message);
   }
   if (databaseReady) {
+    await retryFinishedMatches(settlementOptions);
+    setInterval(() => retryFinishedMatches(settlementOptions).catch(error => console.error('Match retries:',error.message)), 15_000).unref();
     retryPendingPayments().catch(error => console.error('Payment retries:', error.message));
     setInterval(() => retryPendingPayments().catch(error => console.error('Payment retries:', error.message)), 30_000).unref();
   }

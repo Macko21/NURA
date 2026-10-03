@@ -108,6 +108,7 @@ function resetTurnTimer(roomId, onTimeout) {
 /* ── Snapshot para el cliente ────────────────────────────── */
 function snapshotMatch(match) {
   return {
+    id:                 match.id,
     roomId:             match.roomId,
     roomCode:           match.roomCode,
     status:             match.status,

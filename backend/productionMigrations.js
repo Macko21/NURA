@@ -18,6 +18,22 @@ const migrations = [
       PRIMARY KEY(provider, payment_id)
     );
     CREATE INDEX commerce_inbox_retry ON commerce_inbox(next_attempt_at) WHERE status = 'pending';
+  ` },
+  { version: 2, sql: `
+    CREATE TABLE finished_matches (
+      id UUID PRIMARY KEY, room_id TEXT NOT NULL, payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT, next_attempt_at BIGINT NOT NULL,
+      created_at BIGINT NOT NULL, settled_at BIGINT
+    );
+    CREATE INDEX finished_matches_retry ON finished_matches(next_attempt_at) WHERE status='pending';
+    CREATE TABLE game_operations (
+      operation_id TEXT PRIMARY KEY, match_id UUID NOT NULL REFERENCES finished_matches(id),
+      player_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS operation_id TEXT;
+    CREATE UNIQUE INDEX transactions_operation_unique ON transactions(operation_id) WHERE operation_id IS NOT NULL;
   ` }
 ];
 async function migrateProduction(pool) {

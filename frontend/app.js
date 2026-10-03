@@ -2187,6 +2187,7 @@ function handle(type, data) {
     }
 
     case 'GAME_OVER': {
+      if (data.settlementPending) toast('Resultado guardado. Tus premios quedaron pendientes de acreditación; el servidor volverá a intentarlo.');
       const victoryAlreadyShown = _winShown || _gameOverShown;
       _gameOverShown = true;
       S.banking = false;

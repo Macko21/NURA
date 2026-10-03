@@ -10,9 +10,24 @@
  *   3. Comprometé los cambios
  */
 
-const GAME_VERSION = "5.1.0";
+const GAME_VERSION = "5.1.1";
 
 const CHANGELOG = [
+  {
+    version: "5.1.1",
+    date: "2026-10-03",
+    title: "Resultados y premios recuperables",
+    scope: "security",
+    files: ["backend/matchSettlement.js", "backend/productionMigrations.js", "backend/server.js"],
+    changes: [
+      "Resultado guardado antes de confirmar el final y liberar la sala",
+      "Premios, experiencia y estadísticas procesados sin duplicados",
+      "Liquidaciones pendientes recuperadas después de reiniciar el servidor",
+      "Participantes desconectados o eliminados no reciben premios de clasificación",
+      "Los premios guardados conservan el boost vigente al finalizar la partida",
+      "Apuestas de la partida anterior no se trasladan a una revancha"
+    ]
+  },
   {
     version: "5.1.0",
     date: "2026-10-03",

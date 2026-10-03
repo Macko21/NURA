@@ -1,6 +1,17 @@
 # Ejecución del plan de producción
 
-Actualizado: 3 de octubre de 2026. Entrega: 5.1.0, primera etapa. El plan completo no está terminado y esta versión NO habilita el lanzamiento comercial.
+Actualizado: 3 de octubre de 2026. Entrega: 5.1.1, segunda etapa. El plan completo no está terminado y esta versión NO habilita el lanzamiento comercial.
+
+## Segunda etapa: resultados y liquidación recuperable
+
+- Identificador UUID nuevo para cada partida, distinto del código de sala y de una revancha.
+- Resultado completo y derechos de premio guardados antes de confirmar GAME_OVER o destruir la partida. Fallo de guardado conserva el resultado en memoria y reintenta; no libera una revancha durante ese fallo.
+- Registro durable de obligaciones pendientes; reintento al arrancar y cada 15 segundos. Monedas, experiencia, estadísticas e identificadores únicos de movimientos se confirman juntos, con bloqueo de fila y transacción.
+- Premios guardados congelan los boosts vigentes al finalizar. La clasificación excluye bots, invitados sin cuenta, desconectados y eliminados; el ganador real ocupa el primer puesto. El progreso anterior no se reescribe.
+- Resultado diario congela el día y premio para que un reintento después de medianoche no lo aplique a otro desafío.
+- Cruces de torneo se avanzan idempotentemente antes de liquidar; un resultado no registrado no se descarta. Apuestas de una partida no pasan a una revancha.
+- Prueba nueva: fallo después de escribir parte del libro, rollback completo, recuperación desde otro proceso Node y 100 reintentos simultáneos. Pendiente de comprobación en PostgreSQL real al redactar esta etapa.
+- Límite importante: esto recupera resultados que llegaron a guardarse; NO restaura aún puntos, dados ni turno de una partida que estaba en curso al caer. Tampoco implementa reserva durable de apuestas/consumibles. Cobros y competencia paga siguen apagados.
 
 ## Implementado en esta etapa
 
@@ -23,7 +34,7 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.0, primera etapa. El plan comple
 ## Pendiente de implementación (no confundir con requisitos externos)
 
 1. P0-01: persistencia/restauración de salas y partidas, comandos deduplicados, vencimientos absolutos, cierre ordenado y dueño único de sala. Las partidas siguen en memoria.
-2. P0-02: liquidación recuperable de premios, XP, consumibles y apuestas; libro de operaciones con identificador único. Las compras nuevas tienen idempotencia; eso NO corrige todos los premios del juego.
+2. P0-02 parcial: premios, XP y estadísticas de resultados guardados tienen liquidación recuperable y operaciones únicas. Falta reserva durable de entradas/apuestas, consumibles y conciliación integral de la economía; no habilitar competencia paga.
 3. P0-04: conciliación periódica de pagos sin webhook, devolución y revocación formal de contenido, soporte de compras antiguas, pruebas sandbox completas y límites comerciales.
 4. P0-05: hacer observables los errores de migraciones históricas que hoy se ignoran, preparar rollback operativo y staging aislado.
 5. P1: restauración/no-shows/BYE de torneos; funciones administrativas generadas con onclick bajo CSP; listados públicos en espera; modificadores diarios; equidad de ingresos tardíos; MFA administrativo, cuotas adicionales, moderación, métricas, carga, conciliación de economía y tests integrales faltantes.
@@ -33,7 +44,7 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.0, primera etapa. El plan comple
 
 La implementación está en `codex/production-foundation`; no se integró a `main` y no se disparó el despliegue de esta etapa a Render. Antes de esa integración se necesita inventario de pagos pendientes y confirmación de backup/restauración. Cambiar el protocolo de compras sin esa comprobación puede dejar compradores antiguos esperando acreditación.
 
-- Acceso operativo a Render y al proveedor real de PostgreSQL para staging, plan, instancias, backups, exportación externa cifrada y ensayo de restauración. No modificar el plan pago sin autorización.
+- El usuario confirmó Neon como proveedor de PostgreSQL y Render como hosting. Falta acceso operativo para verificar staging, plan, instancias, backups, exportación externa cifrada y ensayo de restauración. No modificar el plan pago sin autorización.
 - Dominio HTTPS, SMTP entregando mensajes, reputación y registros DNS.
 - Cuenta comercial MP, vendedor correcto, secreto de firma, credenciales sandbox y configuración de webhook. Introducir secretos en el proveedor, nunca en este documento ni por chat.
 - Modelo comercial definitivo, jurisdicción, condiciones, privacidad, reembolsos, facturación y asesoramiento legal cuando corresponda.

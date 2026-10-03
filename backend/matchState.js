@@ -134,6 +134,8 @@ function createMatchState(room) {
     /**
      * Información general
      */
+    id: require('crypto').randomUUID(),
+
     roomId: room.id,
 
     roomCode: room.code,
