@@ -10,7 +10,8 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.1, segunda etapa. El plan comple
 - Premios guardados congelan los boosts vigentes al finalizar. La clasificación excluye bots, invitados sin cuenta, desconectados y eliminados; el ganador real ocupa el primer puesto. El progreso anterior no se reescribe.
 - Resultado diario congela el día y premio para que un reintento después de medianoche no lo aplique a otro desafío.
 - Cruces de torneo se avanzan idempotentemente antes de liquidar; un resultado no registrado no se descarta. Apuestas de una partida no pasan a una revancha.
-- Prueba nueva: fallo después de escribir parte del libro, rollback completo, recuperación desde otro proceso Node y 100 reintentos simultáneos. Pendiente de comprobación en PostgreSQL real al redactar esta etapa.
+- Prueba nueva: fallo después de escribir parte del libro, rollback completo, recuperación desde otro proceso Node, 100 reintentos simultáneos y pérdida de confirmación después del COMMIT. Aprobada en PostgreSQL 16 en GitHub Actions: https://github.com/Macko21/LOS10MILDEMACKO/actions/runs/37146978221 (implementación 965cc29).
+- Informe de solo lectura `scripts/production-report.js`: contadores sin datos personales, obligaciones de más de 15 minutos y diferencias en los movimientos nuevos. Procedimiento específico de Neon/Render en `OPERACION-NEON-RENDER.md`; no se ejecutó una restauración real ni se alteró producción.
 - Límite importante: esto recupera resultados que llegaron a guardarse; NO restaura aún puntos, dados ni turno de una partida que estaba en curso al caer. Tampoco implementa reserva durable de apuestas/consumibles. Cobros y competencia paga siguen apagados.
 
 ## Implementado en esta etapa
@@ -26,7 +27,7 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.1, segunda etapa. El plan comple
 
 ## Pruebas y límites
 
-- 23 pruebas de reglas, 22 pruebas de controles de producción, regresiones de seguridad, 52 comprobaciones HTTP/WebSocket y comprobación estática de bundle móvil pasan localmente. Auditoría npm de producción y desarrollo: cero vulnerabilidades informadas en esta revisión; no equivale a auditoría de seguridad integral.
+- 23 pruebas de reglas, 24 pruebas de controles de producción, regresiones de seguridad, 52 comprobaciones HTTP/WebSocket y comprobación estática de bundle móvil pasan localmente. Auditoría npm de producción y desarrollo: cero vulnerabilidades informadas en esta revisión; no equivale a auditoría de seguridad integral.
 - Nueva suite PostgreSQL prueba migración repetida, 20 notificaciones concurrentes, una sola entrega, contenido congelado distinto del catálogo, importe incorrecto, reembolso/replay y bandeja persistente tras error del proveedor. Ejecuta únicamente contra localhost y base terminada en `_test`; nunca contra producción. Aprobada en GitHub Actions con PostgreSQL 16: https://github.com/Macko21/LOS10MILDEMACKO/actions/runs/37146081665 (commit de implementación a351ae9).
 - La firma sigue el manifiesto de la documentación oficial de Mercado Pago. Los reintentos firmados no se descartan por antigüedad; su efecto se deduplica en base de datos.
 - No se realizaron pagos reales ni verificación de firma real del proveedor. No activar compras por el solo hecho de que CI pase.

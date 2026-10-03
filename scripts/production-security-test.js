@@ -4,6 +4,7 @@ const { createHmac } = require('node:crypto');
 const { verifyMPSignature } = require('../backend/mpSignature');
 const { assertJoinAllowed, createAttemptLimiter, paymentsEnabled, paidCompetitionEnabled } = require('../backend/productionPolicy');
 const { validatePayment } = require('../backend/paymentManagerMP');
+const { boostedCoins } = require('../backend/matchSettlement');
 const { createMatch, addLatePlayer, destroyMatch } = require('../backend/diceManager');
 let count = 0;
 function test(name, fn) { fn(); count++; console.log(`OK ${name}`); }
@@ -17,6 +18,10 @@ test('public games accept late joining', () => assert.doesNotThrow(() => assertJ
 test('active stakes reject late joining', () => assert.throws(() => assertJoinAllowed({ ...privateRoom, private: false, betting: { pot: 100 } }, 'other')));
 test('waiting private rooms accept their code', () => assert.doesNotThrow(() => assertJoinAllowed({ ...privateRoom, status: 'waiting' }, 'other', { code: '123456' })));
 test('sensitive features fail closed', () => { assert.equal(paymentsEnabled({}), false); assert.equal(paidCompetitionEnabled({}), false); });
+test('frozen reward time retains earned coin boosts', () => assert.equal(boostedCoins(100,{boost_expires:200,boost_coins_win_50_expires:200,boost_coins_win_100_expires:200},true,100),450));
+test('expired boosts and non-winner win boosts do not apply', () => {
+  assert.equal(boostedCoins(100,{boost_expires:100,boost_coins_win_100_expires:200},false,100),100);
+});
 test('lookup limiter restricts, resets, and bounds keys', () => {
   const allow = createAttemptLimiter({ limit: 2, windowMs: 100, maxKeys: 1 });
   assert(allow('a', 0)); assert(allow('a', 1)); assert(!allow('a', 2)); assert(!allow('b', 3)); assert(allow('b', 101));

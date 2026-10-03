@@ -72,7 +72,7 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/los10000_test
           MP_ACCESS_TOKEN: test-only-fake-token
           MP_COLLECTOR_ID: '42'
-        run: node scripts/production-db-test.js && node scripts/settlement-db-test.js
+        run: node scripts/production-db-test.js && node scripts/settlement-db-test.js && node scripts/production-report.js
 
   # ── JOB 2: Deploy a Render (solo en push a main) ────
   deploy:
