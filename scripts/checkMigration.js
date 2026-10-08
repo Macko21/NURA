@@ -1,7 +1,7 @@
 // scripts/checkMigration.js
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.NEON_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 (async () => {
   try {
     const res = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`);

@@ -1,13 +1,11 @@
 // src/lib/neon.js
-// Cliente PostgreSQL para conectar con Neon
-// Utiliza la variable de entorno NEON_URL definida en .env
+// Cliente PostgreSQL — usa la misma variable DATABASE_URL que todo el proyecto
+// (Supabase). La URL ya incluye los parámetros SSL (sslmode=require).
 
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  connectionString: process.env.NEON_URL,
-  // Neon requiere SSL y channel binding; la URL ya incluye los parámetros.
-  // pg will handle SSL automatically when sslmode=require is present.
+  connectionString: process.env.DATABASE_URL,
 });
 
 // Exportamos tanto el pool como un helper simple para consultas

@@ -1,12 +1,12 @@
 // backend/roomRepository.js
-// Simple data‑access layer for rooms, players and betting using Neon PostgreSQL
-// Uses the Neon pool defined in src/lib/neon.js
+// Simple data‑access layer for rooms, players and betting using PostgreSQL
+// Uses the shared pool defined in src/lib/neon.js (DATABASE_URL / Supabase)
 
-const neon = require('../src/lib/neon');
+const db = require('../src/lib/neon');
 
 /** Insert a new room and return the generated id */
 async function createRoomDB({ code, isPrivate = true, maxPlayers = 10 }) {
-  const result = await neon.query(
+  const result = await db.query(
     `INSERT INTO rooms (code, private, max_players)
      VALUES ($1, $2, $3)
      RETURNING id, created_at, updated_at`,
@@ -17,10 +17,10 @@ async function createRoomDB({ code, isPrivate = true, maxPlayers = 10 }) {
 
 /** Load all rooms (including players) into memory */
 async function loadAllRooms() {
-  const roomsResult = await neon.query(`SELECT * FROM rooms`);
+  const roomsResult = await db.query(`SELECT * FROM rooms`);
   const rooms = new Map();
   for (const r of roomsResult.rows) {
-    const playersRes = await neon.query(
+    const playersRes = await db.query(
       `SELECT * FROM room_players WHERE room_id = $1`,
       [r.id]
     );
@@ -62,7 +62,7 @@ async function updateRoomDB(roomId, fields) {
   if (keys.length === 0) return;
   const setClauses = keys.map((k, i) => `${snakeCase(k)} = $${i + 1}`).join(', ');
   const values = keys.map(k => fields[k]);
-  await neon.query(
+  await db.query(
     `UPDATE rooms SET ${setClauses} WHERE id = $${keys.length + 1}`,
     [...values, roomId]
   );
@@ -70,7 +70,7 @@ async function updateRoomDB(roomId, fields) {
 
 /** Upsert a player (insert or update) */
 async function upsertPlayerDB(roomId, player) {
-  await neon.query(
+  await db.query(
     `INSERT INTO room_players (
         room_id, player_id, name, alias, ready, score, entered,
         connected, is_guest, inactivity_strikes, reconnect_attempts, bet, bet_confirmed
@@ -110,7 +110,7 @@ async function upsertPlayerDB(roomId, player) {
 
 /** Delete a room (cascades to players) */
 async function deleteRoomDB(roomId) {
-  await neon.query('DELETE FROM rooms WHERE id = $1', [roomId]);
+  await db.query('DELETE FROM rooms WHERE id = $1', [roomId]);
 }
 
 /** Helper: convert camelCase to snake_case for DB columns */

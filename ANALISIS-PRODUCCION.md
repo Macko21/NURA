@@ -27,10 +27,10 @@
 | **Panel administrativo** | ✅ | Roles y registro de acciones; algunos botones fallan por CSP. |
 | **Pagos web** | ⚠️ | Integración con Mercado Pago parcial – firma, idempotencia, reintentos implementados, pero sin checkout activo ni pruebas de producción. Stripe deshabilitado. |
 | **Pagos nativos** | ❌ | No hay integración con Google Play Billing ni Apple In‑App Purchase. |
-| **Backups / Recuperación** | ❌ | No existe política de backups automática ni pruebas de restauración en el proveedor (Render/Neon). |
+| **Backups / Recuperación** | ❌ | No existe política de backups automática ni pruebas de restauración en el proveedor (Render/Supabase). |
 | **Monitorización & Alertas** | ❌ | Falta health‑checks robustos, métricas, logging estructurado, integración con alertas (Prometheus, Sentry, etc.). |
 | **CI/CD** | ⚠️ | Tests unitarios y de integración corren, pero CI no arranca PostgreSQL real; no hay despliegue automatizado a staging/producción. |
-| **Infraestructura** | ❌ | No hay Docker/Kubernetes, no hay archivo `docker-compose.yml`, ni definición de entorno en Render/Neon. |
+| **Infraestructura** | ❌ | No hay Docker/Kubernetes, no hay archivo `docker-compose.yml`, ni definición de entorno en Render/Supabase. |
 | **Security** | ⚠️ | CSP y headers presentes, pero falta auditoría completa, pruebas de penetración, gestión de secretos, rotación de credenciales. |
 | **Documentación de Operaciones** | ⚠️ | `ESTADO-PRODUCCION.md` describe pasos, pero falta Playbook de despliegue, rollback, runbooks de incidentes. |
 | **Testing de carga** | ❌ | No hay pruebas de estrés ni benchmarks de concurrencia. |
@@ -44,7 +44,7 @@
 3. **Política de backups y pruebas de restauración**
 4. **Monitorización, logging estructurado y alertas**
 5. **CI/CD robusto con base de datos real, despliegue continuo y rollback**
-6. **Infraestructura reproducible (Docker, Terraform, Render/Neon config)**
+6. **Infraestructura reproducible (Docker, Terraform, Render/Supabase config)**
 7. **Seguridad operativa completa**
    - Escaneo de vulnerabilidades, pruebas de penetración, gestión de secretos (Vault, .env‑prod).
 8. **Pruebas de carga y performance**
@@ -92,8 +92,7 @@ El plan se divide en **Fases** (A‑G) siguiendo la tabla de etapas de `PLAN-PRO
 - Añadir tabla `orders` y relacionarla con `settlements`.
 - Crear endpoint `/health/payments` que verifique conectividad con proveedores.
 
-#### 4.2.4. Backups y recuperación (P0‑05)
-- Configurar **automated backups** en Render/Neon (daily, retained 30 d).
+#### 4.2.4. Backups y recuperación (P0‑05)- Configurar **automated backups** en Supabase (daily, retained 30 d).
 - Script `scripts/backup.sh` que exporta dump, cifra y sube a S3.
 - Cron job (GitHub Actions) que ejecuta restauración en entorno staging y valida integridad.
 

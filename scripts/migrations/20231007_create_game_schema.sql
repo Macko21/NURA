@@ -1,5 +1,5 @@
 -- 20231007_create_game_schema.sql
--- Schema for persisting rooms (salas) and partidas en Neon PostgreSQL
+-- Schema for persisting rooms (salas) and partidas en PostgreSQL (Supabase)
 -- Esta migración corresponde al bloque P0-01
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; -- para generar UUIDs

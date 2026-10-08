@@ -8,19 +8,19 @@ const { randomInt, randomUUID } = require("crypto");
 * Todas las salas activas en memoria
 * ============================================================
   */
-  // In‑memory map that will be populated from Neon DB on startup
+  // In‑memory map that will be populated from the database (Supabase) on startup
 let rooms = new Map();
 
 const roomRepo = require('./roomRepository');
 
-// Load existing rooms from Neon when the module is imported
+// Load existing rooms from the database when the module is imported
 ;(async () => {
   try {
     const loaded = await roomRepo.loadAllRooms();
     rooms = loaded;
-    console.log(`🔹 Loaded ${rooms.size} rooms from Neon`);
+    console.log(`🔹 Loaded ${rooms.size} rooms from database`);
   } catch (e) {
-    console.error('Failed to load rooms from Neon:', e);
+    console.error('Failed to load rooms from database:', e);
   }
 })();
 

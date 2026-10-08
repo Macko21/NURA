@@ -144,7 +144,7 @@ Actualizado: 3 de octubre de 2026. Entrega: 5.1.1, segunda etapa. El plan comple
 - Resultado diario congela el día y premio para que un reintento después de medianoche no lo aplique a otro desafío.
 - Cruces de torneo se avanzan idempotentemente antes de liquidar; un resultado no registrado no se descarta. Apuestas de una partida no pasan a una revancha.
 - Prueba nueva: fallo después de escribir parte del libro, rollback completo, recuperación desde otro proceso Node, 100 reintentos simultáneos y pérdida de confirmación después del COMMIT. Aprobada en PostgreSQL 16 en GitHub Actions: https://github.com/Macko21/LOS10MILDEMACKO/actions/runs/37146978221 (implementación 965cc29).
-- Informe de solo lectura `scripts/production-report.js`: contadores sin datos personales, obligaciones de más de 15 minutos y diferencias en los movimientos nuevos. Procedimiento específico de Neon/Render en `OPERACION-NEON-RENDER.md`; no se ejecutó una restauración real ni se alteró producción.
+- Informe de solo lectura `scripts/production-report.js`: contadores sin datos personales, obligaciones de más de 15 minutos y diferencias en los movimientos nuevos. Procedimiento específico de la base de datos/Render en `OPERACION-NEON-RENDER.md`; no se ejecutó una restauración real ni se alteró producción.
 - Límite importante: esto recupera resultados que llegaron a guardarse; NO restaura aún puntos, dados ni turno de una partida que estaba en curso al caer. Tampoco implementa reserva durable de apuestas/consumibles. Cobros y competencia paga siguen apagados.
 
 ## Implementado en esta etapa
