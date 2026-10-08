@@ -8,7 +8,21 @@ const { randomInt, randomUUID } = require("crypto");
 * Todas las salas activas en memoria
 * ============================================================
   */
-  const rooms = new Map();
+  // In‑memory map that will be populated from Neon DB on startup
+let rooms = new Map();
+
+const roomRepo = require('./roomRepository');
+
+// Load existing rooms from Neon when the module is imported
+;(async () => {
+  try {
+    const loaded = await roomRepo.loadAllRooms();
+    rooms = loaded;
+    console.log(`🔹 Loaded ${rooms.size} rooms from Neon`);
+  } catch (e) {
+    console.error('Failed to load rooms from Neon:', e);
+  }
+})();
 
 // ── Temporizadores de countdown para auto-start ──
 const readyCountdowns = new Map();   // roomId -> setInterval id
