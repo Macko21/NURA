@@ -45,7 +45,7 @@ export function formProducto(id: string | null) {
     </div>
     <section class="editor-general"><h4>Datos generales</h4><div class="form-grid">
       ${etiqueta('Nombre', 'nombre', anterior?.nombre, 'required')}
-      ${etiqueta('Código', 'codigo', anterior?.codigo)}
+      ${etiqueta('Código', 'codigo', anterior?.codigo, anterior ? '' : 'readonly placeholder="Se asigna al guardar"')}
       <label class="form-group">Categoría<select name="categoria"><option value="">Sin categoría</option>
         ${categorias.map((c) => `<option value="${escapeHTML(c)}" ${c === anterior?.categoria ? 'selected' : ''}>${escapeHTML(c)}</option>`).join('')}</select></label>
       <label class="form-group">Tipo<select name="tipo" ${anterior ? 'disabled' : ''}><option value="liquido">Líquido</option>
@@ -250,9 +250,9 @@ export function formProducto(id: string | null) {
     const boton = document.querySelector<HTMLButtonElement>('#btnModalSave');
     if (boton) boton.disabled = true;
     try {
-      await saveProducto(p);
+      const codigo = await saveProducto(p, !anterior);
       if (form.isConnected) closeModal();
-      toast(anterior ? 'Artículo actualizado' : 'Artículo creado');
+      toast(anterior ? 'Artículo actualizado' : `Artículo creado · ${codigo}`);
     } catch (error) {
       await swalError(error instanceof Error ? error.message : 'No se pudo guardar el artículo.');
     } finally {

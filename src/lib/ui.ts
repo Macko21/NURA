@@ -113,6 +113,9 @@ export function unitInput(id: string, value: string | number = '', unit = 'L', s
 // ── Notas de versión ──────────────────────────────────────────────────
 interface Nota { v: string; fecha: string; notas: string[] }
 const NOTAS_VERSION: Nota[] = [
+  { v: '3.1.2', fecha: '2026-11-18', notas: [
+    'Código correlativo automático para artículos nuevos, según su categoría.',
+  ]},
   { v: '3.1.1', fecha: '2026-11-18', notas: [
     'Medidas en pestañas y datos generales a la vista al editar artículos.',
     'Botón de venta rápida movible y posición guardada.',

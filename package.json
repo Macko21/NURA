@@ -1,6 +1,6 @@
 {
   "name": "nura",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "description": "NURA — Gestión de artículos de limpieza (ventas, stock, clientes, combos, deudas, reportes)",
   "type": "module",
   "private": true,

@@ -232,7 +232,7 @@ export async function removeCliente(id: string) {
   if (error) console.error('removeCliente', error.message);
 }
 
-export async function saveProducto(p: Producto) {
+export async function saveProducto(p: Producto, codigoAutomatico = false) {
   const producto = {
     id: p.id, nombre: p.nombre, codigo: p.codigo ?? null, categoria: p.categoria, tipo: p.tipo,
     descripcion: p.descripcion ?? '', stock_litros: p.stockLitros, stock_min_litros: p.stockMinLitros,
@@ -244,13 +244,21 @@ export async function saveProducto(p: Producto) {
     id: pr.id, nombre: pr.nombre, litros: pr.litros, costo_envase: pr.costoEnvase, costo_etiqueta: pr.costoEtiqueta,
     ganancia: pr.ganancia, desc_mayorista: pr.descMayorista, precio_venta: pr.precioVenta, precio_mayorista: pr.precioMayorista,
   }));
-  const { error } = await sb().rpc('guardar_producto', { p_producto: producto, p_presentaciones: filas });
+  const operacion = codigoAutomatico ? 'crear_producto_codigo_automatico' : 'guardar_producto';
+  const { data: codigo, error } = await sb().rpc(operacion, { p_producto: producto, p_presentaciones: filas });
   if (error) {
-    console.error('guardar_producto', error.message);
+    console.error(operacion, error.message);
+    if (error.code === '23505' && error.message.includes('productos_codigo_normalizado_unique')) {
+      throw new Error('Ese código ya está asignado a otro artículo.');
+    }
+    if (codigoAutomatico && error.code === 'PGRST202') {
+      throw new Error('La numeración automática todavía no está habilitada en Supabase.');
+    }
     throw new Error(error.code === 'P0001' ? error.message : 'No se pudo guardar el artículo en Supabase.');
   }
   await loadProductos();
   notifyUpdate('productos');
+  return codigo as string | undefined;
 }
 
 export async function removeProducto(id: string) {

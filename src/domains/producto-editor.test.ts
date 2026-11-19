@@ -41,10 +41,12 @@ describe('editor de productos', () => {
     click('#btnModalSave');
     await vi.waitFor(() => expect(saveProducto).toHaveBeenCalledOnce());
     expect(vi.mocked(saveProducto).mock.calls[0][0]).toMatchObject(producto);
+    expect(vi.mocked(saveProducto).mock.calls[0][1]).toBe(false);
   });
 
   it('agrega solo la medida elegida y calcula ambos precios y ganancias', async () => {
     formProducto(null);
+    expect(input('codigo').readOnly).toBe(true);
     escribir('nombre', 'Nuevo');
     escribir('costoLitro', '1000');
     click('[data-medida="1000"]');
@@ -55,6 +57,7 @@ describe('editor de productos', () => {
     expect(document.querySelectorAll('[data-fila]')).toHaveLength(1);
     click('#btnModalSave');
     await vi.waitFor(() => expect(saveProducto).toHaveBeenCalledOnce());
+    expect(saveProducto).toHaveBeenCalledWith(expect.objectContaining({ codigo: undefined }), true);
     expect(vi.mocked(saveProducto).mock.calls[0][0].presentaciones[0]).toMatchObject({
       nombre: '1 L', precioVenta: 1568, precioMayorista: 1254,
     });

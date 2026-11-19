@@ -155,7 +155,7 @@ document.addEventListener('touchend', (event) => {
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
-  const CACHE_VIGENTE = 'nura-v311'; // debe coincidir con CACHE en public/sw.js
+  const CACHE_VIGENTE = 'nura-v312'; // debe coincidir con CACHE en public/sw.js
 
   // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
   // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.
