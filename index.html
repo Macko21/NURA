@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0c1220" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -13,7 +13,16 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/logo.png" />
   <link rel="icon" href="/logo.png" type="image/png" />
+  <script>
+    (() => {
+      let preference;
+      try { preference = localStorage.getItem('nura.theme'); } catch {}
+      document.documentElement.dataset.theme = preference === 'dark' ||
+        (preference !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    })();
+  </script>
   <link rel="stylesheet" href="/src/styles.css" />
+  <link rel="stylesheet" href="/src/appearance.css" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
@@ -21,7 +30,7 @@
   <!-- SPLASH -->
   <div id="splash" style="position:fixed;inset:0;background:#0c1220;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s;">
     <img src="/logo.png" style="width:96px;height:96px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(82,218,210,0.5));animation:splashPulse 1.5s ease-in-out infinite alternate;" />
-    <div style="font-family:'Nunito',sans-serif;font-size:26px;font-weight:900;letter-spacing:6px;color:#fff;margin-top:8px;">NUR<span style="color:#a78bfa;">A</span></div>
+    <div class="logo-brand splash-wordmark">Nur<span class="letra-a">a</span></div>
     <div style="font-size:8px;color:rgba(255,255,255,0.25);letter-spacing:2.5px;text-transform:uppercase;margin-top:4px;">artículos de limpieza</div>
     <div style="margin-top:24px;width:40px;height:2.5px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
       <div style="height:100%;background:linear-gradient(90deg,#52dad2,#a78bfa);animation:splashLoad 1.2s ease-in-out infinite;border-radius:2px;"></div>
@@ -31,8 +40,9 @@
   <!-- LOGIN SCREEN -->
   <div id="loginScreen" style="display:none;">
     <div class="login-box">
+      <button type="button" class="btn icon-action theme-toggle login-theme" data-theme-toggle title="Cambiar tema" aria-label="Cambiar tema"></button>
       <img src="/logo.png" alt="" class="logo-img" />
-      <h2 class="logo-brand">NUR<span class="letra-a">A</span></h2>
+      <h2 class="logo-brand">Nur<span class="letra-a">a</span></h2>
       <div class="sub">artículos de limpieza</div>
       <input type="text" id="loginUser" placeholder="Usuario o email" autocomplete="username" />
       <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password" />
@@ -51,7 +61,7 @@
       <div class="sidebar-logo">
         <img src="/logo.png" alt="" class="logo-img" />
         <div class="logo-text">
-          <span class="logo-brand">NUR<span class="letra-a">A</span></span>
+          <span class="logo-brand">Nur<span class="letra-a">a</span></span>
           <span class="logo-sub">artículos de limpieza</span>
         </div>
       </div>
@@ -70,10 +80,11 @@
 
     <main class="main-content">
       <header class="topbar">
-        <button class="hamburger" id="hamburger">☰</button>
+        <button type="button" class="hamburger" id="hamburger" aria-label="Abrir menú">☰</button>
         <div class="topbar-title" id="pageTitle">Inicio</div>
         <div class="topbar-actions" id="topbarActions"></div>
-        <button id="logoutBtn" class="btn btn-sm btn-outline">Salir</button>
+        <button type="button" class="btn icon-action theme-toggle" data-theme-toggle title="Cambiar tema" aria-label="Cambiar tema"></button>
+        <button type="button" id="logoutBtn" class="btn icon-action is-danger" aria-label="Cerrar sesión" title="Cerrar sesión">Salir</button>
       </header>
       <div class="page active" id="page-dashboard"></div>
       <div class="page" id="page-catalogo"></div>

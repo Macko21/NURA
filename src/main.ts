@@ -1,3 +1,5 @@
+import { navIcon } from './lib/nav-icons';
+import { installThemeControls } from './lib/appearance';
 import 'sweetalert2/dist/sweetalert2.css';
 import Swal from 'sweetalert2';
 import { initAuth, login, logout } from './lib/auth';
@@ -16,11 +18,15 @@ import './domains/reportes';
 import './domains/usuarios';
 import { formVenta } from './domains/ventas';
 
+installThemeControls();
+document.getElementById('hamburger')!.innerHTML = navIcon('menu');
+document.getElementById('logoutBtn')!.innerHTML = navIcon('logout');
+
 // ── Listeners globales ────────────────────────────────────────────────
 document.getElementById('hamburger')!.onclick = () => document.getElementById('sidebar')!.classList.toggle('open');
 document.addEventListener('click', (e) => {
   const s = document.getElementById('sidebar')!;
-  if (s.classList.contains('open') && !s.contains(e.target as Node) && (e.target as HTMLElement).id !== 'hamburger') {
+  if (s.classList.contains('open') && !s.contains(e.target as Node) && !(e.target as Element).closest('#hamburger')) {
     s.classList.remove('open');
   }
 });
@@ -137,7 +143,7 @@ document.addEventListener('touchend', (event) => {
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
-  const CACHE_VIGENTE = 'nura-v28'; // debe coincidir con CACHE en public/sw.js
+  const CACHE_VIGENTE = 'nura-v29'; // debe coincidir con CACHE en public/sw.js
 
   // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
   // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.

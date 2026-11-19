@@ -1,3 +1,6 @@
+import { catalogPreference, saveCatalogPreference } from '../lib/appearance';
+import { categoryArt } from '../lib/category-art';
+import { navIcon } from '../lib/nav-icons';
 import { store, removeProducto } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, toast, swalError, swalConfirm, openModal, registerRenderer, exposeGlobal } from '../lib/ui';
@@ -8,7 +11,7 @@ import { waLink } from '../config';
 import { dinero } from './precios';
 import type { Producto } from '../types';
 
-let busqueda = '', categoria = '', vista = 'lista';
+let busqueda = '', categoria = '', vista = catalogPreference();
 const presentaciones = (p: Producto) => p.tipo === 'accesorio'
   ? [{ nombre: 'Unidad', litros: 0, precioVenta: p.precioVenta, precioMayorista: p.precioMayorista }]
   : [...p.presentaciones].sort((a, b) => a.litros - b.litros);
@@ -19,22 +22,23 @@ export function renderCatalogo() {
   const el = document.querySelector('#page-catalogo');
   if (!el) return;
   document.querySelector('#topbarActions')!.innerHTML = `
-    <button class="btn btn-secondary btn-sm" onclick="listaMayoristaModal()">Mayorista</button>
-    <button class="btn btn-secondary btn-sm" onclick="exportarCatalogo()">Exportar</button>
-    ${Sesion.esAdmin() ? '<button class="btn btn-primary btn-sm" onclick="formProducto(null)">+ Artículo</button>' : ''}`;
+    <button class="btn icon-action is-violet" type="button" title="Lista mayorista" aria-label="Lista mayorista" onclick="listaMayoristaModal()">${navIcon('wholesale')}</button>
+    <button class="btn icon-action is-teal" type="button" title="Exportar catálogo" aria-label="Exportar catálogo" onclick="exportarCatalogo()">${navIcon('export')}</button>
+    ${Sesion.esAdmin() ? `<button class="btn btn-primary btn-sm catalog-add" type="button" title="Nuevo artículo" aria-label="Nuevo artículo" onclick="formProducto(null)">${navIcon('add')}<span>Artículo</span></button>` : ''}`;
   const categorias = [...new Set(store.productos.map((p) => p.categoria).filter(Boolean))].sort();
   el.innerHTML = `<div class="catalog-toolbar">
     <input type="search" aria-label="Buscar artículos" id="catSearch" value="${escapeHTML(busqueda)}" placeholder="Buscar nombre, código o medida">
     <select aria-label="Filtrar categoría" id="catFiltro"><option value="">Todas las categorías</option>${categorias.map((c) =>
       `<option value="${escapeHTML(c)}" ${c === categoria ? 'selected' : ''}>${escapeHTML(c)}</option>`).join('')}</select>
-    <div class="catalog-views"><button class="btn btn-sm" data-vista="lista">Lista</button>
-    <button class="btn btn-sm" data-vista="tarjetas">Tarjetas</button></div>
+    <div class="catalog-views" role="group" aria-label="Vista del catálogo">
+      <button class="btn icon-action" type="button" data-vista="lista" title="Vista de lista" aria-label="Vista de lista">${navIcon('list')}</button>
+      <button class="btn icon-action" type="button" data-vista="tarjetas" title="Vista de tarjetas" aria-label="Vista de tarjetas">${navIcon('grid')}</button></div>
   </div><p class="catalog-count" aria-live="polite"></p><div id="catRes"></div>`;
   el.querySelector<HTMLInputElement>('#catSearch')!.oninput = (e) => { busqueda = (e.target as HTMLInputElement).value; actualizar(); };
   el.querySelector<HTMLSelectElement>('#catFiltro')!.onchange = (e) => { categoria = (e.target as HTMLSelectElement).value; actualizar(); };
-  el.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => b.onclick = () => { vista = b.dataset.vista!; actualizar(); });
+  el.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => b.onclick = () => { vista = b.dataset.vista === 'tarjetas' ? 'tarjetas' : 'lista'; saveCatalogPreference(vista); actualizar(); });
   el.querySelector<HTMLElement>('#catRes')!.onclick = (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
+    const b = (e.target as Element).closest<HTMLButtonElement>('button[data-id]');
     if (!b?.dataset.id) return;
     if (b.dataset.accion === 'editar') formProducto(b.dataset.id);
     if (b.dataset.accion === 'compartir') wspProducto(b.dataset.id);
@@ -49,14 +53,13 @@ export function renderCatalogo() {
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
     el!.querySelector('.catalog-count')!.textContent = `${prods.length} ${prods.length === 1 ? 'artículo' : 'artículos'}`;
     el!.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => {
-      b.classList.toggle('btn-secondary', b.dataset.vista === vista);
       b.setAttribute('aria-pressed', String(b.dataset.vista === vista));
     });
     el!.querySelector('#catRes')!.innerHTML = !prods.length ? '<p class="empty-state">No se encontraron artículos.</p>' :
       vista === 'lista' ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Precios</th><th>Stock</th><th>Acciones</th></tr></thead><tbody>${
-        prods.map((p) => `<tr><td>${identidad(p)}</td><td>${escapeHTML(p.categoria || '—')}</td><td>${precios(p)}</td><td>${estado(p)}</td><td>${acciones(p)}</td></tr>`).join('')
-      }</tbody></table></div>` : `<div class="product-grid">${prods.map((p) => `<article class="card catalog-card">
-        <div>${identidad(p)}<small>${escapeHTML(p.categoria)}</small></div>${precios(p)}
+        prods.map((p) => `<tr><td><div class="catalog-list-heading">${categoryArt(p.categoria)}${identidad(p)}</div></td><td>${escapeHTML(p.categoria || '—')}</td><td>${precios(p)}</td><td>${estado(p)}</td><td>${acciones(p)}</td></tr>`).join('')
+      }</tbody></table></div>` : `<div class="product-grid catalog-grid">${prods.map((p) => `<article class="card catalog-card">
+        <div class="catalog-card-heading">${categoryArt(p.categoria)}<div>${identidad(p)}<small class="catalog-category">${escapeHTML(p.categoria)}</small></div></div>${precios(p)}
         <div class="catalog-card-footer">${estado(p)}${acciones(p)}</div></article>`).join('')}</div>`;
   }
 }
@@ -72,8 +75,10 @@ function estado(p: Producto) {
   return `<span class="badge badge-${bajo ? 'red' : 'gray'}">${p.tipo === 'accesorio' ? stock(p) + ' un.' : fmtL(stock(p)) + ' L'}${bajo ? ' · Bajo' : ''}</span>`;
 }
 function acciones(p: Producto) {
-  const boton = (accion: string, titulo: string) => `<button class="btn btn-secondary btn-sm" type="button" data-id="${escapeHTML(p.id)}" data-accion="${accion}">${titulo}</button>`;
-  return `<div class="catalog-actions">${Sesion.esAdmin() ? boton('editar', 'Editar') : ''}${boton('compartir', 'Compartir')}${Sesion.esAdmin() ? boton('eliminar', 'Eliminar') : ''}</div>`;
+  const boton = (accion: string, titulo: string, icono: string, tono: string) => `<button class="btn icon-action ${tono}" type="button"
+    data-id="${escapeHTML(p.id)}" data-accion="${accion}" title="${titulo}" aria-label="${titulo}">${navIcon(icono)}</button>`;
+  return `<div class="catalog-actions">${Sesion.esAdmin() ? boton('editar', 'Editar artículo', 'edit', 'is-violet') : ''}
+    ${boton('compartir', 'Compartir por WhatsApp', 'share', 'is-teal')}${Sesion.esAdmin() ? boton('eliminar', 'Eliminar artículo', 'trash', 'is-danger') : ''}</div>`;
 }
 
 async function eliminarProducto(id: string) {

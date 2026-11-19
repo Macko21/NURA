@@ -1,3 +1,4 @@
+import { navIcon } from '../lib/nav-icons';
 import { store, getLastUpdateStr } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, fmt, toast, swalInfo, openModal, closeModal, registerRenderer, exposeGlobal, verNotasVersion, EMOJIS_CAT } from '../lib/ui';
@@ -8,7 +9,7 @@ import type { Venta, VentaItem, ComboItem, Producto, Combo } from '../types';
 export function renderDashboard() {
   const el = document.getElementById('page-dashboard');
   if (!el) return;
-  document.getElementById('topbarActions')!.innerHTML = `<button class="btn btn-sm btn-outline" onclick="verNotasVersion()">📋 Notas</button>`;
+  document.getElementById('topbarActions')!.innerHTML = `<button class="btn icon-action is-violet" type="button" title="Notas de versión" aria-label="Notas de versión" onclick="verNotasVersion()">${navIcon('notes')}</button>`;
 
   const tv = store.ventas.reduce((s, v) => s + v.total, 0);
   const tc = store.compras.reduce((s, c) => s + c.total, 0);
@@ -37,18 +38,18 @@ export function renderDashboard() {
     <div class="dash-topbar"><div></div><div id="dashLastUpdate" class="dash-live-dot"><span></span> Actualizado ${getLastUpdateStr()}</div></div>
 
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-icon" style="background:var(--accent-soft);color:var(--accent);">💰</div><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(tv)}</div><div class="kpi-sub">${store.ventas.length} ventas</div></div>
-      <div class="kpi-card"><div class="kpi-icon" style="background:var(--purple-soft);color:var(--purple);">📦</div><div class="kpi-label">Compras</div><div class="kpi-value">${fmt(tc)}</div><div class="kpi-sub">${store.compras.length} compras</div></div>
-      <div class="kpi-card"><div class="kpi-icon" style="background:${ganancia >= 0 ? 'var(--green-soft)' : 'var(--danger-soft)'};color:${ganancia >= 0 ? 'var(--green)' : 'var(--danger)'};">${ganancia >= 0 ? '📈' : '📉'}</div><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${tv > 0 ? ((ganancia / tv) * 100).toFixed(1) : 0}%</div></div>
-      <div class="kpi-card"><div class="kpi-icon" style="background:var(--warning-soft);color:var(--warning);">⚠️</div><div class="kpi-label">Stock crítico</div><div class="kpi-value">${stockBajo}</div><div class="kpi-sub">productos</div></div>
+      <div class="kpi-card"><div class="kpi-icon">${navIcon('ventas')}</div><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(tv)}</div><div class="kpi-sub">${store.ventas.length} ventas</div></div>
+      <div class="kpi-card" data-tone="violet"><div class="kpi-icon">${navIcon('compras')}</div><div class="kpi-label">Compras</div><div class="kpi-value">${fmt(tc)}</div><div class="kpi-sub">${store.compras.length} compras</div></div>
+      <div class="kpi-card" data-tone="${ganancia >= 0 ? 'mint' : 'rose'}"><div class="kpi-icon">${navIcon('reportes')}</div><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${tv > 0 ? ((ganancia / tv) * 100).toFixed(1) : 0}%</div></div>
+      <div class="kpi-card" data-tone="amber"><div class="kpi-icon">${navIcon('warning')}</div><div class="kpi-label">Stock crítico</div><div class="kpi-value">${stockBajo}</div><div class="kpi-sub">productos</div></div>
     </div>
 
-    <div class="card mb-16"><div class="section-title">📊 Ventas últimos 6 meses</div>
+    <div class="card mb-16"><div class="section-title">${navIcon('reportes')} Ventas últimos 6 meses</div>
       <div class="sales-chart">${vm.map((m) => `<div class="sales-month"><strong>${fmt(m.val)}</strong><div class="sales-track">
         <span style="height:${Math.max(0, m.val / maxV) * 100}%"></span></div><span>${m.label}</span></div>`).join('')}</div>
     </div>
 
-    <div class="card"><div class="section-title">🕒 Últimas 5 ventas</div>
+    <div class="card"><div class="section-title">${navIcon('clock')} Últimas 5 ventas</div>
       ${ult.length ? `<div class="mobile-card-list">${ult.map((v) => `<div class="m-card"><div class="m-card-header"><div><div class="m-card-title">${escapeHTML(v.clienteNombre || '—')}</div></div><div style="font-family:var(--font-display);font-weight:800;" class="text-gradient">${fmt(v.total)}</div></div><div class="m-card-body"><div class="m-card-row"><span class="m-card-row-label">Fecha</span><span class="m-card-row-value">${fmtDate(v.fecha)}</span></div><div class="m-card-row"><span class="m-card-row-label">Estado</span><span class="m-card-row-value">${v.estado}</span></div></div></div>`).join('')}</div>` : `<div class="empty-state"><div class="empty-icon">📭</div><p>Sin ventas recientes</p></div>`}
     </div>`;
 }
