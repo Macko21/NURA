@@ -1,6 +1,6 @@
 import { store, ajustarStock } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, toast, swalError, swalSuccess, openModal, closeModal, unitInput, EMOJIS_CAT, registerRenderer, exposeGlobal } from '../lib/ui';
+import { escapeHTML, toast, openModal, closeModal, unitInput, EMOJIS_CAT, registerRenderer, exposeGlobal } from '../lib/ui';
 import { fmtL } from '../lib/format';
 import type { Producto } from '../types';
 
@@ -79,14 +79,16 @@ interface AjusteItem {
   tipo: string;
   esAcc: boolean;
   stockActual: number;
+  minActual: number;
   nuevoStock: number;
   nuevoMin: number;
 }
-let _ajusteItems: AjusteItem[] = [];
+let ajusteItems: AjusteItem[] = [];
+let guardandoAjuste = false;
 
 export function abrirAjusteStock() {
-  if (!Sesion.esAdmin()) return;
-  _ajusteItems = [];
+  if (!Sesion.esAdmin() || guardandoAjuste) return;
+  ajusteItems = [];
   openModal(
     '⚖️ Ajuste de Stock múltiple',
     `<div class="form-group mb-12"><label>Buscar y agregar producto</label><div class="flex gap-8"><select id="ajProdSel" data-buscar="Buscar artículo" style="flex:1;"><option value="">Seleccioná...</option>${store.productos.map((p) => `<option value="${p.id}">${escapeHTML(p.nombre)}${p.codigo ? ' #' + escapeHTML(p.codigo) : ''} — ${p.tipo === 'accesorio' ? (p.stockUnidades || 0) + ' un' : fmtL(p.stockLitros || 0) + ' L'}</option>`).join('')}</select><button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarAjusteItem()">+ Agregar</button></div></div><div id="ajusteListaWrap"><div class="empty-state" style="padding:20px;"><div class="empty-icon" style="font-size:28px;">⚖️</div><p>Agregá productos para ajustar</p></div></div>`,
@@ -95,13 +97,14 @@ export function abrirAjusteStock() {
 }
 
 export function agregarAjusteItem() {
+  if (guardandoAjuste) return;
   const prodId = (document.getElementById('ajProdSel') as HTMLSelectElement).value;
   if (!prodId) { toast('Seleccioná un producto', 'info'); return; }
-  if (_ajusteItems.find((x) => x.productoId === prodId)) { toast('Ya está en la lista', 'info'); return; }
+  if (ajusteItems.find((x) => x.productoId === prodId)) { toast('Ya está en la lista', 'info'); return; }
   const p = store.productos.find((x) => x.id === prodId);
   if (!p) return;
   const esAcc = p.tipo === 'accesorio';
-  _ajusteItems.push({
+  ajusteItems.push({
     productoId: prodId,
     nombre: p.nombre,
     codigo: p.codigo || '',
@@ -109,6 +112,7 @@ export function agregarAjusteItem() {
     esAcc,
     stockActual: esAcc ? p.stockUnidades || 0 : p.stockLitros || 0,
     nuevoStock: esAcc ? p.stockUnidades || 0 : p.stockLitros || 0,
+    minActual: esAcc ? p.stockMinUnidades || 0 : p.stockMinLitros || 0,
     nuevoMin: esAcc ? p.stockMinUnidades || 0 : p.stockMinLitros || 0,
   });
   renderAjusteItems();
@@ -117,21 +121,64 @@ export function agregarAjusteItem() {
 function renderAjusteItems() {
   const wrap = document.getElementById('ajusteListaWrap');
   if (!wrap) return;
-  if (!_ajusteItems.length) {
+  if (!ajusteItems.length) {
     wrap.innerHTML = `<div class="empty-state" style="padding:20px;"><div class="empty-icon" style="font-size:28px;">⚖️</div><p>Agregá productos</p></div>`;
     return;
   }
-  wrap.innerHTML = `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">${_ajusteItems.map((item, i) => `<div style="padding:12px 14px;background:${i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)'};display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><div style="flex:1;min-width:140px;"><div class="fw-700" style="font-size:13px;">${escapeHTML(item.nombre)}${item.codigo ? ` <span class="badge badge-gray">#${escapeHTML(item.codigo)}</span>` : ''}</div><div style="font-size:11px;color:var(--text-muted);">Actual: <strong>${item.esAcc ? item.stockActual + ' un' : fmtL(item.stockActual) + ' L'}</strong></div></div><div class="flex gap-8 flex-wrap" style="flex-shrink:0;"><div class="form-group" style="min-width:110px;"><label>Nuevo stock</label>${item.esAcc ? unitInput(`ajS${i}`, item.nuevoStock, 'un', '1', `_ajusteItems[${i}].nuevoStock=+this.value;`) : unitInput(`ajS${i}`, item.nuevoStock, 'L', '0.001', `_ajusteItems[${i}].nuevoStock=+this.value;`)}</div><div class="form-group" style="min-width:110px;"><label>Stock mín.</label>${item.esAcc ? unitInput(`ajM${i}`, item.nuevoMin, 'un', '1', `_ajusteItems[${i}].nuevoMin=+this.value;`) : unitInput(`ajM${i}`, item.nuevoMin, 'L', '0.001', `_ajusteItems[${i}].nuevoMin=+this.value;`)}</div><button class="btn btn-danger btn-sm btn-icon" style="align-self:flex-end;" onclick="_ajusteItems.splice(${i},1);renderAjusteItems()">✕</button></div></div>`).join('')}</div><div style="margin-top:8px;font-size:12px;color:var(--text-muted);">${_ajusteItems.length} producto(s) a ajustar.</div>`;
+  wrap.innerHTML = `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">${ajusteItems.map((item, i) => `<div style="padding:12px 14px;background:${i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)'};display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><div style="flex:1;min-width:140px;"><div class="fw-700" style="font-size:13px;">${escapeHTML(item.nombre)}${item.codigo ? ` <span class="badge badge-gray">#${escapeHTML(item.codigo)}</span>` : ''}</div><div style="font-size:11px;color:var(--text-muted);">Actual: <strong>${item.esAcc ? item.stockActual + ' un' : fmtL(item.stockActual) + ' L'}</strong></div></div><div class="flex gap-8 flex-wrap" style="flex-shrink:0;"><div class="form-group" style="min-width:110px;"><label>Nuevo stock</label>${item.esAcc ? unitInput(`ajS${i}`, Number.isFinite(item.nuevoStock) ? item.nuevoStock : '', 'un', '1') : unitInput(`ajS${i}`, Number.isFinite(item.nuevoStock) ? item.nuevoStock : '', 'L', '0.001')}</div><div class="form-group" style="min-width:110px;"><label>Stock mín.</label>${item.esAcc ? unitInput(`ajM${i}`, Number.isFinite(item.nuevoMin) ? item.nuevoMin : '', 'un', '1') : unitInput(`ajM${i}`, Number.isFinite(item.nuevoMin) ? item.nuevoMin : '', 'L', '0.001')}</div><button class="btn btn-danger btn-sm btn-icon" style="align-self:flex-end;" type="button" data-quitar-ajuste="${i}" aria-label="Quitar producto" title="Quitar producto">✕</button></div></div>`).join('')}</div><div style="margin-top:8px;font-size:12px;color:var(--text-muted);">${ajusteItems.length} producto(s) a ajustar.</div>`;
+  ajusteItems.forEach((item, i) => {
+    const stock = document.getElementById(`ajS${i}`) as HTMLInputElement;
+    const minimo = document.getElementById(`ajM${i}`) as HTMLInputElement;
+    stock.oninput = () => { item.nuevoStock = stock.valueAsNumber; };
+    minimo.oninput = () => { item.nuevoMin = minimo.valueAsNumber; };
+  });
+  wrap.querySelectorAll<HTMLButtonElement>('[data-quitar-ajuste]').forEach((button) => {
+    button.onclick = () => {
+      if (guardandoAjuste) return;
+      ajusteItems.splice(Number(button.dataset.quitarAjuste), 1);
+      renderAjusteItems();
+    };
+  });
 }
 
 async function guardarAjusteStock() {
-  if (!_ajusteItems.length) { await swalError('Agregá al menos un producto'); return; }
-  const promises = _ajusteItems.map((item) => ajustarStock(item.productoId, item.nuevoStock, item.nuevoMin, item.esAcc));
-  closeModal();
-  await Promise.all(promises);
-  swalSuccess('Stock actualizado', `Se actualizaron <strong>${_ajusteItems.length}</strong> producto(s).`);
-  _ajusteItems = [];
+  if (guardandoAjuste) return;
+  if (!ajusteItems.length) { toast('Agregá al menos un producto', 'error'); return; }
+  const invalido = ajusteItems.find((item) => [item.nuevoStock, item.nuevoMin].some((valor) =>
+    !Number.isFinite(valor) || valor < 0 || (item.esAcc && !Number.isInteger(valor))));
+  if (invalido) { toast(`Revisá las cantidades de ${invalido.nombre}`, 'error'); return; }
+  guardandoAjuste = true;
+  const guardar = document.querySelector<HTMLButtonElement>('#btnModalSave');
+  if (guardar) guardar.disabled = true;
+  const pendientes: AjusteItem[] = [];
+  let detalleError = '';
+  const cambios = ajusteItems.filter((item) => item.nuevoStock !== item.stockActual || item.nuevoMin !== item.minActual);
+
+  try {
+    for (const item of cambios) {
+      try {
+        await ajustarStock(item.productoId, item.nuevoStock, item.nuevoMin, item.stockActual, item.minActual, item.esAcc);
+      } catch (err) {
+        pendientes.push(item);
+        detalleError = err instanceof Error ? err.message : 'No se pudo guardar el ajuste';
+      }
+    }
+    ajusteItems = pendientes;
+    if (document.getElementById('page-stock')?.classList.contains('active')) renderStock();
+    if (!pendientes.length) {
+      closeModal();
+      toast(cambios.length ? `Stock actualizado: ${cambios.length} producto(s)` : 'No hubo cambios de stock', cambios.length ? 'success' : 'info');
+    } else {
+      renderAjusteItems();
+      const confirmados = cambios.length - pendientes.length;
+      const guardados = confirmados ? `Se guardaron ${confirmados}. ` : '';
+      toast(`${guardados}Pendiente: ${pendientes[0].nombre}${pendientes.length > 1 ? ` y ${pendientes.length - 1} más` : ''}. ${detalleError}`, 'error');
+    }
+  } finally {
+    guardandoAjuste = false;
+    if (guardar) guardar.disabled = false;
+  }
 }
 
 registerRenderer('stock', renderStock);
-exposeGlobal({ abrirAjusteStock, agregarAjusteItem, renderAjusteItems });
+exposeGlobal({ abrirAjusteStock, agregarAjusteItem });

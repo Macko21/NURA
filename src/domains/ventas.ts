@@ -1,4 +1,5 @@
-import { store, saveVenta, removeVenta, descontarStock, reponerStock, loadAll } from '../lib/db';
+import { navIcon } from '../lib/nav-icons';
+import { store, saveVenta, actualizarEstadoVenta, removeVenta, descontarStock, reponerStock } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, swalInfo, openModal, closeModal, moneyInput, unitInput, registerRenderer, exposeGlobal, currentPage, renderPage } from '../lib/ui';
 import { fmtDate } from '../lib/format';
@@ -22,7 +23,7 @@ export function renderVentas() {
     .sort((a, b) => b.fecha - a.fecha);
 
   const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
-    <th>Trans.</th><th>Fecha</th><th>Cliente</th>${Sesion.esAdmin() ? '<th>Vendedor</th>' : ''}<th>Items</th><th>Total</th><th>Estado</th><th>Acciones</th>
+    <th>Trans.</th><th>Fecha</th><th>Cliente</th>${Sesion.esAdmin() ? '<th>Vendedor</th>' : ''}<th>Items</th><th>Total</th><th>Estado</th><th class="actions-col">Acciones</th>
   </tr></thead><tbody>${
     ventas.length === 0
       ? `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div></td></tr>`
@@ -39,10 +40,10 @@ export function renderVentas() {
             <td>${v.items.length}</td>
             <td class="fw-700">${fmt(v.total)}</td>
             <td>${estadoSelect(v)}</td>
-            <td><div class="table-actions">
-              <button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button>
-              <button class="btn btn-wsp-sm btn-sm" onclick="wspVenta('${v.id}')">📲</button>
-              ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
+            <td class="actions-col"><div class="table-actions">
+              <button class="btn icon-action is-violet" title="Ver venta" aria-label="Ver venta" onclick="verVenta('${v.id}')">${navIcon('eye')}</button>
+              <button class="btn icon-action is-teal" title="Compartir venta" aria-label="Compartir venta" onclick="wspVenta('${v.id}')">${navIcon('share')}</button>
+              ${Sesion.esAdmin() ? `<button class="btn icon-action is-danger" title="Eliminar venta" aria-label="Eliminar venta" onclick="eliminarVenta('${v.id}')">${navIcon('trash')}</button>` : ''}
             </div></td>
           </tr>`;
         }).join('')
@@ -66,7 +67,7 @@ export function renderVentas() {
       <div class="m-card-footer mt-8">
         <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="verVenta('${v.id}')">👁 Ver</button>
         <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspVenta('${v.id}')">📲</button>
-        ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarVenta('${v.id}')">🗑</button>` : ''}
+        ${Sesion.esAdmin() ? `<button class="btn icon-action is-danger" title="Eliminar venta" aria-label="Eliminar venta" onclick="eliminarVenta('${v.id}')">${navIcon('trash')}</button>` : ''}
       </div>
     </div>`;
   }).join('')}</div>`;
@@ -74,22 +75,42 @@ export function renderVentas() {
   el.innerHTML = `<div class="card"><div class="section-header"><div class="section-title">Ventas</div></div>${ventas.length === 0 ? `<div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div>` : tbl + cards}</div>`;
 }
 
-export function estadoSelect(v: any) {
-  const estados = ['pendiente', 'pagado', 'cancelado'];
-  return `<select onchange="cambiarEstadoVenta('${v.id}', this.value)" style="font-size:12px;padding:4px 8px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface);">${estados.map((e) => `<option value="${e}" ${v.estado === e ? 'selected' : ''}>${e.charAt(0).toUpperCase() + e.slice(1)}</option>`).join('')}</select>`;
+const estadosVenta = { pendiente: 'Pendiente', pagado: 'Pagado', cancelado: 'Cancelado' } satisfies Record<Venta['estado'], string>;
+
+function estadoSelect(v: Venta) {
+  return `<select class="sale-status" data-sale-status="${escapeHTML(v.id)}" data-estado="${escapeHTML(v.estado)}"
+    aria-label="Cambiar estado de la venta" title="Cambiar estado de la venta"
+    onchange="cambiarEstadoVenta(this.dataset.saleStatus, this.value)">${
+    Object.entries(estadosVenta).map(([estado, nombre]) => `<option value="${estado}" ${v.estado === estado ? 'selected' : ''}>${nombre}</option>`).join('')
+  }</select>`;
 }
 
+const ventasActualizando = new Set<string>();
 export async function cambiarEstadoVenta(id: string, estado: string) {
   const v = store.ventas.find((x) => x.id === id);
-  if (!v) return;
+  if (!v || ventasActualizando.has(id) || v.estado === estado) return;
   if (estado !== 'pagado' && estado !== 'pendiente' && estado !== 'cancelado') return;
-  v.estado = estado;
-  await saveVenta(v);
-  if (estado === 'pagado') {
-    await loadAll();
-    renderPage(currentPage);
+
+  const controles = [...document.querySelectorAll<HTMLSelectElement>('[data-sale-status]')]
+    .filter((select) => select.dataset.saleStatus === id);
+  ventasActualizando.add(id);
+  controles.forEach((select) => select.disabled = true);
+  try {
+    await actualizarEstadoVenta(id, estado, v.estado);
+    const actual = store.ventas.find((venta) => venta.id === id);
+    if (actual) actual.estado = estado;
+    toast(`Estado actualizado: ${estadosVenta[estado]}`);
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'No se pudo actualizar el estado de la venta', 'error');
+  } finally {
+    const actual = store.ventas.find((venta) => venta.id === id)?.estado ?? v.estado;
+    controles.forEach((select) => {
+      select.value = actual;
+      select.dataset.estado = actual;
+      select.disabled = false;
+    });
+    ventasActualizando.delete(id);
   }
-  toast('Estado actualizado');
 }
 
 export function buildVendibles(): any[] {
@@ -304,7 +325,7 @@ export async function eliminarVenta(id: string) {
 export function resumenPendientesModal() {
   const pendientes = store.ventas.filter((v) => v.estado === 'pendiente');
   if (!pendientes.length) { swalInfo('Sin pendientes', 'No hay ventas pendientes.'); return; }
-  openModal('📋 Ventas pendientes', `<div class="mobile-card-list">${pendientes.map((v) => `<div class="m-card"><div class="m-card-title">${escapeHTML(v.clienteNombre || '—')} · ${fmt(v.total)}</div><div class="m-card-subtitle">${fmtDate(v.fecha)}</div><div class="m-card-footer"><button class="btn btn-primary btn-sm" onclick="cambiarEstadoVenta('${v.id}', 'pagado')">✅ Marcar pagado</button><button class="btn btn-secondary btn-sm" onclick="verVenta('${v.id}')">👁</button></div></div>`).join('')}</div>`, null, true);
+  openModal('📋 Ventas pendientes', `<div class="mobile-card-list">${pendientes.map((v) => `<div class="m-card"><div class="m-card-title">${escapeHTML(v.clienteNombre || '—')} · ${fmt(v.total)}</div><div class="m-card-subtitle">${fmtDate(v.fecha)}</div><div class="m-card-footer"><button class="btn btn-primary btn-sm" onclick="cambiarEstadoVenta('${v.id}', 'pagado')">✅ Marcar pagado</button><button class="btn icon-action is-violet" title="Ver venta" aria-label="Ver venta" onclick="verVenta('${v.id}')">${navIcon('eye')}</button></div></div>`).join('')}</div>`, null, true);
 }
 
 registerRenderer('ventas', renderVentas);

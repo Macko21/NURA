@@ -19,11 +19,6 @@ function showLogin() {
   document.getElementById('loginScreen')!.style.display = '';
 }
 
-function clearLoginError() {
-  const e = document.getElementById('loginError');
-  if (e) e.style.display = 'none';
-}
-
 async function loadProfile(uid: string): Promise<SesionUsuario | null> {
   const perfil = store.perfiles.find((p) => p.id === uid && p.activo !== false);
   if (!perfil) return null;
@@ -41,15 +36,12 @@ async function loadProfile(uid: string): Promise<SesionUsuario | null> {
 export async function login() {
   const emailEl = document.getElementById('loginUser') as HTMLInputElement;
   const passEl = document.getElementById('loginPass') as HTMLInputElement;
-  const errorEl = document.getElementById('loginError') as HTMLElement;
   const btn = document.getElementById('loginBtn') as HTMLButtonElement;
   const rawEmail = emailEl.value.trim();
   const password = passEl.value;
-  clearLoginError();
 
   if (!rawEmail || !password) {
-    errorEl.textContent = 'Completá usuario y contraseña';
-    errorEl.style.display = 'block';
+    toast('Completá usuario y contraseña', 'error');
     return;
   }
 
@@ -63,22 +55,16 @@ export async function login() {
     const { data, error } = await sb().auth.signInWithPassword({ email, password });
     if (error || !data.user) {
       const msg = error?.message ?? '';
-      if (/invalid login credentials/i.test(msg)) {
-        errorEl.textContent = 'Usuario o contraseña incorrectos';
-      } else if (/email not confirmed/i.test(msg)) {
-        errorEl.textContent = 'Email sin confirmar — revisá tu casilla';
-      } else {
-        errorEl.textContent = msg ? `Error: ${msg}` : 'Usuario o contraseña incorrectos';
-      }
-      errorEl.style.display = 'block';
+      const aviso = /email not confirmed/i.test(msg) ? 'Email sin confirmar. Revisá tu casilla.'
+        : !msg || /invalid login credentials/i.test(msg) ? 'Usuario o contraseña incorrectos' : msg;
+      toast(aviso, 'error');
       return;
     }
     await loadAll();
     const user = await loadProfile(data.user.id);
     if (!user) {
       await sb().auth.signOut();
-      errorEl.textContent = 'Usuario sin perfil activo';
-      errorEl.style.display = 'block';
+      toast('Usuario sin perfil activo', 'error');
       return;
     }
     Sesion.set(user);
@@ -86,8 +72,7 @@ export async function login() {
     showApp();
     iniciarControlInactividad();
   } catch {
-    errorEl.textContent = 'Error al conectar';
-    errorEl.style.display = 'block';
+    toast('Error al conectar', 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Ingresar';

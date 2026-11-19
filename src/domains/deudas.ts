@@ -108,7 +108,7 @@ function verCuentaCorriente(key: string) {
   const items = ventas.map((v) => {
     const { pagado, saldo } = getSaldoVenta(v);
     return `<div style="border-bottom:1px solid var(--border);padding:8px 0;">
-      <div style="display:flex;justify-content:space-between;"><strong>${escapeHTML(clNombre)}</strong> <span>${fmtDate(v.fecha)}</span></div>
+      <div class="statement-row-header"><strong>${escapeHTML(clNombre)}</strong> <div class="statement-row-state"><span class="badge ${pagado > 0 ? 'badge-blue' : 'badge-orange'}">${pagado > 0 ? 'Pago parcial' : 'Pendiente'}</span><time>${fmtDate(v.fecha)}</time></div></div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Pedido: ${v.items.map((i) => `${i.nombre}${i.detalle && i.detalle !== 'Unidad' ? ' ' + i.detalle : ''} x${i.cantidad}`).join(', ')}</div>
       ${v.descuento ? `<div style="font-size:12px;color:var(--violet);margin-top:2px;">🔖 Desc: ${fmt(v.descuento)}</div>` : ''}
       <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>Total: ${fmt(v.total)}</span><span>${pagado > 0 ? `Pagado: ${fmt(pagado)}` : ''}</span></div>

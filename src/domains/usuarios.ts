@@ -10,14 +10,14 @@ function renderUsuarios() {
   if (!el) return;
   document.getElementById('topbarActions')!.innerHTML = '<button class="btn btn-primary" onclick="formUsuario(null)">+ Usuario</button>';
   const lista = store.perfiles.filter((u) => u.rol !== 'admin' || u.id === Sesion.uid());
-  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Activo</th><th>Acciones</th></tr></thead><tbody>
+  const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Activo</th><th class="actions-col">Acciones</th></tr></thead><tbody>
     ${lista.map((u) => `
       <tr>
         <td class="fw-700">${escapeHTML(u.username)}</td>
         <td>${escapeHTML(u.nombre)}</td>
         <td><span class="badge badge-${u.rol === 'admin' ? 'violet' : 'blue'}">${escapeHTML(u.rol)}</span></td>
         <td><span class="badge badge-${u.activo !== false ? 'green' : 'red'}">${u.activo !== false ? 'Sí' : 'No'}</span></td>
-        <td><div class="table-actions">
+        <td class="actions-col"><div class="table-actions">
           <button class="btn btn-secondary btn-sm" onclick="formUsuario('${u.id}')">✏️</button>
           <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarUsuario('${u.id}')">🗑</button>
         </div></td>

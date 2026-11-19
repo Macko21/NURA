@@ -4,7 +4,7 @@ import 'sweetalert2/dist/sweetalert2.css';
 import Swal from 'sweetalert2';
 import { initAuth, login, logout } from './lib/auth';
 import { loadAll, suscribirRealtime, getLastUpdateStr } from './lib/db';
-import { closeModal, currentPage, renderPage } from './lib/ui';
+import { closeModal, currentPage, renderPage, swalConfirm } from './lib/ui';
 
 // Módulos de dominio (registran sus renderers y exponen handlers globales)
 import './domains/productos';
@@ -48,14 +48,8 @@ for (const id of ['loginUser', 'loginPass']) {
 }
 
 document.getElementById('logoutBtn')!.onclick = () => {
-  Swal.fire({
-    title: 'Cerrar sesión',
-    text: '¿Estás seguro?',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Sí, salir',
-    cancelButtonText: 'Cancelar',
-  }).then((r) => { if (r.isConfirmed) void logout(); });
+  void swalConfirm('Cerrar sesión', '¿Estás seguro?', 'Sí, salir')
+    .then((r) => { if (r.isConfirmed) void logout(); });
 };
 
 document.addEventListener('nura:datachange', (event) => {
@@ -63,7 +57,10 @@ document.addEventListener('nura:datachange', (event) => {
 });
 
 const fab = document.getElementById('fab');
-if (fab) fab.onclick = () => formVenta();
+if (fab) {
+  fab.innerHTML = navIcon('add');
+  fab.onclick = () => formVenta();
+}
 
 // ── Actualizar "Última actualización" cada 10s ────────────────────────
 setInterval(() => {
@@ -114,10 +111,10 @@ function mostrarInstall() {
   if (!deferredPrompt || document.getElementById('installBanner')) return;
   const b = document.createElement('div');
   b.id = 'installBanner';
-  b.innerHTML = `<div style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#161d27;border:1px solid rgba(82,218,210,0.25);border-radius:var(--r-md);padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:7000;max-width:320px;width:calc(100% - 24px);">
+  b.innerHTML = `<div style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#161d27;border:1px solid rgba(169,140,236,0.25);border-radius:var(--r-md);padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:7000;max-width:320px;width:calc(100% - 24px);">
     <img src="/logo.png" style="width:34px;height:34px;object-fit:contain;flex-shrink:0;">
     <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:800;color:#fff;font-size:12px;">Instalá NURA</div><div style="font-size:10px;color:rgba(255,255,255,0.35);">Accedé desde la pantalla de inicio</div></div>
-    <button id="installBtn" style="background:linear-gradient(135deg,#1ab8af,#52dad2);color:#fff;border:none;border-radius:var(--r-sm);padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;cursor:pointer;">Instalar</button>
+    <button id="installBtn" style="background:var(--primary-action);color:#fff;border:none;border-radius:var(--r-sm);padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;cursor:pointer;">Instalar</button>
     <button id="installClose" style="background:none;border:none;color:rgba(255,255,255,0.25);cursor:pointer;font-size:16px;padding:2px 4px;">✕</button>
   </div>`;
   document.body.appendChild(b);
@@ -143,7 +140,7 @@ document.addEventListener('touchend', (event) => {
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
-  const CACHE_VIGENTE = 'nura-v29'; // debe coincidir con CACHE en public/sw.js
+  const CACHE_VIGENTE = 'nura-v30'; // debe coincidir con CACHE en public/sw.js
 
   // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
   // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.

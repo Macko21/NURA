@@ -16,7 +16,7 @@ export function renderCompras() {
     .sort((a, b) => b.fecha - a.fecha);
 
   const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
-    <th>Trans.</th><th>Fecha</th><th>Producto</th><th>Proveedor</th><th>Cantidad</th><th>Costo unit.</th><th>Total</th><th></th>
+    <th>Trans.</th><th>Fecha</th><th>Producto</th><th>Proveedor</th><th>Cantidad</th><th>Costo unit.</th><th>Total</th><th class="actions-col">Acciones</th>
   </tr></thead><tbody>${
     compras.length === 0
       ? `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🚚</div><p>Sin compras</p></div></td></tr>`
@@ -28,7 +28,7 @@ export function renderCompras() {
           <td>${c.tipo === 'accesorio' ? c.cantidad + ' un' : fmtL(c.cantidad) + ' L'}</td>
           <td>${fmt(c.precioUnit)}/${c.tipo === 'accesorio' ? 'un' : 'L'}</td>
           <td class="fw-700">${fmt(c.total)}</td>
-          <td><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCompra('${c.id}')">🗑</button></td>
+          <td class="actions-col"><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCompra('${c.id}')">🗑</button></td>
         </tr>`).join('')
   }</tbody></table></div>`;
 

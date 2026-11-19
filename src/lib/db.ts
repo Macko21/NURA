@@ -35,7 +35,7 @@ export function syncUI(s: 'ok' | 'saving' | 'off') {
   const txt = document.getElementById('syncTxt');
   const bar = document.getElementById('syncBar');
   if (!dot || !txt) return;
-  if (s === 'ok') { dot.style.background = '#52dad2'; txt.textContent = 'Sincronizado' + (_lastUpdate ? ' · ' + getLastUpdateStr() : ''); if (bar) bar.style.display = 'none'; }
+  if (s === 'ok') { dot.style.background = '#a98cec'; txt.textContent = 'Sincronizado' + (_lastUpdate ? ' · ' + getLastUpdateStr() : ''); if (bar) bar.style.display = 'none'; }
   if (s === 'saving') { dot.style.background = '#f59e0b'; txt.textContent = 'Guardando...'; if (bar) bar.style.display = 'block'; }
   if (s === 'off') { dot.style.background = '#f43f5e'; txt.textContent = 'Sin conexión'; }
 }
@@ -315,6 +315,12 @@ export async function saveVenta(v: Venta) {
   if (pagos.length) await sb().from('venta_pagos').insert(pagos);
 }
 
+export async function actualizarEstadoVenta(id: string, estado: Venta['estado'], anterior: Venta['estado']): Promise<void> {
+  const { data, error } = await sb().from('ventas')
+    .update({ estado }).eq('id', id).eq('estado', anterior).select('id').maybeSingle();
+  if (error || !data) throw new Error('No se pudo actualizar el estado de la venta. Revisá los permisos o recargá la página.');
+}
+
 export async function removeVenta(id: string) {
   const { error } = await sb().from('ventas').delete().eq('id', id);
   if (error) console.error('removeVenta', error.message);
@@ -332,9 +338,23 @@ export async function reponerStock(productoId: string, cantidad: number, esAcc: 
   if (error) { console.error('reponer_stock', error.message); toast('Error al reponer stock', 'error'); }
 }
 
-export async function ajustarStock(productoId: string, nuevoStock: number, nuevoMin: number, esAcc: boolean): Promise<void> {
-  const { error } = await sb().rpc('ajustar_stock', { p_producto_id: productoId, p_nuevo_stock: nuevoStock, p_nuevo_min: nuevoMin, p_es_acc: esAcc });
-  if (error) { console.error('ajustar_stock', error.message); toast('Error al ajustar stock', 'error'); }
+export async function ajustarStock(productoId: string, nuevoStock: number, nuevoMin: number, actual: number, minimo: number, esAcc: boolean): Promise<void> {
+  const stock = esAcc ? 'stock_unidades' : 'stock_litros';
+  const min = esAcc ? 'stock_min_unidades' : 'stock_min_litros';
+  const { data, error } = await sb().from('productos')
+    .update({ [stock]: nuevoStock, [min]: nuevoMin })
+    .eq('id', productoId).eq('tipo', esAcc ? 'accesorio' : 'liquido')
+    .eq(stock, actual).eq(min, minimo)
+    .select()
+    .maybeSingle();
+  if (error) {
+    console.error('ajustarStock', error.message);
+    throw new Error('La base rechazó el ajuste de stock');
+  }
+  if (!data) throw new Error('El stock cambió o el artículo ya no está disponible. Volvé a abrir el ajuste.');
+  const indice = store.productos.findIndex((producto) => producto.id === productoId);
+  if (indice >= 0) store.productos[indice] = mapProducto(data, store.productos[indice].presentaciones);
+  notifyUpdate('productos');
 }
 
 // ── Realtime ───────────────────────────────────────────────────────────

@@ -56,8 +56,8 @@ export function renderCatalogo() {
       b.setAttribute('aria-pressed', String(b.dataset.vista === vista));
     });
     el!.querySelector('#catRes')!.innerHTML = !prods.length ? '<p class="empty-state">No se encontraron artículos.</p>' :
-      vista === 'lista' ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Precios</th><th>Stock</th><th>Acciones</th></tr></thead><tbody>${
-        prods.map((p) => `<tr><td><div class="catalog-list-heading">${categoryArt(p.categoria)}${identidad(p)}</div></td><td>${escapeHTML(p.categoria || '—')}</td><td>${precios(p)}</td><td>${estado(p)}</td><td>${acciones(p)}</td></tr>`).join('')
+      vista === 'lista' ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Precios</th><th>Stock</th><th class="actions-col">Acciones</th></tr></thead><tbody>${
+        prods.map((p) => `<tr><td><div class="catalog-list-heading">${categoryArt(p.categoria)}${identidad(p)}</div></td><td>${escapeHTML(p.categoria || '—')}</td><td>${precios(p)}</td><td>${estado(p)}</td><td class="actions-col">${acciones(p)}</td></tr>`).join('')
       }</tbody></table></div>` : `<div class="product-grid catalog-grid">${prods.map((p) => `<article class="card catalog-card">
         <div class="catalog-card-heading">${categoryArt(p.categoria)}<div>${identidad(p)}<small class="catalog-category">${escapeHTML(p.categoria)}</small></div></div>${precios(p)}
         <div class="catalog-card-footer">${estado(p)}${acciones(p)}</div></article>`).join('')}</div>`;

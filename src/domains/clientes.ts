@@ -23,7 +23,7 @@ export function renderClientes() {
   const isAdmin = Sesion.esAdmin();
   const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
     <th>Nombre</th><th>Teléfono</th><th>Email</th><th>Dirección</th><th>Tipo</th>
-    ${isAdmin ? '<th>Creado por</th>' : ''}<th>Acciones</th>
+    ${isAdmin ? '<th>Creado por</th>' : ''}<th class="actions-col">Acciones</th>
   </tr></thead><tbody>${
     lista.length === 0
       ? `<tr><td colspan="${isAdmin ? 7 : 6}"><div class="empty-state"><div class="empty-icon">👥</div><p>Sin clientes</p></div></td></tr>`
@@ -36,7 +36,7 @@ export function renderClientes() {
             <td>${escapeHTML(c.direccion || '—')}</td>
             <td><span class="badge badge-${c.esMayorista ? 'violet' : 'gray'}">${c.esMayorista ? 'Mayorista' : 'Actual'}</span></td>
             ${isAdmin ? `<td style="font-size:11px;color:var(--text-muted);">${escapeHTML(vendedorNombre)}</td>` : ''}
-            <td><div class="table-actions">
+            <td class="actions-col"><div class="table-actions">
               <button class="btn btn-secondary btn-sm" onclick="formCliente('${c.id}')">✏️</button>
               ${c.telefono ? `<button class="btn btn-wsp-sm btn-sm" onclick="wspCliente('${c.id}')">📲</button>` : ''}
               ${isAdmin ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCliente('${c.id}')">🗑</button>` : ''}

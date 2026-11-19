@@ -14,35 +14,38 @@ export function escapeHTML(str: unknown): string {
 }
 
 // ── SweetAlert2 ───────────────────────────────────────────────────────
-export function swalConfirm(title: string, text: string) {
+export function swalConfirm(title: string, text: string, confirmButtonText = 'Sí, eliminar') {
   return Swal.fire({
     title,
     html: text,
     icon: 'warning',
+    toast: true,
+    position: 'top-end',
     showCancelButton: true,
-    confirmButtonText: 'Sí, eliminar',
+    showCloseButton: true,
+    allowEscapeKey: true,
+    confirmButtonText,
     cancelButtonText: 'Cancelar',
     reverseButtons: true,
-    focusCancel: true,
   });
 }
-export function swalError(msg: string) {
-  return Swal.fire({ title: 'Error', html: msg, icon: 'error', confirmButtonText: 'Entendido' });
-}
-export function swalSuccess(title: string, msg: string) {
-  return Swal.fire({ title, html: msg, icon: 'success', timer: 2200, timerProgressBar: true, confirmButtonText: 'OK' });
-}
-export function swalInfo(title: string, html: string) {
-  return Swal.fire({ title, html, icon: 'info', confirmButtonText: 'OK' });
+
+function textoAviso(html: string) {
+  return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────
+export function swalError(msg: string) { toast(textoAviso(msg), 'error'); }
+export function swalSuccess(title: string, msg: string) { toast(title + ' ' + textoAviso(msg)); }
+export function swalInfo(title: string, msg: string) { toast(title + ' · ' + textoAviso(msg), 'info'); }
+
+let ocultarToast: ReturnType<typeof setTimeout> | undefined;
 export function toast(msg: string, type: 'success' | 'error' | 'info' = 'success') {
   const t = document.getElementById('toast');
   if (!t) return;
+  clearTimeout(ocultarToast);
   t.textContent = msg;
   t.className = 'toast show ' + type;
-  setTimeout(() => (t.className = 'toast'), 2800);
+  ocultarToast = setTimeout(() => (t.className = 'toast'), type === 'error' ? 5500 : 3200);
 }
 
 // ── Datos constantes ──────────────────────────────────────────────────
