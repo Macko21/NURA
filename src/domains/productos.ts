@@ -1,3 +1,4 @@
+import { getSettings, whatsappMessage } from '../lib/settings';
 import { catalogPreference, saveCatalogPreference } from '../lib/appearance';
 import { categoryArt } from '../lib/category-art';
 import { navIcon } from '../lib/nav-icons';
@@ -7,16 +8,39 @@ import { escapeHTML, toast, swalError, swalConfirm, openModal, registerRenderer,
 import { fmtL } from '../lib/format';
 import { formProducto } from './producto-editor';
 import { coincideBusqueda } from '../lib/search';
-import { waLink } from '../config';
+import { contactFooter, waLink } from '../config';
 import { dinero } from './precios';
 import type { Producto } from '../types';
 
 let busqueda = '', categoria = '', vista = catalogPreference();
+const ordenCatalogo: Record<string, string> = {
+  nombre: 'Nombre A–Z', nombreDesc: 'Nombre Z–A', categoria: 'Categoría',
+  precio: 'Menor precio', precioDesc: 'Mayor precio',
+};
+let orden = 'nombre';
+try {
+  const guardado = localStorage.getItem('nura.catalog.order');
+  if (guardado && Object.hasOwn(ordenCatalogo, guardado)) orden = guardado;
+} catch { /* Se conserva el orden por nombre. */ }
 const presentaciones = (p: Producto) => p.tipo === 'accesorio'
   ? [{ nombre: 'Unidad', litros: 0, precioVenta: p.precioVenta, precioMayorista: p.precioMayorista }]
   : [...p.presentaciones].sort((a, b) => a.litros - b.litros);
 const stock = (p: Producto) => p.tipo === 'accesorio' ? p.stockUnidades : p.stockLitros;
 const minimo = (p: Producto) => p.tipo === 'accesorio' ? p.stockMinUnidades : p.stockMinLitros;
+
+function compararProductos(a: Producto, b: Producto) {
+  const porNombre = a.nombre.localeCompare(b.nombre, 'es');
+  if (orden === 'nombreDesc') return -porNombre;
+  if (orden === 'categoria') return a.categoria.localeCompare(b.categoria, 'es') || porNombre;
+  if (orden === 'precio' || orden === 'precioDesc') {
+    const primero = presentaciones(a);
+    const segundo = presentaciones(b);
+    if (!primero.length || !segundo.length) return segundo.length - primero.length || porNombre;
+    const diferencia = Math.min(...primero.map((p) => p.precioVenta)) - Math.min(...segundo.map((p) => p.precioVenta));
+    return (orden === 'precio' ? diferencia : -diferencia) || porNombre;
+  }
+  return porNombre;
+}
 
 export function renderCatalogo() {
   const el = document.querySelector('#page-catalogo');
@@ -30,12 +54,19 @@ export function renderCatalogo() {
     <input type="search" aria-label="Buscar artículos" id="catSearch" value="${escapeHTML(busqueda)}" placeholder="Buscar nombre, código o medida">
     <select aria-label="Filtrar categoría" id="catFiltro"><option value="">Todas las categorías</option>${categorias.map((c) =>
       `<option value="${escapeHTML(c)}" ${c === categoria ? 'selected' : ''}>${escapeHTML(c)}</option>`).join('')}</select>
+    <select aria-label="Ordenar catálogo" id="catOrden">${Object.entries(ordenCatalogo).map(([valor, texto]) =>
+      `<option value="${valor}" ${orden === valor ? 'selected' : ''}>${texto}</option>`).join('')}</select>
     <div class="catalog-views" role="group" aria-label="Vista del catálogo">
       <button class="btn icon-action" type="button" data-vista="lista" title="Vista de lista" aria-label="Vista de lista">${navIcon('list')}</button>
       <button class="btn icon-action" type="button" data-vista="tarjetas" title="Vista de tarjetas" aria-label="Vista de tarjetas">${navIcon('grid')}</button></div>
   </div><p class="catalog-count" aria-live="polite"></p><div id="catRes"></div>`;
   el.querySelector<HTMLInputElement>('#catSearch')!.oninput = (e) => { busqueda = (e.target as HTMLInputElement).value; actualizar(); };
   el.querySelector<HTMLSelectElement>('#catFiltro')!.onchange = (e) => { categoria = (e.target as HTMLSelectElement).value; actualizar(); };
+  el.querySelector<HTMLSelectElement>('#catOrden')!.onchange = (e) => {
+    orden = (e.target as HTMLSelectElement).value;
+    try { localStorage.setItem('nura.catalog.order', orden); } catch { /* Se aplica durante la sesión. */ }
+    actualizar();
+  };
   el.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => b.onclick = () => { vista = b.dataset.vista === 'tarjetas' ? 'tarjetas' : 'lista'; saveCatalogPreference(vista); actualizar(); });
   el.querySelector<HTMLElement>('#catRes')!.onclick = (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('button[data-id]');
@@ -50,7 +81,7 @@ export function renderCatalogo() {
     const prods = store.productos.filter((p) => (!categoria || p.categoria === categoria) &&
       coincideBusqueda(busqueda, p.nombre, p.codigo, p.categoria, p.descripcion, ...p.presentaciones.flatMap((pr) =>
         [pr.nombre, pr.nombre.replace(/\s/g, ''), pr.litros * 1000 + ' ml', pr.litros + ' L'])))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      .sort(compararProductos);
     el!.querySelector('.catalog-count')!.textContent = `${prods.length} ${prods.length === 1 ? 'artículo' : 'artículos'}`;
     el!.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.vista === vista));
@@ -135,9 +166,11 @@ async function descargarLista(mayor: boolean) {
   } catch { await swalError('No se pudo generar el PDF.'); }
 }
 
-function compartirLista(mayor: boolean) {
+export function compartirLista(mayor: boolean) {
   const lista = filas(mayor).map((f) => `${f.nombre} · ${f.medida}: ${dinero.format(f.precio)}${f.agotado ? ' (sin stock)' : ''}`);
-  window.open(waLink([mayor ? '*NURA | Lista mayorista*' : '*NURA | Catálogo*', ...lista].join('\n')), '_blank', 'noopener');
+  if (!lista.length) { toast('No hay artículos para compartir', 'info'); return; }
+  const detalle = [`*${getSettings().nombre} | ${mayor ? 'Lista mayorista' : 'Catálogo'}*`, ...lista, '', contactFooter()].join('\n');
+  window.open(waLink(whatsappMessage('catalogo', detalle)), '_blank', 'noopener');
 }
 
 registerRenderer('catalogo', renderCatalogo);

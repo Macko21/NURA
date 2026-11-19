@@ -1,3 +1,4 @@
+import { redondearPesos } from '../lib/format';
 import { store, saveProducto } from '../lib/db';
 import { genId } from '../lib/id';
 import { Sesion } from '../lib/session';
@@ -11,6 +12,8 @@ const etiqueta = (texto: string, campo: string, valor: unknown, attrs = '') =>
   `<label class="form-group">${texto}<input name="${campo}" value="${escapeHTML(valor)}" ${attrs}></label>`;
 const numero = (texto: string, campo: string, valor: number | undefined, attrs = '') =>
   etiqueta(texto, campo, valor, 'type="number" min="0" step="any" ' + attrs);
+const precio = (texto: string, campo: string, valor?: number) =>
+  numero(texto, campo, valor === undefined ? undefined : redondearPesos(valor), 'data-precio');
 const campos = ['costoEnvase', 'costoEtiqueta', 'ganancia', 'descMayorista'] as const;
 type Fila = Presentacion & { minorista?: number; mayorista?: number };
 
@@ -29,8 +32,8 @@ export function formProducto(id: string | null) {
   const filas: Fila[] = (anterior?.presentaciones ?? []).map((p) => {
     const sugerido = calcularPresentacion(anterior?.costoLitro ?? 0, p);
     const conMinorista = calcularPresentacion(anterior?.costoLitro ?? 0, p, p.precioVenta);
-    return { ...p, minorista: p.precioVenta === sugerido.precioVenta ? undefined : p.precioVenta,
-      mayorista: p.precioMayorista === conMinorista.precioMayorista ? undefined : p.precioMayorista };
+    return { ...p, minorista: redondearPesos(p.precioVenta) === sugerido.precioVenta ? undefined : p.precioVenta,
+      mayorista: redondearPesos(p.precioMayorista) === conMinorista.precioMayorista ? undefined : p.precioMayorista };
   }).sort((a, b) => a.litros - b.litros);
   const categorias = [...new Set([...CATEGORIAS, ...(anterior?.categoria ? [anterior.categoria] : [])])];
   let guardando = false;
@@ -62,8 +65,8 @@ export function formProducto(id: string | null) {
         ${etiqueta('Stock mínimo (un.)', 'stockMinUnidades', anterior?.stockMinUnidades ?? 0, 'type="number" min="0" step="1"')}
         ${numero('Recargo (%)', 'gananciaAcc', anterior?.gananciaAcc ?? 40)}
         ${numero('Descuento mayorista (%)', 'descMayoristaAcc', anterior?.descMayorista ?? 20, 'max="100"')}
-        ${numero('Minorista ($)', 'precioAcc', anterior?.precioVenta)}
-        ${numero('Mayorista ($)', 'mayorAcc', anterior?.precioMayorista)}
+        ${precio('Minorista ($)', 'precioAcc', anterior?.precioVenta)}
+        ${precio('Mayorista ($)', 'mayorAcc', anterior?.precioMayorista)}
       </div><div id="resultadoAcc" class="editor-summary"></div>
     </fieldset></form>`, guardar, true);
 
@@ -107,8 +110,8 @@ export function formProducto(id: string | null) {
         ${numero('Etiqueta ($)', 'costoEtiqueta' + i, r.costoEtiqueta)}
         ${numero('Recargo (%)', 'ganancia' + i, r.ganancia)}
         ${numero('Descuento mayorista (%)', 'descMayorista' + i, r.descMayorista, 'max="100"')}
-        ${numero('Minorista ($)', 'pv' + i, r.minorista)}
-        ${numero('Mayorista ($)', 'pm' + i, r.mayorista)}
+        ${precio('Minorista ($)', 'pv' + i, r.minorista)}
+        ${precio('Mayorista ($)', 'pm' + i, r.mayorista)}
       </div><div class="editor-summary" data-resumen="${i}"></div></section>`).join('');
     recalcular();
   }
@@ -118,6 +121,13 @@ export function formProducto(id: string | null) {
       el.hidden = el.disabled = (el.dataset.tipo === 'accesorio') !== esAcc();
     });
   }
+  form.addEventListener('change', (event) => {
+    const campo = event.target as HTMLInputElement;
+    if (campo.matches('[data-precio]') && Number.isFinite(campo.valueAsNumber)) {
+      campo.value = String(redondearPesos(campo.valueAsNumber));
+      campo.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
   input('tipo').onchange = mostrarTipo;
   form.oninput = (event) => {
     const el = (event.target as HTMLElement).closest<HTMLElement>('[data-fila]');

@@ -1,8 +1,9 @@
-// Formateadores. `fmt` ahora redondea al entero más cercano (antes usaba
-// Math.ceil y redondeaba SIEMPRE hacia arriba, inflando totales).
+export function redondearPesos(valor: number): number {
+  return Math.round(valor + Number.EPSILON * Math.abs(valor));
+}
 
 export function fmt(n: unknown): string {
-  return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+  return '$ ' + redondearPesos(Number(n) || 0).toLocaleString('es-AR');
 }
 
 export function fmtL(n: unknown): string {

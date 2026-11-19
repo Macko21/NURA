@@ -1,6 +1,6 @@
 // NURA Service Worker — cache-first para el shell, network-first para navegación.
 // Rutas relativas para funcionar bajo el subpath de GitHub Pages (/NURA/).
-const CACHE = 'nura-v30';
+const CACHE = 'nura-v31';
 const SHELL = ['./', './index.html', './manifest.json', './logo.png'];
 
 self.addEventListener('install', (e) => {

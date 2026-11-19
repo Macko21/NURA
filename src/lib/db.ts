@@ -294,25 +294,55 @@ export async function removeCombo(id: string) {
   if (error) console.error('removeCombo', error.message);
 }
 
-export async function saveVenta(v: Venta) {
-  const { error } = await sb().from('ventas').upsert({
+function cabeceraVenta(v: Venta) {
+  return {
     id: v.id, fecha: v.fecha, cliente_id: v.clienteId, cliente_nombre: v.clienteNombre,
     vendedor_id: v.vendedorId, vendedor_nombre: v.vendedorNombre, es_mayorista: v.esMayorista,
     subtotal: v.subtotal, descuento: v.descuento, envio: v.envio, total: v.total,
     estado: v.estado, obs: v.obs,
-  }, { onConflict: 'id' });
-  if (error) { toast('Error al guardar venta', 'error'); return; }
-  await sb().from('venta_items').delete().eq('venta_id', v.id);
-  const rows = v.items.map((it) => ({
+  };
+}
+
+function filasVenta(v: Venta) {
+  return v.items.map((it) => ({
     venta_id: v.id, producto_id: it.productoId, presentacion_id: it.presId, combo_id: it.comboId,
     nombre: it.nombre, detalle: it.detalle, cantidad: it.cantidad, precio: it.precio,
-    precio_aplicado: it.precioAplicado, precio_mayorista: it.precioMayorista, costo_unitario: it.costoUnitario,
-    litros_por_unidad: it.litrosPorUnidad, subtotal: it.subtotal, es_acc: it.esAcc, es_combo: it.esCombo,
+    precio_aplicado: it.precioAplicado, precio_mayorista: it.precioMayorista,
+    costo_unitario: it.costoUnitario, litros_por_unidad: it.litrosPorUnidad,
+    subtotal: it.subtotal, es_acc: it.esAcc, es_combo: it.esCombo,
   }));
+}
+
+function pagosVenta(v: Venta) {
+  return v.pagos.map((pg) => ({ id: pg.id, venta_id: v.id, fecha: pg.fecha, monto: pg.monto, medio: pg.medio }));
+}
+
+export async function saveVenta(v: Venta) {
+  const { error } = await sb().from('ventas').upsert(cabeceraVenta(v), { onConflict: 'id' });
+  if (error) { toast('Error al guardar venta', 'error'); return; }
+  await sb().from('venta_items').delete().eq('venta_id', v.id);
+  const rows = filasVenta(v);
   if (rows.length) await sb().from('venta_items').insert(rows);
   await sb().from('venta_pagos').delete().eq('venta_id', v.id);
-  const pagos = v.pagos.map((pg) => ({ id: pg.id, venta_id: v.id, fecha: pg.fecha, monto: pg.monto, medio: pg.medio }));
+  const pagos = pagosVenta(v);
   if (pagos.length) await sb().from('venta_pagos').insert(pagos);
+}
+
+export async function registrarVentaNueva(v: Venta, idsFilas: string[]) {
+  const opciones = { onConflict: 'id', ignoreDuplicates: true };
+  const cabecera = await sb().from('ventas').upsert({ ...cabeceraVenta(v), estado: 'pendiente' }, opciones);
+  if (cabecera.error) throw cabecera.error;
+  const items = await sb().from('venta_items').upsert(filasVenta(v).map((fila, i) => ({ ...fila, id: idsFilas[i] })), opciones);
+  if (items.error) throw items.error;
+  if (v.pagos.length) {
+    const pagos = await sb().from('venta_pagos').upsert(pagosVenta(v), opciones);
+    if (pagos.error) throw pagos.error;
+  }
+  if (v.estado === 'pagado') {
+    const { data, error } = await sb().from('ventas').update({ estado: 'pagado' })
+      .eq('id', v.id).in('estado', ['pendiente', 'pagado']).select('id').maybeSingle();
+    if (error || !data) throw error ?? new Error('No se pudo confirmar la venta');
+  }
 }
 
 export async function actualizarEstadoVenta(id: string, estado: Venta['estado'], anterior: Venta['estado']): Promise<void> {

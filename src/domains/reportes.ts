@@ -1,3 +1,4 @@
+import { getSettings, whatsappMessage } from '../lib/settings';
 import { navIcon } from '../lib/nav-icons';
 import { store, getLastUpdateStr } from '../lib/db';
 import { Sesion } from '../lib/session';
@@ -9,11 +10,11 @@ import type { Venta, VentaItem, ComboItem, Producto, Combo } from '../types';
 export function renderDashboard() {
   const el = document.getElementById('page-dashboard');
   if (!el) return;
-  document.getElementById('topbarActions')!.innerHTML = `<button class="btn icon-action is-violet" type="button" title="Notas de versión" aria-label="Notas de versión" onclick="verNotasVersion()">${navIcon('notes')}</button>`;
 
   const tv = store.ventas.reduce((s, v) => s + v.total, 0);
   const tc = store.compras.reduce((s, c) => s + c.total, 0);
-  const ganancia = tv - store.ventas.reduce((total, venta) => total + calcularCostoVenta(venta), 0);
+  const neto = store.ventas.reduce((total, venta) => total + venta.total - venta.envio, 0);
+  const ganancia = neto - store.ventas.reduce((total, venta) => total + calcularCostoVenta(venta), 0);
   const stockBajo = store.productos.filter(
     (p) => p.tipo === 'accesorio'
       ? (p.stockUnidades || 0) <= (p.stockMinUnidades || 0)
@@ -40,7 +41,7 @@ export function renderDashboard() {
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-icon">${navIcon('ventas')}</div><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(tv)}</div><div class="kpi-sub">${store.ventas.length} ventas</div></div>
       <div class="kpi-card" data-tone="violet"><div class="kpi-icon">${navIcon('compras')}</div><div class="kpi-label">Compras</div><div class="kpi-value">${fmt(tc)}</div><div class="kpi-sub">${store.compras.length} compras</div></div>
-      <div class="kpi-card" data-tone="${ganancia >= 0 ? 'mint' : 'rose'}"><div class="kpi-icon">${navIcon('reportes')}</div><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${tv > 0 ? ((ganancia / tv) * 100).toFixed(1) : 0}%</div></div>
+      <div class="kpi-card" data-tone="${ganancia >= 0 ? 'mint' : 'rose'}"><div class="kpi-icon">${navIcon('reportes')}</div><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${neto > 0 ? ((ganancia / neto) * 100).toFixed(1) : 0}%</div></div>
       <div class="kpi-card" data-tone="amber"><div class="kpi-icon">${navIcon('warning')}</div><div class="kpi-label">Stock crítico</div><div class="kpi-value">${stockBajo}</div><div class="kpi-sub">productos</div></div>
     </div>
 
@@ -114,7 +115,8 @@ function renderReportes() {
 
   const total = ventasFiltradas.reduce((s, v) => s + v.total, 0);
   const costo = ventasFiltradas.reduce((s, v) => s + calcularCostoVenta(v), 0);
-  const ganancia = total - costo;
+  const neto = ventasFiltradas.reduce((s, v) => s + v.total - v.envio, 0);
+  const ganancia = neto - costo;
 
   const porCliente = ventasFiltradas.reduce((acc, v) => {
     const key = v.clienteNombre || '—';
@@ -143,7 +145,7 @@ function renderReportes() {
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(total)}</div><div class="kpi-sub">${ventasFiltradas.length} transacciones</div></div>
       <div class="kpi-card"><div class="kpi-label">Costo estimado de ventas</div><div class="kpi-value">${fmt(costo)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${total > 0 ? ((ganancia / total) * 100).toFixed(1) : 0}%</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${neto > 0 ? ((ganancia / neto) * 100).toFixed(1) : 0}%</div></div>
     </div>
 
     <div class="card mb-16"><div class="section-title">🏆 Top 10 Clientes</div>
@@ -184,7 +186,7 @@ function renderMisReportes() {
 
 export function wspReporte() {
   if (!store.productos.length) { swalInfo('Sin productos', 'No hay productos en el catálogo.'); return; }
-  let msg = `*🌿 NURA — Catálogo*\n\n`;
+  let msg = `*🌿 ${getSettings().nombre} — Catálogo*\n\n`;
   const cats = [...new Set(store.productos.map((p) => p.categoria))];
   cats.forEach((cat) => {
     msg += `*${(EMOJIS_CAT as Record<string, string>)[cat] || '🧴'} ${cat}*\n`;
@@ -200,7 +202,7 @@ export function wspReporte() {
     msg += '\n';
   }
   msg += `${contactFooter()}\n📷 @nura.neco | 📲 2262 240512`;
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  window.open('https://wa.me/?text=' + encodeURIComponent(whatsappMessage('catalogo', msg)), '_blank', 'noopener');
 }
 
 function limpiarFiltroReportes() {

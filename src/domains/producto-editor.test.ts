@@ -51,12 +51,12 @@ describe('editor de productos', () => {
     escribir('costoEnvase0', '100');
     escribir('costoEtiqueta0', '20');
     expect(input('pv0').placeholder).toBe('1568');
-    expect(input('pm0').placeholder).toBe('1254.4');
+    expect(input('pm0').placeholder).toBe('1254');
     expect(document.querySelectorAll('[data-fila]')).toHaveLength(1);
     click('#btnModalSave');
     await vi.waitFor(() => expect(saveProducto).toHaveBeenCalledOnce());
     expect(vi.mocked(saveProducto).mock.calls[0][0].presentaciones[0]).toMatchObject({
-      nombre: '1 L', precioVenta: 1568, precioMayorista: 1254.4,
+      nombre: '1 L', precioVenta: 1568, precioMayorista: 1254,
     });
     expect(calcularPresentacion(1000, producto.presentaciones[0], 1800, 1050).gananciaMayorista).toBe(-70);
   });

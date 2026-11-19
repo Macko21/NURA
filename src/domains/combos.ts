@@ -1,3 +1,4 @@
+import { whatsappMessage } from '../lib/settings';
 import { store, saveCombo, removeCombo } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, moneyInput, unitInput, registerRenderer, exposeGlobal } from '../lib/ui';
@@ -160,7 +161,7 @@ export function wspCombo(id: string) {
   msg += `\nPrecio: ${fmt(c.precio)}`;
   if (c.precioMayorista) msg += ` / Mayor: ${fmt(c.precioMayorista)}`;
   msg += `\n\n${waLink('', '2262240512')}`;
-  window.open(waLink(msg), '_blank');
+  window.open(waLink(whatsappMessage('combo', msg)), '_blank', 'noopener');
 }
 
 function imprimirCombos(esMayorista = false) {

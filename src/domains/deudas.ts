@@ -1,3 +1,4 @@
+import { whatsappMessage } from '../lib/settings';
 import { store, saveVenta } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, fmt, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, moneyInput, registerRenderer, exposeGlobal } from '../lib/ui';
@@ -182,7 +183,7 @@ export function wspDeudaCliente(key: string) {
   });
   msg += `--------------------------\n💰 *TOTAL ADEUDADO: ${fmt(deuda)}*\n\nPodés pagar por efectivo o transferencia.\n📷 @nura.neco`;
   const telNum = tel.replace(/\D/g, '');
-  window.open(`https://wa.me/${telNum}?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(`https://wa.me/${telNum}?text=${encodeURIComponent(whatsappMessage('deuda', msg, { cliente: cl?.nombre ?? '', saldo: fmt(deuda) }))}`, '_blank');
 }
 
 registerRenderer('deudas', renderDeudas);

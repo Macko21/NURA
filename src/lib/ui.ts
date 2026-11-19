@@ -71,7 +71,7 @@ export const PRES_RAPIDAS = [
 ];
 
 // ── Modal ─────────────────────────────────────────────────────────────
-export function openModal(title: string, bodyHTML: string, onSave?: (() => void) | null, wide = false) {
+export function openModal(title: string, bodyHTML: string, onSave?: (() => void) | null, wide: boolean | number = false) {
   const titleEl = document.getElementById('modalTitle');
   const bodyEl = document.getElementById('modalBody');
   const overlay = document.getElementById('modalOverlay');
@@ -80,7 +80,7 @@ export function openModal(title: string, bodyHTML: string, onSave?: (() => void)
   titleEl.textContent = title;
   bodyEl.innerHTML = bodyHTML;
   activarBuscadores(bodyEl);
-  modal.style.maxWidth = wide ? '820px' : '600px';
+  modal.style.maxWidth = typeof wide === 'number' ? `${wide}px` : wide ? '820px' : '600px';
   overlay.classList.add('active');
   let footer = modal.querySelector('.modal-footer') as HTMLElement | null;
   if (onSave) {
@@ -113,6 +113,11 @@ export function unitInput(id: string, value: string | number = '', unit = 'L', s
 // ── Notas de versión ──────────────────────────────────────────────────
 interface Nota { v: string; fecha: string; notas: string[] }
 const NOTAS_VERSION: Nota[] = [
+  { v: '3.1.0', fecha: '2026-11-18', notas: [
+    'Nueva venta con datos del cliente, resumen, margen y cobros.',
+    'Configuración de marca, envío y plantillas de WhatsApp.',
+    'Orden del catálogo y marcos para distinguir presentaciones.',
+  ]},
   { v: '3.0', fecha: new Date().toISOString().slice(0, 10), notas: [
     'Arquitectura: TypeScript + Vite + ES modules',
     'Seguridad: Supabase Auth + Row Level Security por usuario',
@@ -146,7 +151,7 @@ export function verNotasVersion() {
 // ── Navegación ────────────────────────────────────────────────────────
 export let currentPage = 'dashboard';
 
-export const PAGES_ADMIN = ['dashboard', 'catalogo', 'clientes', 'ventas', 'compras', 'stock', 'combos', 'deudas', 'reportes', 'usuarios'] as const;
+export const PAGES_ADMIN = ['dashboard', 'catalogo', 'clientes', 'ventas', 'compras', 'stock', 'combos', 'deudas', 'reportes', 'usuarios', 'ajustes'] as const;
 export const PAGES_VENDEDOR = ['catalogo', 'combos', 'stock', 'clientes', 'ventas', 'misreportes'] as const;
 
 const renderers: Record<string, () => void> = {};
@@ -160,7 +165,7 @@ export function renderPage(page: string) {
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Inicio', catalogo: 'Catálogo', clientes: 'Clientes', ventas: 'Ventas',
   compras: 'Compras', stock: 'Stock', reportes: 'Reportes', combos: 'Combos',
-  deudas: 'Deudas', usuarios: 'Usuarios', misreportes: 'Mis Reportes',
+  deudas: 'Deudas', usuarios: 'Usuarios', ajustes: 'Configuración', misreportes: 'Mis Reportes',
 };
 
 function allowedPages(): readonly string[] {
@@ -224,6 +229,7 @@ export function buildMenu() {
         { page: 'deudas', label: 'Deudas' },
         { page: 'reportes', label: 'Reportes' },
         { page: 'usuarios', label: 'Usuarios' },
+        { page: 'ajustes', label: 'Configuración' },
       ]
     : [
         { page: 'catalogo', label: 'Catálogo' },

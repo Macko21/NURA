@@ -1,5 +1,6 @@
 const paths: Record<string, string> = {
   eye: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+  ajustes: 'M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M10 16v4',
   list: 'M7 6h14M7 12h14M7 18h14M3 6h.01M3 12h.01M3 18h.01',
   grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   edit: 'M13.5 6.5l4 4M4 20l4-.9L20 7l-4-4L4 15z',

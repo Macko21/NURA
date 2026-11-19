@@ -1,10 +1,13 @@
+import { prepareBrandAssets } from './lib/settings';
+import { version } from '../package.json';
+import { compartirLista } from './domains/productos';
 import { navIcon } from './lib/nav-icons';
 import { installThemeControls } from './lib/appearance';
 import 'sweetalert2/dist/sweetalert2.css';
 import Swal from 'sweetalert2';
 import { initAuth, login, logout } from './lib/auth';
 import { loadAll, suscribirRealtime, getLastUpdateStr } from './lib/db';
-import { closeModal, currentPage, renderPage, swalConfirm } from './lib/ui';
+import { closeModal, currentPage, renderPage, swalConfirm, verNotasVersion } from './lib/ui';
 
 // Módulos de dominio (registran sus renderers y exponen handlers globales)
 import './domains/productos';
@@ -16,9 +19,20 @@ import './domains/combos';
 import './domains/deudas';
 import './domains/reportes';
 import './domains/usuarios';
+import './domains/ajustes';
 import { formVenta } from './domains/ventas';
 
 installThemeControls();
+prepareBrandAssets();
+const enviarCatalogo = document.getElementById('btnWhatsappGlobal')!;
+enviarCatalogo.innerHTML = navIcon('share');
+enviarCatalogo.onclick = () => compartirLista(false);
+const versionNura = document.getElementById('versionNura')!;
+versionNura.textContent = 'v' + version;
+versionNura.onclick = () => {
+  document.getElementById('sidebar')?.classList.remove('open');
+  verNotasVersion();
+};
 document.getElementById('hamburger')!.innerHTML = navIcon('menu');
 document.getElementById('logoutBtn')!.innerHTML = navIcon('logout');
 
@@ -140,7 +154,7 @@ document.addEventListener('touchend', (event) => {
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
-  const CACHE_VIGENTE = 'nura-v30'; // debe coincidir con CACHE en public/sw.js
+  const CACHE_VIGENTE = 'nura-v31'; // debe coincidir con CACHE en public/sw.js
 
   // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
   // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.
