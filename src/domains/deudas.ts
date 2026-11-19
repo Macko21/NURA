@@ -41,7 +41,7 @@ export function renderDeudas() {
   const totalGlobal = clientesConDeuda.reduce((s, k) => s + getTotalDeudaCliente(k), 0);
   clientesConDeuda.sort((a, b) => getTotalDeudaCliente(b) - getTotalDeudaCliente(a));
 
-  const cards = clientesConDeuda.map((key) => {
+  const cards = clientesConDeuda.map((key, idx) => {
     const cl = store.clientes.find((c) => c.id === key);
     const nombre = cl ? cl.nombre : (store.ventas.find((v) => v.clienteId === key || v.clienteNombre === key)?.clienteNombre || '—');
     const deuda = getTotalDeudaCliente(key);
@@ -55,7 +55,7 @@ export function renderDeudas() {
     const colorBorde = dias > 14 ? 'var(--danger)' : dias > 7 ? 'var(--warning)' : 'var(--border)';
     const colorDias = dias > 14 ? 'var(--danger)' : dias > 7 ? 'var(--warning)' : 'var(--text-muted)';
 
-    return `<div class="m-card" style="border-left:4px solid ${colorBorde};">
+    return `<div class="m-card" data-deuda-idx="${idx}" style="border-left:4px solid ${colorBorde};cursor:pointer;">
       <div class="m-card-header">
         <div>
           <div class="m-card-title">👤 ${escapeHTML(nombre)}</div>
@@ -68,8 +68,8 @@ export function renderDeudas() {
         </div>
       </div>
       <div class="m-card-footer">
-        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="verCuentaCorriente('${key}')">📋 Cuenta corriente</button>
-        ${cl?.telefono ? `<button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspDeudaCliente('${key}')">📲 WS</button>` : ''}
+        <button class="btn btn-primary btn-sm" style="flex:1;" data-accion="cc">📋 Cuenta corriente</button>
+        ${cl?.telefono ? `<button class="btn btn-wsp-sm btn-sm" style="flex:1;" data-accion="wsp">📲 WS</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -80,6 +80,18 @@ export function renderDeudas() {
   </div></div>`;
 
   document.getElementById('page-deudas')!.innerHTML = totalGlobalEl + `<div class="mobile-card-list">${cards}</div>`;
+
+  // Listeners en vez de onclick inline: los keys con comillas/apóstrofes
+  // rompían el atributo y los clicks no hacían nada. Se usa el índice para
+  // evitar cualquier problema de escaping en atributos HTML.
+  document.querySelectorAll<HTMLElement>('#page-deudas [data-deuda-idx]').forEach((card) => {
+    const key = clientesConDeuda[Number(card.dataset.deudaIdx)] ?? '';
+    const ccBtn = card.querySelector<HTMLElement>('[data-accion="cc"]');
+    const wspBtn = card.querySelector<HTMLElement>('[data-accion="wsp"]');
+    if (ccBtn) ccBtn.onclick = (e) => { e.stopPropagation(); verCuentaCorriente(key); };
+    if (wspBtn) wspBtn.onclick = (e) => { e.stopPropagation(); wspDeudaCliente(key); };
+    card.onclick = () => verCuentaCorriente(key);
+  });
 }
 
 function verCuentaCorriente(key: string) {

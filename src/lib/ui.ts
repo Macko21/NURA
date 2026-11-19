@@ -1,3 +1,5 @@
+import { navIcon } from './nav-icons';
+import { activarBuscadores } from './select-search';
 import Swal from 'sweetalert2';
 import type { Rol } from '../types';
 import { Sesion } from './session';
@@ -8,7 +10,7 @@ const escDiv = document.createElement('div');
 export function escapeHTML(str: unknown): string {
   if (str == null) return '';
   escDiv.textContent = String(str);
-  return escDiv.innerHTML;
+  return escDiv.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ── SweetAlert2 ───────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ export function openModal(title: string, bodyHTML: string, onSave?: (() => void)
   if (!titleEl || !bodyEl || !overlay || !modal) return;
   titleEl.textContent = title;
   bodyEl.innerHTML = bodyHTML;
+  activarBuscadores(bodyEl);
   modal.style.maxWidth = wide ? '820px' : '600px';
   overlay.classList.add('active');
   let footer = modal.querySelector('.modal-footer') as HTMLElement | null;
@@ -84,7 +87,7 @@ export function openModal(title: string, bodyHTML: string, onSave?: (() => void)
       modal.appendChild(footer);
     }
     footer.innerHTML =
-      '<button class="btn btn-secondary" id="btnModalCancel">Cancelar</button><button class="btn btn-primary" id="btnModalSave">💾 Guardar</button>';
+      '<button class="btn btn-secondary" id="btnModalCancel">Cancelar</button><button class="btn btn-primary" id="btnModalSave">Guardar</button>';
     document.getElementById('btnModalSave')!.onclick = onSave;
     document.getElementById('btnModalCancel')!.onclick = closeModal;
   } else if (footer) {
@@ -152,7 +155,7 @@ export function renderPage(page: string) {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  dashboard: 'Dashboard', catalogo: 'Catálogo', clientes: 'Clientes', ventas: 'Ventas',
+  dashboard: 'Inicio', catalogo: 'Catálogo', clientes: 'Clientes', ventas: 'Ventas',
   compras: 'Compras', stock: 'Stock', reportes: 'Reportes', combos: 'Combos',
   deudas: 'Deudas', usuarios: 'Usuarios', misreportes: 'Mis Reportes',
 };
@@ -175,20 +178,20 @@ export function navigate(page: string) {
   document.getElementById('sidebar')?.classList.remove('open');
 }
 
-interface NavItem { page: string; icon: string; label: string }
+interface NavItem { page: string; label: string }
 const BOTTOM_NAV_ADMIN: NavItem[] = [
-  { page: 'dashboard', icon: '📊', label: 'Inicio' },
-  { page: 'ventas', icon: '💸', label: 'Ventas' },
-  { page: 'reportes', icon: '📈', label: 'Reportes' },
-  { page: 'clientes', icon: '👥', label: 'Clientes' },
-  { page: 'stock', icon: '📦', label: 'Stock' },
+  { page: 'dashboard', label: 'Inicio' },
+  { page: 'ventas', label: 'Ventas' },
+  { page: 'reportes', label: 'Reportes' },
+  { page: 'clientes', label: 'Clientes' },
+  { page: 'stock', label: 'Stock' },
 ];
 const BOTTOM_NAV_VENDEDOR: NavItem[] = [
-  { page: 'catalogo', icon: '🧴', label: 'Catálogo' },
-  { page: 'ventas', icon: '💸', label: 'Ventas' },
-  { page: 'misreportes', icon: '📈', label: 'Reportes' },
-  { page: 'clientes', icon: '👥', label: 'Clientes' },
-  { page: 'stock', icon: '📦', label: 'Stock' },
+  { page: 'catalogo', label: 'Catálogo' },
+  { page: 'ventas', label: 'Ventas' },
+  { page: 'misreportes', label: 'Reportes' },
+  { page: 'clientes', label: 'Clientes' },
+  { page: 'stock', label: 'Stock' },
 ];
 
 export function buildBottomNav() {
@@ -196,7 +199,7 @@ export function buildBottomNav() {
   if (!inner) return;
   const items = Sesion.esAdmin() ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_VENDEDOR;
   inner.innerHTML = items
-    .map((it) => `<div class="bottom-nav-item" data-page="${it.page}"><span class="bnav-icon">${it.icon}</span><span>${it.label}</span></div>`)
+    .map((it) => `<button type="button" class="bottom-nav-item" data-page="${it.page}"><span class="bnav-icon">${navIcon(it.page)}</span><span>${it.label}</span></button>`)
     .join('');
   inner.querySelectorAll('.bottom-nav-item').forEach((el) => {
     (el as HTMLElement).onclick = () => navigate((el as HTMLElement).dataset.page!);
@@ -208,26 +211,26 @@ export function buildMenu() {
   if (!menu) return;
   const items: NavItem[] = Sesion.esAdmin()
     ? [
-        { page: 'dashboard', icon: '📊', label: 'Dashboard' },
-        { page: 'catalogo', icon: '🧴', label: 'Catálogo' },
-        { page: 'clientes', icon: '👥', label: 'Clientes' },
-        { page: 'ventas', icon: '💸', label: 'Ventas' },
-        { page: 'compras', icon: '🛒', label: 'Compras' },
-        { page: 'stock', icon: '📦', label: 'Stock' },
-        { page: 'combos', icon: '🎁', label: 'Combos' },
-        { page: 'deudas', icon: '💳', label: 'Deudas' },
-        { page: 'reportes', icon: '📈', label: 'Reportes' },
-        { page: 'usuarios', icon: '👤', label: 'Usuarios' },
+        { page: 'dashboard', label: 'Inicio' },
+        { page: 'catalogo', label: 'Catálogo' },
+        { page: 'clientes', label: 'Clientes' },
+        { page: 'ventas', label: 'Ventas' },
+        { page: 'compras', label: 'Compras' },
+        { page: 'stock', label: 'Stock' },
+        { page: 'combos', label: 'Combos' },
+        { page: 'deudas', label: 'Deudas' },
+        { page: 'reportes', label: 'Reportes' },
+        { page: 'usuarios', label: 'Usuarios' },
       ]
     : [
-        { page: 'catalogo', icon: '🧴', label: 'Catálogo' },
-        { page: 'combos', icon: '🎁', label: 'Combos' },
-        { page: 'stock', icon: '📦', label: 'Stock' },
-        { page: 'clientes', icon: '👥', label: 'Clientes' },
-        { page: 'ventas', icon: '💸', label: 'Nueva Venta' },
-        { page: 'misreportes', icon: '📈', label: 'Mis Reportes' },
+        { page: 'catalogo', label: 'Catálogo' },
+        { page: 'combos', label: 'Combos' },
+        { page: 'stock', label: 'Stock' },
+        { page: 'clientes', label: 'Clientes' },
+        { page: 'ventas', label: 'Nueva Venta' },
+        { page: 'misreportes', label: 'Mis Reportes' },
       ];
-  menu.innerHTML = items.map((it) => `<li class="nav-item active" data-page="${it.page}"><span class="nav-icon">${it.icon}</span><span>${it.label}</span></li>`).join('');
+  menu.innerHTML = items.map((it) => `<li><button type="button" class="nav-item" data-page="${it.page}"><span class="nav-icon">${navIcon(it.page)}</span><span>${it.label}</span></button></li>`).join('');
   menu.querySelectorAll('.nav-item').forEach((el) => {
     (el as HTMLElement).onclick = () => navigate((el as HTMLElement).dataset.page!);
   });

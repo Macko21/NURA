@@ -89,7 +89,7 @@ export function abrirAjusteStock() {
   _ajusteItems = [];
   openModal(
     '⚖️ Ajuste de Stock múltiple',
-    `<div class="form-group mb-12"><label>Buscar y agregar producto</label><div class="flex gap-8"><select id="ajProdSel" style="flex:1;"><option value="">Seleccioná...</option>${store.productos.map((p) => `<option value="${p.id}">${escapeHTML(p.nombre)}${p.codigo ? ' #' + escapeHTML(p.codigo) : ''} — ${p.tipo === 'accesorio' ? (p.stockUnidades || 0) + ' un' : fmtL(p.stockLitros || 0) + ' L'}</option>`).join('')}</select><button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarAjusteItem()">+ Agregar</button></div></div><div id="ajusteListaWrap"><div class="empty-state" style="padding:20px;"><div class="empty-icon" style="font-size:28px;">⚖️</div><p>Agregá productos para ajustar</p></div></div>`,
+    `<div class="form-group mb-12"><label>Buscar y agregar producto</label><div class="flex gap-8"><select id="ajProdSel" data-buscar="Buscar artículo" style="flex:1;"><option value="">Seleccioná...</option>${store.productos.map((p) => `<option value="${p.id}">${escapeHTML(p.nombre)}${p.codigo ? ' #' + escapeHTML(p.codigo) : ''} — ${p.tipo === 'accesorio' ? (p.stockUnidades || 0) + ' un' : fmtL(p.stockLitros || 0) + ' L'}</option>`).join('')}</select><button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarAjusteItem()">+ Agregar</button></div></div><div id="ajusteListaWrap"><div class="empty-state" style="padding:20px;"><div class="empty-icon" style="font-size:28px;">⚖️</div><p>Agregá productos para ajustar</p></div></div>`,
     guardarAjusteStock,
   );
 }

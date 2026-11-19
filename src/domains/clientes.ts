@@ -1,3 +1,4 @@
+import { coincideBusqueda } from '../lib/search';
 import { store, saveCliente, removeCliente } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, toast, swalConfirm, swalError, openModal, closeModal, registerRenderer, exposeGlobal } from '../lib/ui';
@@ -13,7 +14,7 @@ export function renderClientes() {
   document.getElementById('topbarActions')!.innerHTML = `<button class="btn btn-primary" onclick="formCliente(null)">+ Cliente</button>`;
 
   const lista = store.clientes.filter((c) => {
-    const matchSearch = !clienteSearch || c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.telefono || '').includes(clienteSearch);
+    const matchSearch = coincideBusqueda(clienteSearch, c.nombre, c.telefono, c.email, c.direccion);
     if (!matchSearch) return false;
     if (Sesion.esAdmin()) return true;
     return c.vendedorId === Sesion.uid() || !c.vendedorId;

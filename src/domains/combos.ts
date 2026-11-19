@@ -77,7 +77,7 @@ export function formCombo(id: string | null) {
       <div class="form-group"><label>Precio mayorista</label>${precioMayHTML}</div>
     </div>
     <div class="form-group full"><label>Items del combo</label>
-      <div class="flex gap-8 mb-8"><select id="cbItemSel" style="flex:1;"><option value="">Seleccioná producto...</option>${buildVendibles().filter((v) => !v.esCombo).map((v) => `<option value="${v.id}">${escapeHTML(v.nombre)} ${v.detalle ? ' — ' + escapeHTML(v.detalle) : ''} — ${fmt(v.precio)}</option>`).join('')}</select><button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarComboItem()">+ Agregar</button></div>
+      <div class="flex gap-8 mb-8"><select id="cbItemSel" data-buscar="Buscar artículo o medida" style="flex:1;"><option value="">Seleccioná producto...</option>${buildVendibles().filter((v) => !v.esCombo).map((v) => `<option value="${escapeHTML(v.id)}" data-codigo="${escapeHTML(v.codigo)}">${escapeHTML(v.nombre)} ${v.detalle ? ' — ' + escapeHTML(v.detalle) : ''} — ${fmt(v.precio)}</option>`).join('')}</select><button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarComboItem()">+ Agregar</button></div>
       <div id="comboItemsWrap">${renderComboItems()}</div>
     </div>`;
 

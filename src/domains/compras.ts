@@ -55,7 +55,7 @@ export function renderCompras() {
 
 export function formCompra() {
   openModal('Nueva Compra', `<div class="form-grid">
-    <div class="form-group full"><label>Producto</label><select id="cpProducto" onchange="onCpProdChange()"><option value="">Seleccioná...</option>${store.productos.map((p) => `<option value="${p.id}">${escapeHTML(p.nombre)} (${p.tipo === 'accesorio' ? 'accesorio' : 'líquido'})${p.codigo ? ' #' + escapeHTML(p.codigo) : ''}</option>`).join('')}</select></div>
+    <div class="form-group full"><label>Producto</label><select id="cpProducto" data-buscar="Buscar artículo" onchange="onCpProdChange()"><option value="">Seleccioná...</option>${store.productos.map((p) => `<option value="${p.id}">${escapeHTML(p.nombre)} (${p.tipo === 'accesorio' ? 'accesorio' : 'líquido'})${p.codigo ? ' #' + escapeHTML(p.codigo) : ''}</option>`).join('')}</select></div>
     <div class="form-group"><label>Proveedor</label><input id="cpProveedor" placeholder="Nombre del proveedor" /></div>
     <div class="form-group"><label>Fecha</label><input id="cpFecha" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
     <div class="form-group"><label id="cpCantLabel">Cantidad (L)</label>${unitInput('cpCantidad', '1', 'L', '0.001', 'calcCompra()')}</div>

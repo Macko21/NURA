@@ -96,10 +96,10 @@ export function buildVendibles(): any[] {
   const vendibles: any[] = [];
   store.productos.forEach((p) => {
     if (p.tipo === 'accesorio') {
-      vendibles.push({ id: p.id, nombre: p.nombre, precio: p.precioVenta, precioMayorista: p.precioMayorista, esAcc: true, esCombo: false, stock: p.stockUnidades, costoUnitario: p.costoUnidad, detalle: 'Unidad' });
+      vendibles.push({ id: p.id, nombre: p.nombre, codigo: p.codigo, precio: p.precioVenta, precioMayorista: p.precioMayorista, esAcc: true, esCombo: false, stock: p.stockUnidades, costoUnitario: p.costoUnidad, detalle: 'Unidad' });
     } else {
       (p.presentaciones || []).forEach((pr) => {
-        vendibles.push({ id: pr.id, productoId: p.id, nombre: p.nombre, precio: pr.precioVenta, precioMayorista: pr.precioMayorista, esAcc: false, esCombo: false, stock: Math.floor((p.stockLitros || 0) / pr.litros), costoUnitario: (p.costoLitro || 0) * pr.litros + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0), detalle: pr.nombre, litrosPorUnidad: pr.litros, presId: pr.id });
+        vendibles.push({ id: pr.id, productoId: p.id, nombre: p.nombre, codigo: p.codigo, precio: pr.precioVenta, precioMayorista: pr.precioMayorista, esAcc: false, esCombo: false, stock: Math.floor((p.stockLitros || 0) / pr.litros), costoUnitario: (p.costoLitro || 0) * pr.litros + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0), detalle: pr.nombre, litrosPorUnidad: pr.litros, presId: pr.id });
       });
     }
   });
@@ -113,16 +113,16 @@ function buildVentaModalContent() {
   const vendibles = buildVendibles();
   const combos = vendibles.filter((v) => v.esCombo);
   return `<div style="display:flex;flex-direction:column;gap:12px;">
-    <div class="form-group full"><label>Cliente</label><select id="vCliente"><option value="">Seleccioná...</option>${store.clientes.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)}${c.esMayorista ? ' (Mayorista)' : ''}</option>`).join('')}</select></div>
+    <div class="form-group full"><label>Cliente</label><select id="vCliente" data-buscar="Buscar cliente"><option value="">Seleccioná...</option>${store.clientes.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)}${c.esMayorista ? ' (Mayorista)' : ''}</option>`).join('')}</select></div>
     <div class="form-group"><label>Observaciones</label><textarea id="vObs" rows="2"></textarea></div>
     <div class="form-group full"><label>Items</label>
       <div class="flex gap-8 mb-8">
-        <select id="vItemSel" style="flex:1;"><option value="">Producto / presentación...</option>${vendibles.filter((v) => !v.esCombo).map((v) => `<option value="${v.id}">${escapeHTML(v.nombre)} ${v.detalle ? ' — ' + escapeHTML(v.detalle) : ''} — ${fmt(v.precio)} (Stock: ${v.stock})</option>`).join('')}</select>
+        <select id="vItemSel" data-buscar="Buscar artículo o medida" style="flex:1;"><option value="">Producto / presentación...</option>${vendibles.filter((v) => !v.esCombo).map((v) => `<option value="${escapeHTML(v.id)}" data-codigo="${escapeHTML(v.codigo)}">${escapeHTML(v.nombre)} ${v.detalle ? ' — ' + escapeHTML(v.detalle) : ''} — ${fmt(v.precio)} (Stock: ${v.stock})</option>`).join('')}</select>
         <input id="vCant" type="number" min="0" step="0.001" value="1" style="width:70px;" title="Cantidad" />
         <button class="btn btn-primary" style="flex-shrink:0;" onclick="agregarItemVenta()">+ Agregar</button>
       </div>
       ${combos.length ? `<div class="flex gap-8 mb-8">
-        <select id="vComboSel" style="flex:1;"><option value="">Combo...</option>${combos.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)} — ${fmt(c.precio)}</option>`).join('')}</select>
+        <select id="vComboSel" data-buscar="Buscar combo" style="flex:1;"><option value="">Combo...</option>${combos.map((c) => `<option value="${c.id}">${escapeHTML(c.nombre)} — ${fmt(c.precio)}</option>`).join('')}</select>
         <input id="vCantCombo" type="number" min="0" step="1" value="1" style="width:70px;" title="Cantidad" />
         <button class="btn btn-secondary" style="flex-shrink:0;" onclick="agregarComboVenta()">+ Combo</button>
       </div>` : ''}

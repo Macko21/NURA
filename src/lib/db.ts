@@ -150,7 +150,7 @@ async function loadProductos() {
     sb().from('productos').select('*'),
     sb().from('producto_presentaciones').select('*'),
   ]);
-  if (p.error) { console.error('productos', p.error.message); return; }
+  if (p.error || pr.error) { console.error('productos', p.error?.message ?? pr.error?.message); return; }
   const byProducto = new Map<string, Presentacion[]>();
   for (const row of pr.data ?? []) {
     const pid = String((row as Record<string, unknown>).producto_id);
@@ -233,26 +233,31 @@ export async function removeCliente(id: string) {
 }
 
 export async function saveProducto(p: Producto) {
-  const { error } = await sb().from('productos').upsert({
+  const producto = {
     id: p.id, nombre: p.nombre, codigo: p.codigo ?? null, categoria: p.categoria, tipo: p.tipo,
     descripcion: p.descripcion ?? '', stock_litros: p.stockLitros, stock_min_litros: p.stockMinLitros,
     costo_litro: p.costoLitro, stock_unidades: p.stockUnidades, stock_min_unidades: p.stockMinUnidades,
     costo_unidad: p.costoUnidad, ganancia_acc: p.gananciaAcc, desc_mayorista_acc: p.descMayorista,
     precio_venta: p.precioVenta, precio_mayorista: p.precioMayorista,
-  }, { onConflict: 'id' });
-  if (error) { toast('Error al guardar producto', 'error'); return; }
-  await sb().from('producto_presentaciones').delete().eq('producto_id', p.id);
-  const rows = p.presentaciones.map((pr) => ({
-    id: pr.id, producto_id: p.id, nombre: pr.nombre, litros: pr.litros, costo_envase: pr.costoEnvase,
-    costo_etiqueta: pr.costoEtiqueta, ganancia: pr.ganancia, desc_mayorista: pr.descMayorista,
-    precio_venta: pr.precioVenta, precio_mayorista: pr.precioMayorista,
+  };
+  const filas = p.presentaciones.map((pr) => ({
+    id: pr.id, nombre: pr.nombre, litros: pr.litros, costo_envase: pr.costoEnvase, costo_etiqueta: pr.costoEtiqueta,
+    ganancia: pr.ganancia, desc_mayorista: pr.descMayorista, precio_venta: pr.precioVenta, precio_mayorista: pr.precioMayorista,
   }));
-  if (rows.length) await sb().from('producto_presentaciones').upsert(rows, { onConflict: 'id' });
+  const { error } = await sb().rpc('guardar_producto', { p_producto: producto, p_presentaciones: filas });
+  if (error) {
+    console.error('guardar_producto', error.message);
+    throw new Error(error.code === 'P0001' ? error.message : 'No se pudo guardar el artículo en Supabase.');
+  }
+  await loadProductos();
+  notifyUpdate('productos');
 }
 
 export async function removeProducto(id: string) {
   const { error } = await sb().from('productos').delete().eq('id', id);
-  if (error) console.error('removeProducto', error.message);
+  if (error) throw error;
+  await loadProductos();
+  notifyUpdate('productos');
 }
 
 export async function saveCompra(c: Compra) {

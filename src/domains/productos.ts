@@ -1,278 +1,140 @@
-import { store, saveProducto, removeProducto, descontarStock, reponerStock } from '../lib/db';
+import { store, removeProducto } from '../lib/db';
 import { Sesion } from '../lib/session';
-import { escapeHTML, toast, swalError, swalConfirm, swalSuccess, openModal, closeModal, moneyInput, unitInput, EMOJIS_CAT, PRES_RAPIDAS, CATEGORIAS, registerRenderer, exposeGlobal, fmt } from '../lib/ui';
+import { escapeHTML, toast, swalError, swalConfirm, openModal, registerRenderer, exposeGlobal } from '../lib/ui';
 import { fmtL } from '../lib/format';
-import { genId } from '../lib/id';
+import { formProducto } from './producto-editor';
+import { coincideBusqueda } from '../lib/search';
 import { waLink } from '../config';
-import { wspReporte } from './reportes';
+import { dinero } from './precios';
 import type { Producto } from '../types';
 
-let catalogoSearch = '', catalogoFiltro = '', catalogoView = 'grid';
+let busqueda = '', categoria = '', vista = 'lista';
+const presentaciones = (p: Producto) => p.tipo === 'accesorio'
+  ? [{ nombre: 'Unidad', litros: 0, precioVenta: p.precioVenta, precioMayorista: p.precioMayorista }]
+  : [...p.presentaciones].sort((a, b) => a.litros - b.litros);
+const stock = (p: Producto) => p.tipo === 'accesorio' ? p.stockUnidades : p.stockLitros;
+const minimo = (p: Producto) => p.tipo === 'accesorio' ? p.stockMinUnidades : p.stockMinLitros;
 
 export function renderCatalogo() {
-  const el = document.getElementById('page-catalogo');
+  const el = document.querySelector('#page-catalogo');
   if (!el) return;
-  document.getElementById('topbarActions')!.innerHTML = Sesion.esAdmin()
-    ? `<button class="btn btn-outline btn-sm" onclick="listaMayoristaModal()">🏪 Mayorista</button>
-       <button class="btn btn-outline btn-sm" onclick="exportarCatalogo()">📄 Exportar</button>
-       <button class="btn btn-primary" onclick="formProducto(null)">+ Producto</button>`
-    : `<button class="btn btn-outline btn-sm" onclick="listaMayoristaModal()">🏪 Mayorista</button>`;
+  document.querySelector('#topbarActions')!.innerHTML = `
+    <button class="btn btn-secondary btn-sm" onclick="listaMayoristaModal()">Mayorista</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportarCatalogo()">Exportar</button>
+    ${Sesion.esAdmin() ? '<button class="btn btn-primary btn-sm" onclick="formProducto(null)">+ Artículo</button>' : ''}`;
+  const categorias = [...new Set(store.productos.map((p) => p.categoria).filter(Boolean))].sort();
+  el.innerHTML = `<div class="catalog-toolbar">
+    <input type="search" aria-label="Buscar artículos" id="catSearch" value="${escapeHTML(busqueda)}" placeholder="Buscar nombre, código o medida">
+    <select aria-label="Filtrar categoría" id="catFiltro"><option value="">Todas las categorías</option>${categorias.map((c) =>
+      `<option value="${escapeHTML(c)}" ${c === categoria ? 'selected' : ''}>${escapeHTML(c)}</option>`).join('')}</select>
+    <div class="catalog-views"><button class="btn btn-sm" data-vista="lista">Lista</button>
+    <button class="btn btn-sm" data-vista="tarjetas">Tarjetas</button></div>
+  </div><p class="catalog-count" aria-live="polite"></p><div id="catRes"></div>`;
+  el.querySelector<HTMLInputElement>('#catSearch')!.oninput = (e) => { busqueda = (e.target as HTMLInputElement).value; actualizar(); };
+  el.querySelector<HTMLSelectElement>('#catFiltro')!.onchange = (e) => { categoria = (e.target as HTMLSelectElement).value; actualizar(); };
+  el.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => b.onclick = () => { vista = b.dataset.vista!; actualizar(); });
+  el.querySelector<HTMLElement>('#catRes')!.onclick = (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
+    if (!b?.dataset.id) return;
+    if (b.dataset.accion === 'editar') formProducto(b.dataset.id);
+    if (b.dataset.accion === 'compartir') wspProducto(b.dataset.id);
+    if (b.dataset.accion === 'eliminar') void eliminarProducto(b.dataset.id);
+  };
+  actualizar();
 
-  el.innerHTML = `
-    <div class="flex flex-center gap-8 mb-16 flex-wrap">
-      <div class="search-bar" style="max-width:100%;"><span class="search-icon">🔍</span><input type="text" placeholder="Buscar nombre, código..." id="catSearch" value="${escapeHTML(catalogoSearch)}" /></div>
-      <select id="catFiltro" style="max-width:180px;"><option value="">Todas</option>${CATEGORIAS.map((c) => `<option value="${c}" ${catalogoFiltro === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-      <div class="flex gap-6" style="margin-left:auto;">
-        <button class="btn btn-${catalogoView === 'grid' ? 'primary' : 'secondary'} btn-sm" onclick="setCatalogoView('grid')">⊞</button>
-        <button class="btn btn-${catalogoView === 'list' ? 'primary' : 'secondary'} btn-sm" onclick="setCatalogoView('list')">☰</button>
-      </div>
-    </div>
-    <div id="catRes">${catHTML()}</div>`;
-
-  document.getElementById('catSearch')!.oninput = (e) => { catalogoSearch = (e.target as HTMLInputElement).value; refreshCat(); };
-  document.getElementById('catFiltro')!.onchange = (e) => { catalogoFiltro = (e.target as HTMLSelectElement).value; refreshCat(); };
-}
-
-function refreshCat() { const r = document.getElementById('catRes'); if (r) r.innerHTML = catHTML(); }
-
-export function setCatalogoView(v: string) { catalogoView = v; refreshCat(); }
-
-function filtrarProds() {
-  return store.productos.filter((p) =>
-    (!catalogoSearch || p.nombre.toLowerCase().includes(catalogoSearch.toLowerCase()) || (p.codigo || '').toLowerCase().includes(catalogoSearch.toLowerCase()) || p.categoria.toLowerCase().includes(catalogoSearch.toLowerCase())) &&
-    (!catalogoFiltro || p.categoria === catalogoFiltro)
-  );
-}
-
-function catHTML() { return catalogoView === 'grid' ? catGrid(filtrarProds()) : catList(filtrarProds()); }
-
-function catGrid(prods: Producto[]) {
-  if (!prods.length) return `<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos. ¡Agregá el primero!</p></div>`;
-  return `<div class="product-grid">${prods.map((p) => {
-    const esAcc = p.tipo === 'accesorio';
-    const sv = esAcc ? (p.stockUnidades || 0) : (p.stockLitros || 0);
-    const sm = esAcc ? (p.stockMinUnidades || 0) : (p.stockMinLitros || 0);
-    const bajo = sv <= sm;
-    const pres = !esAcc ? (p.presentaciones || []) : [];
-    const pMin = esAcc ? p.precioVenta : (pres.length ? Math.min(...pres.map((x) => x.precioVenta)) : 0);
-    const pMax = esAcc ? p.precioVenta : (pres.length ? Math.max(...pres.map((x) => x.precioVenta)) : 0);
-    const pMayMin = esAcc ? (p.precioMayorista || 0) : (pres.length ? Math.min(...pres.map((x) => x.precioMayorista || x.precioVenta)) : 0);
-    const pMayMax = esAcc ? (p.precioMayorista || 0) : (pres.length ? Math.max(...pres.map((x) => x.precioMayorista || x.precioVenta)) : 0);
-    const ganMin = esAcc ? (p.precioVenta - (p.precioMayorista || 0)) : (pres.length ? Math.min(...pres.map((x) => x.precioVenta - (x.precioMayorista || x.precioVenta))) : 0);
-    const ganMax = esAcc ? (p.precioVenta - (p.precioMayorista || 0)) : (pres.length ? Math.max(...pres.map((x) => x.precioVenta - (x.precioMayorista || x.precioVenta))) : 0);
-    return `<div class="product-card">
-      <div class="product-card-img">${(EMOJIS_CAT as Record<string, string>)[p.categoria] || '🧴'}<div class="product-card-badge">${bajo ? '⚠️ BAJO' : ''}</div></div>
-      <div class="product-card-info">
-        <div class="product-card-title">${escapeHTML(p.nombre)}${p.codigo ? ' <span class="badge badge-gray">#' + escapeHTML(p.codigo) + '</span>' : ''}</div>
-        <div class="product-card-sub">${escapeHTML(p.categoria)}${p.descripcion ? ' · ' + escapeHTML(p.descripcion) : ''}</div>
-        <div class="product-card-prices">
-          ${esAcc
-            ? `<span class="price">${fmt(p.precioVenta)}</span>${p.precioMayorista ? `<span class="price-mayor">${fmt(p.precioMayorista)}</span>` : ''}`
-            : pres.length
-            ? pres.map((pr) => `<span class="price-pres">${escapeHTML(pr.nombre)}: ${fmt(pr.precioVenta)}</span>`).join('')
-            : '<span class="price-muted">Sin presentaciones</span>'}
-        </div>
-      </div>
-      <div class="product-card-actions">
-        <button class="btn btn-secondary btn-sm" onclick="formProducto('${p.id}')">✏️</button>
-        <button class="btn btn-wsp-sm btn-sm" onclick="wspProducto('${p.id}')">📲</button>
-        ${Sesion.esAdmin() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button>` : ''}
-      </div>
-    </div>`;
-  }).join('')}</div>`;
-}
-
-function catList(prods: Producto[]) {
-  if (!prods.length) return `<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos. ¡Agregá el primero!</p></div>`;
-  return `<div class="mobile-card-list">${prods.map((p) => {
-    const esAcc = p.tipo === 'accesorio';
-    const sv = esAcc ? (p.stockUnidades || 0) : (p.stockLitros || 0);
-    const sm = esAcc ? (p.stockMinUnidades || 0) : (p.stockMinLitros || 0);
-    const bajo = sv <= sm;
-    const pres = !esAcc ? (p.presentaciones || []) : [];
-    const pMin = esAcc ? p.precioVenta : (pres.length ? Math.min(...pres.map((x) => x.precioVenta)) : 0);
-    const pMax = esAcc ? p.precioVenta : (pres.length ? Math.max(...pres.map((x) => x.precioVenta)) : 0);
-    const pMayMin = esAcc ? (p.precioMayorista || 0) : (pres.length ? Math.min(...pres.map((x) => x.precioMayorista || x.precioVenta)) : 0);
-    const pMayMax = esAcc ? (p.precioMayorista || 0) : (pres.length ? Math.max(...pres.map((x) => x.precioMayorista || x.precioVenta)) : 0);
-    return `<div class="m-card" style="border-left:4px solid ${bajo ? 'var(--danger)' : 'var(--border)'};">
-      <div class="m-card-header">
-        <div>
-          <div class="m-card-title">${(EMOJIS_CAT as Record<string, string>)[p.categoria] || '🧴'} ${escapeHTML(p.nombre)}${p.codigo ? ' <span class="badge badge-gray">#' + escapeHTML(p.codigo) + '</span>' : ''}</div>
-          <div class="m-card-subtitle">${escapeHTML(p.categoria)} · ${pres.length ? pres.map((pr) => escapeHTML(pr.nombre) + ': ' + fmt(pr.precioVenta)).join(', ') : 'Accesorio'}</div>
-        </div>
-        <span class="badge badge-${!bajo ? 'green' : 'red'}">${esAcc ? (p.stockUnidades || 0) + ' un' : fmtL(p.stockLitros || 0) + ' L'}</span>
-      </div>
-      <div class="m-card-body">
-        <div class="m-card-row"><span class="m-card-row-label">Stock</span><span class="m-card-row-value">${esAcc ? (p.stockUnidades || 0) + ' un' : fmtL(p.stockLitros || 0) + ' L'}</span></div>
-        <div class="m-card-row"><span class="m-card-row-label">Mínimo</span><span class="m-card-row-value">${esAcc ? (p.stockMinUnidades || 0) + ' un' : fmtL(p.stockMinLitros || 0) + ' L'}</span></div>
-        <div class="m-card-row"><span class="m-card-row-label">Precio</span><span class="m-card-row-value">${esAcc ? fmt(p.precioVenta) : pres.length ? fmt(pres[0].precioVenta) + '...' : '—'}</span></div>
-      </div>
-      <div class="m-card-footer">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formProducto('${p.id}')">✏️ Editar</button>
-        <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspProducto('${p.id}')">📲</button>
-        <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarProducto('${p.id}')">🗑</button>
-      </div>
-    </div>`;
-  }).join('')}</div>`;
-}
-
-let _presList: any[] = [];
-export function formProducto(id: string | null) {
-  const p = id ? store.productos.find((x) => x.id === id) ?? null : null;
-  _presList = p ? [...p.presentaciones] : [];
-  openModal(p ? 'Editar Producto' : 'Nuevo Producto', `<div class="form-grid">
-    <div class="form-group full"><label>Nombre</label><input id="pNombre" value="${escapeHTML(id ? (store.productos.find((x) => x.id === id)?.nombre || '') : '')}" required /></div>
-    <div class="form-group"><label>Código</label><input id="pCodigo" value="${id ? store.productos.find((x) => x.id === id)?.codigo || '' : ''}" /></div>
-    <div class="form-group"><label>Categoría</label><select id="pCategoria">${CATEGORIAS.map((c) => `<option value="${c}" ${c === (id ? store.productos.find((x) => x.id === id)?.categoria : '') ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
-    <div class="form-group"><label>Tipo</label><select id="pTipo" onchange="onTipoChange()"><option value="liquido" ${!id || store.productos.find((x) => x.id === id)?.tipo === 'liquido' ? 'selected' : ''}>Líquido</option><option value="accesorio" ${id && store.productos.find((x) => x.id === id)?.tipo === 'accesorio' ? 'selected' : ''}>Accesorio</option></select></div>
-    <div class="form-group full"><label>Descripción</label><textarea id="pDescripcion" rows="2">${id ? escapeHTML(store.productos.find((x) => x.id === id)?.descripcion || '') : ''}</textarea></div>
-    <div id="pAccFields" style="display:${id && store.productos.find((x) => x.id === id)?.tipo === 'accesorio' ? 'block' : 'none'};"></div>
-    <div id="pLiqFields" style="display:${!id || store.productos.find((x) => x.id === id)?.tipo !== 'accesorio' ? 'block' : 'none'};"></div>
-  </div>`, async () => {
-    const nombre = (document.getElementById('pNombre') as HTMLInputElement).value.trim();
-    if (!nombre) { await swalError('El nombre es obligatorio'); return; }
-    const tipo = (document.getElementById('pTipo') as HTMLSelectElement).value;
-    const esAcc = tipo === 'accesorio';
-    const producto: any = {
-      id: id || genId(),
-      nombre: (document.getElementById('pNombre') as HTMLInputElement).value.trim(),
-      codigo: (document.getElementById('pCodigo') as HTMLInputElement).value.trim() || undefined,
-      categoria: (document.getElementById('pCategoria') as HTMLSelectElement).value,
-      tipo,
-      descripcion: (document.getElementById('pDescripcion') as HTMLTextAreaElement).value.trim(),
-    };
-    if (esAcc) {
-      producto.stockUnidades = parseInt((document.getElementById('pStockUnidades') as HTMLInputElement).value) || 0;
-      producto.stockMinUnidades = parseInt((document.getElementById('pStockMinUnidades') as HTMLInputElement).value) || 0;
-      producto.costoUnidad = parseFloat((document.getElementById('pCostoUnidad') as HTMLInputElement).value) || 0;
-      producto.gananciaAcc = parseFloat((document.getElementById('pGananciaAcc') as HTMLInputElement).value) || 0;
-      producto.descMayorista = parseFloat((document.getElementById('pDescMayorista') as HTMLInputElement).value) || 0;
-      producto.precioVenta = Math.round(producto.costoUnidad * (1 + (producto.gananciaAcc || 0) / 100));
-      producto.precioMayorista = Math.round(producto.precioVenta * (1 - (producto.descMayorista || 0) / 100));
-    } else {
-      const costoLitro = parseFloat((document.getElementById('pCostoLitro') as HTMLInputElement).value) || 0;
-      producto.presentaciones = _presList.map((pr) => {
-        const base = Math.round(costoLitro * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0));
-        return { ...pr, precioVenta: base, precioMayorista: Math.round(base * (1 - (pr.descMayorista || 0) / 100)) };
-      });
-    }
-    closeModal();
-    await saveProducto(producto);
-    toast(id ? 'Producto actualizado ✅' : 'Producto creado ✅');
-  });
-}
-
-export function onTipoChange() {
-  const tipo = (document.getElementById('pTipo') as HTMLSelectElement).value;
-  const esAcc = tipo === 'accesorio';
-  const acc = document.getElementById('pAccFields');
-  const liq = document.getElementById('pLiqFields');
-  if (acc) acc.style.display = esAcc ? 'block' : 'none';
-  if (liq) liq.style.display = esAcc ? 'none' : 'block';
-  if (esAcc) {
-    if (acc && !acc.querySelector('input')) {
-      acc.innerHTML = `
-        <div class="form-group"><label>Stock unidades</label>${unitInput('pStockUnidades', '0', 'un', '1')}</div>
-        <div class="form-group"><label>Stock mín. unidades</label>${unitInput('pStockMinUnidades', '0', 'un', '1')}</div>
-        <div class="form-group"><label>Costo unidad</label>${moneyInput('pCostoUnidad', '0')}</div>
-        <div class="form-group"><label>Ganancia %</label>${moneyInput('pGananciaAcc', '0')}</div>
-        <div class="form-group"><label>Desc. mayorista %</label>${moneyInput('pDescMayorista', '0')}</div>
-      `;
-    }
-  } else {
-    if (liq && !liq.querySelector('input')) {
-      liq.innerHTML = `
-        <div class="form-group"><label>Stock litros</label>${unitInput('pStockLitros', '0', 'L', '0.001')}</div>
-        <div class="form-group"><label>Stock mín. litros</label>${unitInput('pStockMinLitros', '0', 'L', '0.001')}</div>
-        <div class="form-group"><label>Costo por litro</label>${moneyInput('pCostoLitro', '0', 'recalcTodasPres()')}</div>
-        <div class="form-group"><label>Presentaciones</label><div id="presListWrap"></div><div class="flex gap-8 mt-8"><button class="btn btn-primary" onclick="agregarPresRapida()">+ Rápida</button><button class="btn btn-secondary" onclick="agregarPresPersonalizada()">+ Personalizada</button></div>`;
-      renderPresList();
-    }
+  function actualizar() {
+    const prods = store.productos.filter((p) => (!categoria || p.categoria === categoria) &&
+      coincideBusqueda(busqueda, p.nombre, p.codigo, p.categoria, p.descripcion, ...p.presentaciones.flatMap((pr) =>
+        [pr.nombre, pr.nombre.replace(/\s/g, ''), pr.litros * 1000 + ' ml', pr.litros + ' L'])))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    el!.querySelector('.catalog-count')!.textContent = `${prods.length} ${prods.length === 1 ? 'artículo' : 'artículos'}`;
+    el!.querySelectorAll<HTMLButtonElement>('[data-vista]').forEach((b) => {
+      b.classList.toggle('btn-secondary', b.dataset.vista === vista);
+      b.setAttribute('aria-pressed', String(b.dataset.vista === vista));
+    });
+    el!.querySelector('#catRes')!.innerHTML = !prods.length ? '<p class="empty-state">No se encontraron artículos.</p>' :
+      vista === 'lista' ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Precios</th><th>Stock</th><th>Acciones</th></tr></thead><tbody>${
+        prods.map((p) => `<tr><td>${identidad(p)}</td><td>${escapeHTML(p.categoria || '—')}</td><td>${precios(p)}</td><td>${estado(p)}</td><td>${acciones(p)}</td></tr>`).join('')
+      }</tbody></table></div>` : `<div class="product-grid">${prods.map((p) => `<article class="card catalog-card">
+        <div>${identidad(p)}<small>${escapeHTML(p.categoria)}</small></div>${precios(p)}
+        <div class="catalog-card-footer">${estado(p)}${acciones(p)}</div></article>`).join('')}</div>`;
   }
 }
 
-function renderPresList() {
-  const wrap = document.getElementById('presListWrap');
-  if (!wrap) return;
-  if (!_presList.length) { wrap.innerHTML = `<div class="empty-state" style="padding:16px;"><p>Sin presentaciones</p></div>`; return; }
-  wrap.innerHTML = _presList.map((pr, i) => `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-    <div class="fw-700" style="font-size:13px;">${escapeHTML(pr.nombre)}</div>
-    <div class="flex gap-8 flex-wrap">
-      <div class="form-group" style="min-width:80px;"><label>Litros</label>${unitInput(`prLitros${i}`, String(pr.litros), 'L', '0.001', `setPresCampo(${i}, 'litros', this.value)`)}</div>
-      <div class="form-group" style="min-width:120px;"><label>Costo envase</label>${moneyInput(`prCostoEnvase${i}`, String(pr.costoEnvase || 0), `setPresCampo(${i}, 'costoEnvase', this.value)`)}</div>
-      <div class="form-group" style="min-width:120px;"><label>Costo etiqueta</label>${moneyInput(`prCostoEtiqueta${i}`, String(pr.costoEtiqueta || 0), `setPresCampo(${i}, 'costoEtiqueta', this.value)`)}</div>
-      <div class="form-group" style="min-width:100px;"><label>Ganancia %</label>${moneyInput(`prGanancia${i}`, String(pr.ganancia || 0), `setPresCampo(${i}, 'ganancia', this.value)`)}</div>
-      <div class="form-group" style="min-width:100px;"><label>Desc. mayorista %</label>${moneyInput(`prDescMayorista${i}`, String(pr.descMayorista || 0), `setPresCampo(${i}, 'descMayorista', this.value)`)}</div>
-      <button class="btn btn-danger btn-sm btn-icon" onclick="eliminarPresItem(${i})">✕</button>
-    </div></div>`).join('');
+function identidad(p: Producto) {
+  return `<div class="catalog-identity"><strong>${escapeHTML(p.nombre)}</strong><small>${escapeHTML(p.codigo)}</small></div>`;
+}
+function precios(p: Producto) {
+  return `<div class="catalog-prices">${presentaciones(p).map((pr) => `<span>${escapeHTML(pr.nombre)} <strong>${dinero.format(pr.precioVenta)}</strong></span>`).join('') || 'Sin presentaciones'}</div>`;
+}
+function estado(p: Producto) {
+  const bajo = stock(p) <= minimo(p);
+  return `<span class="badge badge-${bajo ? 'red' : 'gray'}">${p.tipo === 'accesorio' ? stock(p) + ' un.' : fmtL(stock(p)) + ' L'}${bajo ? ' · Bajo' : ''}</span>`;
+}
+function acciones(p: Producto) {
+  const boton = (accion: string, titulo: string) => `<button class="btn btn-secondary btn-sm" type="button" data-id="${escapeHTML(p.id)}" data-accion="${accion}">${titulo}</button>`;
+  return `<div class="catalog-actions">${Sesion.esAdmin() ? boton('editar', 'Editar') : ''}${boton('compartir', 'Compartir')}${Sesion.esAdmin() ? boton('eliminar', 'Eliminar') : ''}</div>`;
 }
 
-export function agregarPresRapida() {
-  PRES_RAPIDAS.forEach((pr) => _presList.push({ id: genId(), nombre: pr.nombre, litros: pr.litros, costoEnvase: 0, costoEtiqueta: 0, ganancia: 30, descMayorista: 0 }));
-  renderPresList();
-  recalcTodasPres();
+async function eliminarProducto(id: string) {
+  if (!Sesion.esAdmin()) return;
+  if (!(await swalConfirm('¿Eliminar artículo?', 'Se eliminará el artículo con sus presentaciones.')).isConfirmed) return;
+  try { await removeProducto(id); toast('Artículo eliminado'); renderCatalogo(); }
+  catch { await swalError('No se pudo eliminar el artículo.'); }
 }
 
-export function agregarPresPersonalizada() {
-  _presList.push({ id: genId(), nombre: 'Personalizada', litros: 1, costoEnvase: 0, costoEtiqueta: 0, ganancia: 30, descMayorista: 0 });
-  renderPresList();
-}
-
-function costoLitroActual(): number {
-  return parseFloat((document.getElementById('pCostoLitro') as HTMLInputElement)?.value || '0') || 0;
-}
-
-function recalcPres(i: number) {
-  const pr = _presList[i];
-  if (!pr) return;
-  const cl = pr.costoLitro ?? costoLitroActual();
-  pr.precioVenta = Math.round(cl * pr.litros * (1 + (pr.ganancia || 0) / 100) + (pr.costoEnvase || 0) + (pr.costoEtiqueta || 0));
-  pr.precioMayorista = Math.round(pr.precioVenta * (1 - (pr.descMayorista || 0) / 100));
-}
-
-function recalcTodasPres() {
-  _presList.forEach((_, i) => recalcPres(i));
-}
-
-export function setPresCampo(i: number, campo: 'litros' | 'costoEnvase' | 'costoEtiqueta' | 'ganancia' | 'descMayorista', val: string) {
-  const pr = _presList[i];
-  if (!pr) return;
-  (pr as any)[campo] = parseFloat(val) || 0;
-  recalcPres(i);
-}
-
-export function eliminarPresItem(i: number) {
-  _presList.splice(i, 1);
-  renderPresList();
-  recalcTodasPres();
-}
-
-export async function eliminarProducto(id: string) {
-  const res = await swalConfirm('¿Eliminar producto?', `Se eliminará el producto y sus presentaciones.`);
-  if (!res.isConfirmed) return;
-  await removeProducto(id);
-  toast('Producto eliminado');
-}
-
-export function wspProducto(id: string) {
+function wspProducto(id: string) {
   const p = store.productos.find((x) => x.id === id);
   if (!p) return;
-  let msg = `*${p.nombre}*${p.codigo ? ' #' + p.codigo : ''}\n`;
-  if (p.descripcion) msg += `${p.descripcion}\n`;
-  if (p.tipo === 'accesorio') msg += `Precio: ${fmt(p.precioVenta)}`;
-  else (p.presentaciones || []).forEach((pr) => { msg += `${pr.nombre}: ${fmt(pr.precioVenta)}\n`; });
-  msg += `\n${waLink('', '2262240512')}`;
-  window.open(waLink(msg), '_blank');
+  const lineas = presentaciones(p).map((pr) => `${pr.nombre}: ${dinero.format(pr.precioVenta)}`);
+  window.open(waLink([`*${p.nombre}*`, ...lineas].join('\n')), '_blank', 'noopener');
 }
 
-function wspCatalogoPDF() { wspReporte(); }
-async function exportarCatalogo() { toast('Exportar PDF — pendiente', 'info'); }
-function listaMayoristaModal() { openModal('🏪 Lista Mayorista', '<div class="empty-state" style="padding:20px;">Función pendiente</div>', null, true); }
+function filas(mayor: boolean) {
+  const productos = [...store.productos].sort((a, b) => a.categoria.localeCompare(b.categoria, 'es') || a.nombre.localeCompare(b.nombre, 'es'));
+  return [
+    ...productos.flatMap((p) => presentaciones(p).map((pr) => ({
+      nombre: p.nombre, medida: pr.nombre, precio: mayor ? pr.precioMayorista || pr.precioVenta : pr.precioVenta,
+      agotado: stock(p) <= 0 || stock(p) < pr.litros,
+    }))),
+    ...store.combos.map((c) => ({ nombre: c.nombre, medida: 'Combo', precio: mayor ? c.precioMayorista || c.precio : c.precio, agotado: false })),
+  ];
+}
+
+function abrirLista(mayor: boolean) {
+  openModal(mayor ? 'Lista mayorista' : 'Catálogo minorista', `<div class="catalog-actions mb-16">
+    <button class="btn btn-primary" onclick="descargarLista(${mayor})">Descargar PDF</button>
+    <button class="btn btn-secondary" onclick="compartirLista(${mayor})">Compartir por WhatsApp</button>
+  </div><div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Medida</th><th>Precio</th></tr></thead><tbody>${
+    filas(mayor).map((f) => `<tr><td>${escapeHTML(f.nombre)}${f.agotado ? ' <span class="badge badge-red">Sin stock</span>' : ''}</td><td>${escapeHTML(f.medida)}</td><td>${dinero.format(f.precio)}</td></tr>`).join('')
+    || '<tr><td colspan="3">Sin presentaciones</td></tr>'
+  }</tbody></table></div>`, null, true);
+}
+
+async function descargarLista(mayor: boolean) {
+  try {
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF();
+    pdf.setFontSize(18);
+    pdf.text(mayor ? 'NURA | Lista mayorista' : 'NURA | Catálogo minorista', 15, 18);
+    pdf.setFontSize(10);
+    let y = 29;
+    for (const f of filas(mayor)) {
+      const texto = pdf.splitTextToSize(`${f.nombre} · ${f.medida}${f.agotado ? ' (sin stock)' : ''}`, 139) as string[];
+      if (y + texto.length * 5 > 280) { pdf.addPage(); y = 18; }
+      pdf.text(texto, 15, y);
+      pdf.text(dinero.format(f.precio).replace(/\s/g, ' '), 195, y, { align: 'right' });
+      y += texto.length * 5 + 3;
+    }
+    pdf.save(mayor ? 'Nura-Mayorista.pdf' : 'Nura-Catalogo.pdf');
+  } catch { await swalError('No se pudo generar el PDF.'); }
+}
+
+function compartirLista(mayor: boolean) {
+  const lista = filas(mayor).map((f) => `${f.nombre} · ${f.medida}: ${dinero.format(f.precio)}${f.agotado ? ' (sin stock)' : ''}`);
+  window.open(waLink([mayor ? '*NURA | Lista mayorista*' : '*NURA | Catálogo*', ...lista].join('\n')), '_blank', 'noopener');
+}
 
 registerRenderer('catalogo', renderCatalogo);
-exposeGlobal({
-  formProducto, onTipoChange, eliminarProducto, wspProducto,
-  agregarPresRapida, agregarPresPersonalizada, renderPresList,
-  setPresCampo, eliminarPresItem, setCatalogoView,
-  wspCatalogoPDF, listaMayoristaModal, exportarCatalogo,
-});
+exposeGlobal({ formProducto, descargarLista, compartirLista, wspCatalogoPDF: () => compartirLista(false),
+  listaMayoristaModal: () => abrirLista(true), exportarCatalogo: () => abrirLista(false) });

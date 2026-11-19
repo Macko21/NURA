@@ -12,7 +12,7 @@ export function renderDashboard() {
 
   const tv = store.ventas.reduce((s, v) => s + v.total, 0);
   const tc = store.compras.reduce((s, c) => s + c.total, 0);
-  const ganancia = tv - tc;
+  const ganancia = tv - store.ventas.reduce((total, venta) => total + calcularCostoVenta(venta), 0);
   const stockBajo = store.productos.filter(
     (p) => p.tipo === 'accesorio'
       ? (p.stockUnidades || 0) <= (p.stockMinUnidades || 0)
@@ -21,7 +21,8 @@ export function renderDashboard() {
 
   const meses = [];
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const hoy = new Date();
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
     meses.push({ label: d.toLocaleString('es-AR', { month: 'short' }), year: d.getFullYear(), month: d.getMonth() });
   }
   const vm = meses.map((m) => ({
@@ -38,12 +39,13 @@ export function renderDashboard() {
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-icon" style="background:var(--accent-soft);color:var(--accent);">💰</div><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(tv)}</div><div class="kpi-sub">${store.ventas.length} ventas</div></div>
       <div class="kpi-card"><div class="kpi-icon" style="background:var(--purple-soft);color:var(--purple);">📦</div><div class="kpi-label">Compras</div><div class="kpi-value">${fmt(tc)}</div><div class="kpi-sub">${store.compras.length} compras</div></div>
-      <div class="kpi-card"><div class="kpi-icon" style="background:${ganancia >= 0 ? 'var(--green-soft)' : 'var(--danger-soft)'};color:${ganancia >= 0 ? 'var(--green)' : 'var(--danger)'};">${ganancia >= 0 ? '📈' : '📉'}</div><div class="kpi-label">Ganancia neta</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${tv > 0 ? ((ganancia / tv) * 100).toFixed(1) : 0}%</div></div>
+      <div class="kpi-card"><div class="kpi-icon" style="background:${ganancia >= 0 ? 'var(--green-soft)' : 'var(--danger-soft)'};color:${ganancia >= 0 ? 'var(--green)' : 'var(--danger)'};">${ganancia >= 0 ? '📈' : '📉'}</div><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${tv > 0 ? ((ganancia / tv) * 100).toFixed(1) : 0}%</div></div>
       <div class="kpi-card"><div class="kpi-icon" style="background:var(--warning-soft);color:var(--warning);">⚠️</div><div class="kpi-label">Stock crítico</div><div class="kpi-value">${stockBajo}</div><div class="kpi-sub">productos</div></div>
     </div>
 
     <div class="card mb-16"><div class="section-title">📊 Ventas últimos 6 meses</div>
-      <div class="chart-wrap" style="height:220px;">${vm.map((m) => `<div class="chart-bar" style="height:${(m.val / maxV) * 100}%;" title="${m.label}: ${fmt(m.val)}"><span class="chart-label">${m.label}</span><span class="chart-value">${fmt(m.val)}</span></div>`).join('')}</div>
+      <div class="sales-chart">${vm.map((m) => `<div class="sales-month"><strong>${fmt(m.val)}</strong><div class="sales-track">
+        <span style="height:${Math.max(0, m.val / maxV) * 100}%"></span></div><span>${m.label}</span></div>`).join('')}</div>
     </div>
 
     <div class="card"><div class="section-title">🕒 Últimas 5 ventas</div>
@@ -139,22 +141,22 @@ function renderReportes() {
     </div>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">Ventas</div><div class="kpi-value">${fmt(total)}</div><div class="kpi-sub">${ventasFiltradas.length} transacciones</div></div>
-      <div class="kpi-card"><div class="kpi-label">Costo est.</div><div class="kpi-value">${fmt(costo)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Ganancia neta</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${total > 0 ? ((ganancia / total) * 100).toFixed(1) : 0}%</div></div>
+      <div class="kpi-card"><div class="kpi-label">Costo estimado de ventas</div><div class="kpi-value">${fmt(costo)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ganancia bruta estimada</div><div class="kpi-value">${fmt(ganancia)}</div><div class="kpi-sub">Margen: ${total > 0 ? ((ganancia / total) * 100).toFixed(1) : 0}%</div></div>
     </div>
 
     <div class="card mb-16"><div class="section-title">🏆 Top 10 Clientes</div>
-      <div class="table-wrap hide-mobile"><table><thead><tr><th>Cliente</th><th>Total</th></tr></thead><tbody>${
-        Object.entries(porCliente).sort(([, a], [, b]) => b - a).map(([nombre, val]) => `<tr><td>${escapeHTML(nombre)}</td><td class="fw-700">${fmt(val)}</td></tr>`).join('') || '<tr><td colspan="2"><div class="empty-state">Sin datos</div></td></tr>'
+      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Total</th></tr></thead><tbody>${
+        topClientes.map(([nombre, val]) => `<tr><td>${escapeHTML(nombre)}</td><td class="fw-700">${fmt(val)}</td></tr>`).join('') || '<tr><td colspan="2"><div class="empty-state">Sin datos</div></td></tr>'
       }</tbody></table></div></div>
 
     <div class="card mb-16"><div class="section-title">📦 Top 10 Productos</div>
-      <div class="table-wrap hide-mobile"><table><thead><tr><th>Producto</th><th>Total</th></tr></thead><tbody>${
-        Object.entries(porProducto).sort(([, a], [, b]) => b - a).map(([nombre, val]) => `<tr><td>${escapeHTML(nombre)}</td><td class="fw-700">${fmt(val)}</td></tr>`).join('') || '<tr><td colspan="2"><div class="empty-state">Sin datos</div></td></tr>'
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Total</th></tr></thead><tbody>${
+        topProductos.map(([nombre, val]) => `<tr><td>${escapeHTML(nombre)}</td><td class="fw-700">${fmt(val)}</td></tr>`).join('') || '<tr><td colspan="2"><div class="empty-state">Sin datos</div></td></tr>'
       }</tbody></table></div></div>
 
     <div class="card"><div class="section-title">📋 Ventas detalladas</div>
-      <div class="table-wrap hide-mobile"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Items</th><th>Total</th><th>Estado</th></tr></tbody><tbody>${
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Items</th><th>Total</th><th>Estado</th></tr></tbody><tbody>${
         ventasFiltradas.map((v) => `<tr><td>${fmtDate(v.fecha)}</td><td>${escapeHTML(v.clienteNombre || '—')}</td><td>${v.items.length}</td><td class="fw-700">${fmt(v.total)}</td><td>${v.estado}</td></tr>`).join('') || '<tr><td colspan="5"><div class="empty-state">Sin ventas</div></td></tr>'
       }</tbody></table></div></div>`;
 }
@@ -208,4 +210,4 @@ function limpiarFiltroReportes() {
 registerRenderer('dashboard', renderDashboard);
 registerRenderer('reportes', renderReportes);
 registerRenderer('misreportes', renderMisReportes);
-exposeGlobal({ wspReporte, limpiarFiltroReportes, verNotasVersion });
+exposeGlobal({ renderReportes, wspReporte, limpiarFiltroReportes, verNotasVersion });

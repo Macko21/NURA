@@ -25,7 +25,7 @@ document.addEventListener('click', (e) => {
   }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && document.getElementById('modalOverlay')!.classList.contains('active')) {
+  if (e.key === 'Escape' && !Swal.isVisible() && document.getElementById('modalOverlay')!.classList.contains('active')) {
     e.preventDefault();
     e.stopPropagation();
     closeModal();
@@ -51,6 +51,10 @@ document.getElementById('logoutBtn')!.onclick = () => {
     cancelButtonText: 'Cancelar',
   }).then((r) => { if (r.isConfirmed) void logout(); });
 };
+
+document.addEventListener('nura:datachange', (event) => {
+  if (currentPage === 'catalogo' && (event as CustomEvent).detail?.collection === 'productos') renderPage(currentPage);
+});
 
 const fab = document.getElementById('fab');
 if (fab) fab.onclick = () => formVenta();
@@ -133,7 +137,7 @@ document.addEventListener('touchend', (event) => {
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
-  const CACHE_VIGENTE = 'nura-v27'; // debe coincidir con CACHE en public/sw.js
+  const CACHE_VIGENTE = 'nura-v28'; // debe coincidir con CACHE en public/sw.js
 
   // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
   // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.
@@ -144,16 +148,9 @@ if ('serviceWorker' in navigator) {
     window.location.reload();
   });
 
-  // Limpieza: desregistrar SWs de versiones anteriores (p. ej. el viejo de la
-  // raíz '/') que servían la app legacy desde caché, y purgar cachés obsoletos.
-  void navigator.serviceWorker.getRegistrations().then((regs) => {
-    for (const r of regs) {
-      if (!r.scope.endsWith(currentScope)) void r.unregister();
-    }
-  });
   void caches.keys().then((keys) => {
     for (const k of keys) {
-      if (k !== CACHE_VIGENTE) void caches.delete(k);
+      if (k.startsWith('nura-') && k !== CACHE_VIGENTE) void caches.delete(k);
     }
   });
 
