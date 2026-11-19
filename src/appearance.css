@@ -284,7 +284,9 @@ select[data-buscar][hidden], .search-options[hidden] { display: none !important;
 .swal2-container.swal2-top-end { padding-top: calc(12px + var(--safe-top, 0px)); z-index: 10001; }
 .swal2-popup.swal2-toast { border: 1px solid var(--border); }
 
-.fab { display: grid; place-items: center; padding: 0; }
+.fab { display: grid; place-items: center; padding: 0; touch-action: none; user-select: none; }
+.fab:active, .fab.fab-dragging { transform: none; }
+.fab.fab-dragging { animation: none; cursor: grabbing; }
 .fab svg { display: block; width: 23px; height: 23px; }
 .btn svg, .modal-close svg { display: block; flex-shrink: 0; }
 .actions-col { text-align: center; vertical-align: middle; }
@@ -353,8 +355,14 @@ td.actions-col .catalog-actions, td.actions-col .table-actions { justify-content
 .config-panel .form-group { margin: 0; }
 .config-whatsapp, .config-footer { grid-column: 1 / -1; }
 .config-whatsapp { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.config-whatsapp h3 { grid-column: 1 / -1; }
+.config-whatsapp h3, .config-transfer { grid-column: 1 / -1; }
 .config-whatsapp small { display: block; color: var(--text-muted); margin: 4px 0; }
+.whatsapp-template { min-width: 0; display: grid; align-content: start; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.whatsapp-template summary { cursor: pointer; font-size: 13px; }
+.whatsapp-template ul { padding-inline-start: 0; list-style: none; font-size: 13px; }
+.whatsapp-template li { margin-block: 6px; }
+.whatsapp-template pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.whatsapp-template > button { justify-self: start; }
 .config-logo { display: flex; align-items: center; gap: 10px; }
 .config-logo img { width: 56px; height: 56px; object-fit: contain; }
 .config-footer { text-align: right; }
@@ -369,6 +377,28 @@ td.actions-col .catalog-actions, td.actions-col .table-actions { justify-content
 }
 .editor-row-header { background: var(--tone-violet-bg); border-radius: var(--r-xs); padding: 7px 9px; }
 .editor-row-header h4 { color: var(--tone-violet); }
+#editorProducto { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr); align-items: start; gap: 16px; }
+#editorProducto [hidden] { display: none !important; }
+.editor-general { display: grid; gap: 10px; min-width: 0; }
+.editor-general h4 { margin: 0; }
+.editor-general .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+#editorProducto .form-group { display: grid; gap: 4px; align-content: start; margin: 0; font-size: .79rem; }
+#editorProducto :is(input, select, textarea) { min-height: 35px; padding: 7px 9px; }
+#editorProducto .editor-section { margin: 0; }
+#editorProducto .editor-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#editorProducto .editor-stock .editor-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.editor-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 3px; margin: -3px; }
+.editor-tab { max-width: 15rem; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; white-space: nowrap; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-sunken); color: var(--text); cursor: pointer; font: inherit; font-size: .82rem; }
+.editor-tab[aria-selected="true"], .editor-mobile-nav button[aria-pressed="true"] { background: var(--primary-action); border-color: var(--primary-action); color: #fff; }
+#editorProducto .editor-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.editor-mobile-nav { display: none; }
+.editor-empty { margin-top: 12px; color: var(--text-muted); font-size: .85rem; }
+@media (max-width: 760px) {
+  #editorProducto { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .editor-mobile-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  #editorProducto[data-vista="general"] .editor-precios,
+  #editorProducto[data-vista="precios"] .editor-general { display: none; }
+}
 
 @media (max-width: 840px) {
   .venta-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }

@@ -3,6 +3,7 @@ import { version } from '../package.json';
 import { compartirLista } from './domains/productos';
 import { navIcon } from './lib/nav-icons';
 import { installThemeControls } from './lib/appearance';
+import { installQuickSaleButton } from './lib/quick-sale-button';
 import 'sweetalert2/dist/sweetalert2.css';
 import Swal from 'sweetalert2';
 import { initAuth, login, logout } from './lib/auth';
@@ -73,7 +74,7 @@ document.addEventListener('nura:datachange', (event) => {
 const fab = document.getElementById('fab');
 if (fab) {
   fab.innerHTML = navIcon('add');
-  fab.onclick = () => formVenta();
+  installQuickSaleButton(fab, formVenta);
 }
 
 // ── Actualizar "Última actualización" cada 10s ────────────────────────
@@ -154,7 +155,7 @@ document.addEventListener('touchend', (event) => {
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   const currentScope = import.meta.env.BASE_URL; // '/NURA/' en GitHub Pages
-  const CACHE_VIGENTE = 'nura-v31'; // debe coincidir con CACHE en public/sw.js
+  const CACHE_VIGENTE = 'nura-v311'; // debe coincidir con CACHE en public/sw.js
 
   // Cuando un SW nuevo toma el control (p. ej. al actualizar desde la app
   // legacy v2.4), recargar una vez para quedar con el HTML/JS actualizado.

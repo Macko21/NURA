@@ -155,13 +155,12 @@ async function eliminarCombo(id: string) {
 export function wspCombo(id: string) {
   const c = store.combos.find((x) => x.id === id);
   if (!c) return;
-  let msg = `*🎁 ${escapeHTML(c.nombre)}*\n`;
-  if (c.descripcion) msg += `${escapeHTML(c.descripcion)}\n`;
-  (c.items || []).forEach((i) => { msg += `  • ${escapeHTML(i.nombre)} x${i.cantidad}\n`; });
-  msg += `\nPrecio: ${fmt(c.precio)}`;
-  if (c.precioMayorista) msg += ` / Mayor: ${fmt(c.precioMayorista)}`;
-  msg += `\n\n${waLink('', '2262240512')}`;
-  window.open(waLink(whatsappMessage('combo', msg)), '_blank', 'noopener');
+  const detalle = [
+    c.descripcion,
+    ...(c.items ?? []).map((i) => `• ${i.nombre}${i.detalle && i.detalle !== 'Unidad' ? ' ' + i.detalle : ''} × ${i.cantidad}`),
+    c.precioMayorista ? `Precio mayorista: ${fmt(c.precioMayorista)}` : '',
+  ].filter(Boolean).join('\n');
+  window.open(waLink(whatsappMessage('combo', detalle, { combo: c.nombre, total: fmt(c.precio) })), '_blank', 'noopener');
 }
 
 function imprimirCombos(esMayorista = false) {

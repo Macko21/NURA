@@ -1,4 +1,4 @@
-import { getSettings, whatsappMessage } from '../lib/settings';
+import { whatsappMessage } from '../lib/settings';
 import { navIcon } from '../lib/nav-icons';
 import { store, getLastUpdateStr } from '../lib/db';
 import { Sesion } from '../lib/session';
@@ -186,7 +186,7 @@ function renderMisReportes() {
 
 export function wspReporte() {
   if (!store.productos.length) { swalInfo('Sin productos', 'No hay productos en el catálogo.'); return; }
-  let msg = `*🌿 ${getSettings().nombre} — Catálogo*\n\n`;
+  let msg = '';
   const cats = [...new Set(store.productos.map((p) => p.categoria))];
   cats.forEach((cat) => {
     msg += `*${(EMOJIS_CAT as Record<string, string>)[cat] || '🧴'} ${cat}*\n`;
@@ -202,7 +202,7 @@ export function wspReporte() {
     msg += '\n';
   }
   msg += `${contactFooter()}\n📷 @nura.neco | 📲 2262 240512`;
-  window.open('https://wa.me/?text=' + encodeURIComponent(whatsappMessage('catalogo', msg)), '_blank', 'noopener');
+  window.open('https://wa.me/?text=' + encodeURIComponent(whatsappMessage('catalogo', msg, { listaprecios: 'catálogo' })), '_blank', 'noopener');
 }
 
 function limpiarFiltroReportes() {

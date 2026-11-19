@@ -58,4 +58,18 @@ describe('nueva venta', () => {
     saveSettings({ ...config, mensajes: { ...config.mensajes, deuda: 'Hola {cliente}, saldo {saldo}\n{detalle}' } });
     expect(whatsappMessage('deuda', 'Factura 1', { cliente: 'Lucía', saldo: '$ 500' })).toBe('Hola Lucía, saldo $ 500\nFactura 1');
   });
+
+  it('actualiza la plantilla anterior y agrega el alias solamente si corresponde', () => {
+    const settings = getSettings();
+    saveSettings({ ...settings, aliasTransferencia: 'nura.pagos', mensajes: { ...settings.mensajes, deuda: '{detalle}' } });
+    const deuda = whatsappMessage('deuda', 'Pedido del 18/11/2026', { cliente: 'Juan', saldo: '$ 8.500' });
+    expect(deuda).toContain('Hola Juan');
+    expect(deuda).toContain('Pedido del 18/11/2026');
+    expect(deuda).toContain('*Total pendiente: $ 8.500*');
+    expect(deuda).toContain('*nura.pagos*');
+    const comprobante = whatsappMessage('comprobante', '2 artículos', { cliente: 'Juan', fecha: '18/11/2026', total: '$ 8.500' });
+    expect(comprobante).not.toContain('nura.pagos');
+    saveSettings({ ...getSettings(), aliasTransferencia: '' });
+    expect(whatsappMessage('deuda', 'Pedido', { cliente: 'Juan', saldo: '$ 500' })).not.toContain('alias');
+  });
 });

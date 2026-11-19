@@ -162,28 +162,29 @@ export async function eliminarPago(key: string, pagoId: string) {
 
 export function wspDeudaCliente(key: string) {
   const cl = store.clientes.find((c) => c.id === key);
-  const tel = cl?.telefono;
-  if (!tel) return;
+  if (!cl?.telefono) return;
   const deuda = getTotalDeudaCliente(key);
+  if (deuda <= 0.01) { toast('El cliente no tiene saldo pendiente', 'info'); return; }
   const ventas = store.ventas.filter((v) =>
     (v.clienteId === key || v.clienteNombre === key) &&
     v.estado !== 'cancelado' && v.estado !== 'pagado' &&
     getSaldoVenta(v).saldo > 0.01,
   );
-  let msg = `*💳 CUENTA CORRIENTE — ${cl?.nombre || 'Cliente'}*\n`;
-  msg += `📅 ${new Date().toLocaleDateString('es-AR')}\n--------------------------\n\n`;
-  ventas.forEach((v, idx) => {
+  const detalle = ventas.map((v) => {
     const { pagado, saldo } = getSaldoVenta(v);
-    msg += `*Pedido ${idx + 1}* — ${fmtDate(v.fecha)}\n`;
-    v.items.forEach((i) => { msg += `  • ${i.nombre}${i.detalle && i.detalle !== 'Unidad' ? ' ' + i.detalle : ''} x${i.cantidad} = ${fmt(i.subtotal)}\n`; });
-    if (v.descuento) msg += `  🔖 Desc: -${fmt(v.descuento)}\n`;
-    msg += `  Total: ${fmt(v.total)}`;
-    if (pagado > 0) msg += ` · Pagado: ${fmt(pagado)}`;
-    msg += `\n  💰 *Saldo: ${fmt(saldo)}*\n\n`;
-  });
-  msg += `--------------------------\n💰 *TOTAL ADEUDADO: ${fmt(deuda)}*\n\nPodés pagar por efectivo o transferencia.\n📷 @nura.neco`;
-  const telNum = tel.replace(/\D/g, '');
-  window.open(`https://wa.me/${telNum}?text=${encodeURIComponent(whatsappMessage('deuda', msg, { cliente: cl?.nombre ?? '', saldo: fmt(deuda) }))}`, '_blank');
+    return [
+      `*Pedido del ${fmtDate(v.fecha)}*`,
+      ...v.items.map((i) => `• ${i.nombre}${i.detalle && i.detalle !== 'Unidad' ? ' ' + i.detalle : ''} × ${i.cantidad} · ${fmt(i.subtotal)}`),
+      v.descuento ? `Descuento: -${fmt(v.descuento)}` : '',
+      v.envio ? `Envío: ${fmt(v.envio)}` : '',
+      `Total del pedido: ${fmt(v.total)}`,
+      pagado > 0 ? `Abonado: ${fmt(pagado)}` : '',
+      `Saldo del pedido: ${fmt(saldo)}`,
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
+  const tel = cl.telefono.replace(/\D/g, '');
+  const mensaje = whatsappMessage('deuda', detalle, { cliente: cl.nombre, saldo: fmt(deuda) });
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
 }
 
 registerRenderer('deudas', renderDeudas);

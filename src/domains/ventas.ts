@@ -445,18 +445,20 @@ export function wspVenta(id: string) {
   const v = store.ventas.find((x) => x.id === id);
   if (!v) return;
   const cl = store.clientes.find((c) => c.id === v.clienteId);
-  let msg = `*NURA — Detalle de venta*\n\n👤 ${cl?.nombre || v.clienteNombre || '—'}\n📅 ${fmtDate(v.fecha)}\n`;
-  v.items.forEach((i) => { msg += `  • ${i.nombre}${i.detalle && i.detalle !== 'Unidad' ? ' ' + i.detalle : ''} x${i.cantidad} = ${fmt(i.subtotal)}\n`; });
-  if (v.descuento) msg += `🔖 Desc: -${fmt(v.descuento)}\n`;
-  msg += `\n💰 *Total: ${fmt(v.total)}*`;
-  if (v.pagos?.length) { msg += `\nPagos: ${v.pagos.map((p) => `${fmt(p.monto)} (${p.medio})`).join(', ')}`; }
-  if (v.envio) msg += `
-Recargo de envío: ${dinero.format(v.envio)}`;
-  const pagado = v.pagos.reduce((acum, p) => acum + p.monto, 0);
-  if (cl?.telefono) window.open(waLink(whatsappMessage('comprobante', msg, {
-    cliente: cl.nombre, total: dinero.format(v.total), saldo: dinero.format(v.estado === 'pendiente' ? Math.max(0, v.total - pagado) : 0),
-  }), cl.telefono), '_blank', 'noopener');
-  else toast('El cliente no tiene un teléfono cargado', 'info');
+  if (!cl?.telefono) { toast('El cliente no tiene un teléfono cargado', 'info'); return; }
+  const pagado = (v.pagos ?? []).reduce((acum, p) => acum + p.monto, 0);
+  const saldo = v.estado === 'pendiente' ? Math.max(0, v.total - pagado) : 0;
+  const detalle = [
+    ...v.items.map((i) => `• ${i.nombre}${i.detalle && i.detalle !== 'Unidad' ? ' ' + i.detalle : ''} × ${i.cantidad} · ${fmt(i.subtotal)}`),
+    v.descuento ? `Descuento: -${fmt(v.descuento)}` : '',
+    v.envio ? `Envío: ${fmt(v.envio)}` : '',
+    v.pagos?.length ? `Pagos: ${v.pagos.map((p) => `${fmt(p.monto)} (${p.medio})`).join(', ')}` : '',
+    saldo > 0 ? `Saldo pendiente: ${fmt(saldo)}` : '',
+  ].filter(Boolean).join('\n');
+  const mensaje = whatsappMessage('comprobante', detalle, {
+    cliente: cl.nombre, fecha: fmtDate(v.fecha), total: fmt(v.total), saldo: fmt(saldo),
+  }, saldo > 0);
+  window.open(waLink(mensaje, cl.telefono), '_blank', 'noopener');
 }
 
 export async function eliminarVenta(id: string) {

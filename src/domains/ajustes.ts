@@ -1,12 +1,19 @@
 import { Sesion } from '../lib/session';
 import { escapeHTML, registerRenderer, toast } from '../lib/ui';
-import { getSettings, saveSettings, type TipoMensaje } from '../lib/settings';
+import { getSettings, mensajesBase, renderWhatsapp, saveSettings, type TipoMensaje } from '../lib/settings';
 
-const tipos: [TipoMensaje, string, string][] = [
-  ['catalogo', 'Catálogo', '{marca}, {detalle}'],
-  ['comprobante', 'Comprobante de venta', '{cliente}, {total}, {saldo}, {marca}, {detalle}'],
-  ['deuda', 'Cuenta corriente con deuda', '{cliente}, {saldo}, {marca}, {detalle}'],
-  ['combo', 'Combo', '{marca}, {detalle}'],
+const variables: Record<string, string> = {
+  marca: 'Nombre de tu negocio', cliente: 'Nombre del cliente', fecha: 'Fecha de la venta',
+  detalle: 'Listado de pedidos, artículos o presentaciones según el mensaje', total: 'Total del comprobante o precio del combo',
+  saldo: 'Importe pendiente', alias: 'Alias que cargaste para transferencias',
+  datosdepago: 'Instrucción de transferencia si hay saldo y configuraste un alias',
+  listaprecios: 'Catálogo o lista mayorista', combo: 'Nombre del combo',
+};
+const tipos: [TipoMensaje, string, string[], string][] = [
+  ['deuda', 'Recordatorio de saldo pendiente', ['cliente', 'saldo', 'datosdepago', 'alias'], 'Pedido del 18/11/2026\n• Detergente 1 L × 2 · $ 8.500\nSaldo del pedido: $ 8.500'],
+  ['comprobante', 'Comprobante de venta', ['cliente', 'fecha', 'total', 'saldo', 'datosdepago', 'alias'], '• Detergente 1 L × 2 · $ 8.500\nSaldo pendiente: $ 8.500'],
+  ['catalogo', 'Catálogo', ['listaprecios'], '• Detergente 1 L · $ 4.250\n• Suavizante 5 L · $ 7.000'],
+  ['combo', 'Combo', ['combo', 'total'], '• Detergente 1 L × 2\n• Suavizante 1 L × 1'],
 ];
 
 function renderAjustes() {
@@ -28,7 +35,13 @@ function renderAjustes() {
       <label class="form-group" id="porcentajeEnvioControl">Recargo sobre la venta neta (%)<input type="number" name="envioPorcentaje" min="0" max="100" step="0.01" value="${config.envioPorcentaje}"></label>
     </section>
     <section class="card config-panel config-whatsapp"><h3>Mensajes de WhatsApp</h3>
-      ${tipos.map(([key, nombre, vars]) => `<label class="form-group">${nombre}<small>${vars}</small><textarea name="${key}" rows="3" maxlength="1500">${escapeHTML(config.mensajes[key])}</textarea></label>`).join('')}
+      <label class="form-group config-transfer">Alias para transferencias<input name="aliasTransferencia" maxlength="60" value="${escapeHTML(config.aliasTransferencia)}" placeholder="Ej. nura.pagos"><small>Se incluye en el mensaje base cuando hay un saldo pendiente.</small></label>
+      ${tipos.map(([key, nombre, vars]) => `<div class="whatsapp-template" data-plantilla="${key}">
+        <label class="form-group">${nombre}<textarea name="${key}" rows="5" maxlength="1500">${escapeHTML(config.mensajes[key])}</textarea></label>
+        <details><summary>Variables disponibles</summary><ul>${['marca', 'detalle', ...vars].map((v) => `<li><button type="button" class="btn btn-secondary btn-sm" data-variable="${v}" title="Insertar {${v}}">{${v}}</button> ${variables[v]}</li>`).join('')}</ul></details>
+        <details><summary>Vista previa de ejemplo</summary><pre data-vista-previa></pre></details>
+        <button type="button" class="btn btn-outline btn-sm" data-restaurar>Restaurar mensaje base</button>
+      </div>`).join('')}
     </section>
     <div class="config-footer"><button type="submit" class="btn btn-primary">Guardar configuración</button></div>
   </form>`;
@@ -43,6 +56,36 @@ function renderAjustes() {
   };
   tratamiento.onchange = toggle;
   toggle();
+  const actualizarVistas: (() => void)[] = [];
+  for (const [key, , , detalle] of tipos) {
+    const panel = form.querySelector<HTMLElement>(`[data-plantilla="${key}"]`)!;
+    const textarea = panel.querySelector('textarea')!;
+    const vista = panel.querySelector<HTMLPreElement>('[data-vista-previa]')!;
+    const actualizar = () => {
+      const alias = campo('aliasTransferencia').value.trim();
+      vista.textContent = renderWhatsapp(textarea.value.trim() || mensajesBase[key], {
+        marca: campo('nombre').value.trim() || 'Nura', cliente: 'Juan', fecha: '18/11/2026', detalle,
+        saldo: '$ 8.500', total: '$ 8.500', alias, listaprecios: 'catálogo', combo: 'Limpieza del hogar',
+        datosdepago: alias ? `Si preferís transferir, nuestro alias es *${alias}*.\n` : '',
+      });
+    };
+    actualizarVistas.push(actualizar);
+    textarea.addEventListener('input', actualizar);
+    panel.querySelectorAll<HTMLButtonElement>('[data-variable]').forEach((boton) => {
+      boton.onclick = () => {
+        const token = `{${boton.dataset.variable}}`;
+        if (textarea.value.length - (textarea.selectionEnd - textarea.selectionStart) + token.length > textarea.maxLength) return;
+        textarea.setRangeText(token, textarea.selectionStart, textarea.selectionEnd, 'end');
+        textarea.focus();
+        actualizar();
+      };
+    });
+    panel.querySelector<HTMLButtonElement>('[data-restaurar]')!.onclick = () => { textarea.value = mensajesBase[key]; actualizar(); };
+    actualizar();
+  }
+  for (const name of ['nombre', 'aliasTransferencia']) {
+    campo(name).addEventListener('input', () => actualizarVistas.forEach((actualizar) => actualizar()));
+  }
   const preview = el.querySelector<HTMLImageElement>('.config-logo img')!;
   const previewLogo = () => {
     preview.hidden = !logo;
@@ -80,10 +123,10 @@ function renderAjustes() {
     if (!nombre) { toast('Ingresá el nombre de la marca', 'error'); return; }
     try {
       saveSettings({
-        nombre, bajada: campo('bajada').value.trim(), logo,
+        nombre, bajada: campo('bajada').value.trim(), logo, aliasTransferencia: campo('aliasTransferencia').value.trim(),
         envioModo: tratamiento.value === 'porcentaje' ? 'porcentaje' : 'absorbido',
         envioPorcentaje: campo('envioPorcentaje').valueAsNumber || 0,
-        mensajes: Object.fromEntries(tipos.map(([key]) => [key, campo(key).value.trim() || '{detalle}'])) as ReturnType<typeof getSettings>['mensajes'],
+        mensajes: Object.fromEntries(tipos.map(([key]) => [key, campo(key).value.trim() || mensajesBase[key]])) as ReturnType<typeof getSettings>['mensajes'],
       });
       toast('Configuración guardada en este navegador');
     } catch { toast('No se pudo guardar la configuración en el navegador', 'error'); }

@@ -113,6 +113,11 @@ export function unitInput(id: string, value: string | number = '', unit = 'L', s
 // ── Notas de versión ──────────────────────────────────────────────────
 interface Nota { v: string; fecha: string; notas: string[] }
 const NOTAS_VERSION: Nota[] = [
+  { v: '3.1.1', fecha: '2026-11-18', notas: [
+    'Medidas en pestañas y datos generales a la vista al editar artículos.',
+    'Botón de venta rápida movible y posición guardada.',
+    'Plantillas de WhatsApp con variables, vista previa y alias para transferencias.',
+  ]},
   { v: '3.1.0', fecha: '2026-11-18', notas: [
     'Nueva venta con datos del cliente, resumen, margen y cobros.',
     'Configuración de marca, envío y plantillas de WhatsApp.',

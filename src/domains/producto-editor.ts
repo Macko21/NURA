@@ -37,8 +37,13 @@ export function formProducto(id: string | null) {
   }).sort((a, b) => a.litros - b.litros);
   const categorias = [...new Set([...CATEGORIAS, ...(anterior?.categoria ? [anterior.categoria] : [])])];
   let guardando = false;
-  openModal(id ? 'Editar artículo' : 'Nuevo artículo', `<form id="editorProducto">
-    <div class="form-grid">
+  let activa = 0;
+  openModal(id ? 'Editar artículo' : 'Nuevo artículo', `<form id="editorProducto" novalidate data-vista="general">
+    <div class="editor-mobile-nav" role="group" aria-label="Secciones del artículo">
+      <button type="button" class="btn btn-secondary btn-sm" data-vista-editor="general" aria-pressed="true">Datos generales</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-vista-editor="precios" aria-pressed="false">Medidas y precios</button>
+    </div>
+    <section class="editor-general"><h4>Datos generales</h4><div class="form-grid">
       ${etiqueta('Nombre', 'nombre', anterior?.nombre, 'required')}
       ${etiqueta('Código', 'codigo', anterior?.codigo)}
       <label class="form-group">Categoría<select name="categoria"><option value="">Sin categoría</option>
@@ -47,18 +52,22 @@ export function formProducto(id: string | null) {
         <option value="accesorio" ${anterior?.tipo === 'accesorio' ? 'selected' : ''}>Accesorio</option></select></label>
       <label class="form-group full">Descripción<textarea name="descripcion" rows="2">${escapeHTML(anterior?.descripcion)}</textarea></label>
     </div>
-    <fieldset class="editor-section" data-tipo="liquido"><legend>Presentaciones y precios</legend>
+    <fieldset class="editor-section editor-stock" data-tipo="liquido"><legend>Costo y stock</legend>
       <div class="editor-fields">
         ${numero('Costo por litro ($)', 'costoLitro', anterior?.costoLitro ?? 0, 'required')}
         ${numero('Stock (L)', 'stockLitros', anterior?.stockLitros ?? 0, anterior ? 'readonly' : '')}
         ${numero('Stock mínimo (L)', 'stockMinLitros', anterior?.stockMinLitros ?? 0)}
-      </div><div class="preset-row">
+      </div>
+    </fieldset></section>
+    <fieldset class="editor-section editor-precios" data-tipo="liquido"><legend>Medidas y precios</legend>
+      <div class="editor-tabs" id="editorMedidas" role="tablist" aria-label="Medidas del artículo"></div>
+      <div class="preset-row" aria-label="Agregar medida">
         ${medidas.map((m) => `<button class="btn btn-secondary btn-sm" type="button" data-medida="${m}">+ ${nombreMedida(m)}</button>`).join('')}
         <button class="btn btn-outline btn-sm" type="button" data-medida="0">+ Otra medida</button>
       </div><p class="editor-hint">Dejá el precio vacío para usar el cálculo automático.</p>
       <div id="editorPresentaciones"></div>
     </fieldset>
-    <fieldset class="editor-section" data-tipo="accesorio"><legend>Stock y precios por unidad</legend>
+    <fieldset class="editor-section editor-precios" data-tipo="accesorio"><legend>Stock y precios por unidad</legend>
       <div class="editor-fields">
         ${numero('Costo por unidad ($)', 'costoUnidad', anterior?.costoUnidad ?? 0)}
         ${etiqueta('Stock (un.)', 'stockUnidades', anterior?.stockUnidades ?? 0, 'type="number" min="0" step="1" ' + (anterior ? 'readonly' : ''))}
@@ -68,12 +77,13 @@ export function formProducto(id: string | null) {
         ${precio('Minorista ($)', 'precioAcc', anterior?.precioVenta)}
         ${precio('Mayorista ($)', 'mayorAcc', anterior?.precioMayorista)}
       </div><div id="resultadoAcc" class="editor-summary"></div>
-    </fieldset></form>`, guardar, true);
+    </fieldset></form>`, guardar, 1120);
 
   const form = document.querySelector<HTMLFormElement>('#editorProducto')!;
   (form.elements.namedItem('categoria') as HTMLSelectElement).value = anterior?.categoria ?? '';
   (form.elements.namedItem('tipo') as HTMLSelectElement).value = anterior?.tipo ?? 'liquido';
   const lista = form.querySelector<HTMLElement>('#editorPresentaciones')!;
+  const tabs = form.querySelector<HTMLElement>('#editorMedidas')!;
   const input = (n: string) => form.elements.namedItem(n) as HTMLInputElement;
   const val = (n: string) => Number(input(n).value);
   const opcional = (n: string) => input(n).value === '' ? undefined : val(n);
@@ -100,7 +110,9 @@ export function formProducto(id: string | null) {
   }
 
   function pintar() {
-    lista.innerHTML = filas.map((r, i) => `<section class="editor-row" data-fila="${i}">
+    tabs.innerHTML = filas.map((r, i) => `<button type="button" role="tab" class="editor-tab" id="medidaTab${i}" aria-controls="medidaPanel${i}" data-tab-medida="${i}">${escapeHTML(r.nombre || 'Otra medida')}</button>`).join('');
+    tabs.hidden = !filas.length;
+    lista.innerHTML = filas.map((r, i) => `<section class="editor-row" id="medidaPanel${i}" role="tabpanel" aria-labelledby="medidaTab${i}" data-fila="${i}">
       <div class="editor-row-header"><h4>${escapeHTML(r.nombre || 'Otra medida')}</h4>
         <button type="button" class="btn btn-secondary btn-sm" data-quitar="${i}">Quitar</button></div>
       <div class="editor-fields">
@@ -112,9 +124,35 @@ export function formProducto(id: string | null) {
         ${numero('Descuento mayorista (%)', 'descMayorista' + i, r.descMayorista, 'max="100"')}
         ${precio('Minorista ($)', 'pv' + i, r.minorista)}
         ${precio('Mayorista ($)', 'pm' + i, r.mayorista)}
-      </div><div class="editor-summary" data-resumen="${i}"></div></section>`).join('');
+      </div><div class="editor-summary" data-resumen="${i}"></div></section>`).join('') || '<p class="editor-empty">Elegí una medida para cargar sus precios.</p>';
+    seleccionarMedida(activa);
     recalcular();
   }
+
+  function seleccionarMedida(i: number) {
+    activa = i;
+    tabs.querySelectorAll<HTMLButtonElement>('[data-tab-medida]').forEach((tab, index) => {
+      tab.setAttribute('aria-selected', String(index === activa));
+      tab.tabIndex = index === activa ? 0 : -1;
+    });
+    lista.querySelectorAll<HTMLElement>('[data-fila]').forEach((panel, index) => panel.hidden = index !== activa);
+  }
+
+  function mostrarVista(vista: string) {
+    form.dataset.vista = vista;
+    form.querySelectorAll<HTMLButtonElement>('[data-vista-editor]').forEach((boton) => {
+      boton.setAttribute('aria-pressed', String(boton.dataset.vistaEditor === vista));
+    });
+  }
+
+  tabs.onkeydown = (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !filas.length) return;
+    event.preventDefault();
+    const siguiente = event.key === 'Home' ? 0 : event.key === 'End' ? filas.length - 1 :
+      (activa + (event.key === 'ArrowLeft' ? -1 : 1) + filas.length) % filas.length;
+    seleccionarMedida(siguiente);
+    tabs.querySelector<HTMLButtonElement>(`[data-tab-medida="${siguiente}"]`)?.focus();
+  };
 
   function mostrarTipo() {
     form.querySelectorAll<HTMLFieldSetElement>('[data-tipo]').forEach((el) => {
@@ -140,15 +178,19 @@ export function formProducto(id: string | null) {
       r.minorista = opcional('pv' + i);
       r.mayorista = opcional('pm' + i);
       el.querySelector('h4')!.textContent = r.nombre || 'Otra medida';
+      tabs.querySelector(`[data-tab-medida="${i}"]`)!.textContent = r.nombre || 'Otra medida';
     }
     recalcular();
   };
   form.onclick = (event) => {
     const b = (event.target as HTMLElement).closest('button');
+    if (b?.dataset.vistaEditor) mostrarVista(b.dataset.vistaEditor);
+    if (b?.dataset.tabMedida !== undefined) seleccionarMedida(Number(b.dataset.tabMedida));
     if (b?.dataset.medida !== undefined) {
       const ml = Number(b.dataset.medida);
       filas.push({ id: genId(), nombre: ml ? nombreMedida(ml) : '', litros: ml / 1000, costoEnvase: 0,
         costoEtiqueta: 0, ganancia: 40, descMayorista: 20, precioVenta: 0, precioMayorista: 0 });
+      activa = filas.length - 1;
       pintar();
       input((ml ? 'pv' : 'pn') + (filas.length - 1)).focus();
     }
@@ -159,7 +201,9 @@ export function formProducto(id: string | null) {
         return;
       }
       filas.splice(i, 1);
+      activa = Math.max(0, Math.min(i, filas.length - 1));
       pintar();
+      (tabs.querySelector<HTMLButtonElement>(`[data-tab-medida="${activa}"]`) ?? form.querySelector<HTMLButtonElement>('[data-medida]'))?.focus();
     }
   };
   form.onsubmit = (event) => { event.preventDefault(); void guardar(); };
@@ -167,7 +211,16 @@ export function formProducto(id: string | null) {
   pintar();
 
   async function guardar() {
-    if (guardando || !form.reportValidity()) return;
+    if (guardando) return;
+    const invalido = Array.from(form.querySelectorAll<HTMLInputElement>('input, select, textarea'))
+      .find((campo) => campo.willValidate && !campo.validity.valid);
+    if (invalido) {
+      mostrarVista(invalido.closest('.editor-precios') ? 'precios' : 'general');
+      const fila = invalido.closest<HTMLElement>('[data-fila]');
+      if (fila) seleccionarMedida(Number(fila.dataset.fila));
+      invalido.reportValidity();
+      return;
+    }
     const nombre = input('nombre').value.trim();
     if (!nombre || (!esAcc() && filas.some((f) => !f.nombre.trim()))) {
       await swalError('Completá el nombre del artículo y sus presentaciones.'); return;

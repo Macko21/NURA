@@ -1,4 +1,4 @@
-import { getSettings, whatsappMessage } from '../lib/settings';
+import { whatsappMessage } from '../lib/settings';
 import { catalogPreference, saveCatalogPreference } from '../lib/appearance';
 import { categoryArt } from '../lib/category-art';
 import { navIcon } from '../lib/nav-icons';
@@ -169,8 +169,8 @@ async function descargarLista(mayor: boolean) {
 export function compartirLista(mayor: boolean) {
   const lista = filas(mayor).map((f) => `${f.nombre} · ${f.medida}: ${dinero.format(f.precio)}${f.agotado ? ' (sin stock)' : ''}`);
   if (!lista.length) { toast('No hay artículos para compartir', 'info'); return; }
-  const detalle = [`*${getSettings().nombre} | ${mayor ? 'Lista mayorista' : 'Catálogo'}*`, ...lista, '', contactFooter()].join('\n');
-  window.open(waLink(whatsappMessage('catalogo', detalle)), '_blank', 'noopener');
+  const detalle = [...lista, '', contactFooter()].join('\n');
+  window.open(waLink(whatsappMessage('catalogo', detalle, { listaprecios: mayor ? 'listado mayorista' : 'catálogo' })), '_blank', 'noopener');
 }
 
 registerRenderer('catalogo', renderCatalogo);

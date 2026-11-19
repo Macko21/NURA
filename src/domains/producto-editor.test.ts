@@ -60,4 +60,18 @@ describe('editor de productos', () => {
     });
     expect(calcularPresentacion(1000, producto.presentaciones[0], 1800, 1050).gananciaMayorista).toBe(-70);
   });
+
+  it('muestra una sola medida por vez y guarda los valores de las pestañas ocultas', async () => {
+    formProducto('prod');
+    click('[data-medida="500"]');
+    expect(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('500 ml');
+    expect(document.querySelector<HTMLElement>('[data-fila="0"]')?.hidden).toBe(true);
+    escribir('pv1', '900');
+    click('[data-tab-medida="0"]');
+    expect(document.querySelector<HTMLElement>('[data-fila="1"]')?.hidden).toBe(true);
+    expect(input('pv0').value).toBe('1800');
+    click('#btnModalSave');
+    await vi.waitFor(() => expect(saveProducto).toHaveBeenCalledOnce());
+    expect(vi.mocked(saveProducto).mock.calls[0][0].presentaciones.map((p) => p.precioVenta)).toEqual([1800, 900]);
+  });
 });
