@@ -13,6 +13,10 @@ import { dinero } from './precios';
 import type { Producto } from '../types';
 
 let busqueda = '', categoria = '', vista = catalogPreference();
+const catalogoMobile = typeof window !== 'undefined' ? window.matchMedia('(max-width: 700px)') : undefined;
+catalogoMobile?.addEventListener('change', () => {
+  if (document.querySelector('#page-catalogo.active')) renderCatalogo();
+});
 const ordenCatalogo: Record<string, string> = {
   nombre: 'Nombre A–Z', nombreDesc: 'Nombre Z–A', categoria: 'Categoría',
   precio: 'Menor precio', precioDesc: 'Mayor precio',
@@ -56,9 +60,9 @@ export function renderCatalogo() {
       `<option value="${escapeHTML(c)}" ${c === categoria ? 'selected' : ''}>${escapeHTML(c)}</option>`).join('')}</select>
     <select aria-label="Ordenar catálogo" id="catOrden">${Object.entries(ordenCatalogo).map(([valor, texto]) =>
       `<option value="${valor}" ${orden === valor ? 'selected' : ''}>${texto}</option>`).join('')}</select>
-    <div class="catalog-views" role="group" aria-label="Vista del catálogo">
+    ${catalogoMobile?.matches ? '' : `<div class="catalog-views" role="group" aria-label="Vista del catálogo">
       <button class="btn icon-action" type="button" data-vista="lista" title="Vista de lista" aria-label="Vista de lista">${navIcon('list')}</button>
-      <button class="btn icon-action" type="button" data-vista="tarjetas" title="Vista de tarjetas" aria-label="Vista de tarjetas">${navIcon('grid')}</button></div>
+      <button class="btn icon-action" type="button" data-vista="tarjetas" title="Vista de tarjetas" aria-label="Vista de tarjetas">${navIcon('grid')}</button></div>`}
   </div><p class="catalog-count" aria-live="polite"></p><div id="catRes"></div>`;
   el.querySelector<HTMLInputElement>('#catSearch')!.oninput = (e) => { busqueda = (e.target as HTMLInputElement).value; actualizar(); };
   el.querySelector<HTMLSelectElement>('#catFiltro')!.onchange = (e) => { categoria = (e.target as HTMLSelectElement).value; actualizar(); };
@@ -87,7 +91,7 @@ export function renderCatalogo() {
       b.setAttribute('aria-pressed', String(b.dataset.vista === vista));
     });
     el!.querySelector('#catRes')!.innerHTML = !prods.length ? '<p class="empty-state">No se encontraron artículos.</p>' :
-      vista === 'lista' ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Precios</th><th>Stock</th><th class="actions-col">Acciones</th></tr></thead><tbody>${
+      vista === 'lista' && !catalogoMobile?.matches ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Precios</th><th>Stock</th><th class="actions-col">Acciones</th></tr></thead><tbody>${
         prods.map((p) => `<tr><td><div class="catalog-list-heading">${categoryArt(p.categoria)}${identidad(p)}</div></td><td>${escapeHTML(p.categoria || '—')}</td><td>${precios(p)}</td><td>${estado(p)}</td><td class="actions-col">${acciones(p)}</td></tr>`).join('')
       }</tbody></table></div>` : `<div class="product-grid catalog-grid">${prods.map((p) => `<article class="card catalog-card">
         <div class="catalog-card-heading">${categoryArt(p.categoria)}<div>${identidad(p)}<small class="catalog-category">${escapeHTML(p.categoria)}</small></div></div>${precios(p)}

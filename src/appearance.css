@@ -363,6 +363,55 @@ td.actions-col .catalog-actions, td.actions-col .table-actions { justify-content
 .whatsapp-template li { margin-block: 6px; }
 .whatsapp-template pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); }
 .whatsapp-template > button { justify-self: start; }
+
+.purchase-detail { display: grid; gap: 8px; margin-bottom: 16px; }
+.purchase-detail > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.purchase-detail dt { color: var(--text-muted); }
+.purchase-detail dd { min-width: 0; text-align: end; overflow-wrap: anywhere; }
+.purchase-detail .purchase-total { color: var(--violet-dark); font-weight: 750; }
+.purchase-detail .purchase-notes { display: grid; gap: 4px; }
+.purchase-notes dd { text-align: start; white-space: pre-wrap; }
+
+@media (max-width: 700px) {
+  #syncBar { --sync-bar-background: var(--primary-action); }
+  .sidebar { background: var(--sidebar-bg); }
+  .page, .page > *, .modal-body > *, .catalog-toolbar > * { min-inline-size: 0; max-inline-size: 100%; }
+  :is(#app, #modalOverlay, #loginScreen) :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+    font-size: 16px;
+    max-inline-size: 100%;
+  }
+  #page-catalogo .catalog-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #page-catalogo .catalog-toolbar #catFiltro { grid-column: auto; }
+  #page-catalogo .catalog-grid { grid-template-columns: repeat(auto-fill, minmax(min(245px, 100%), 1fr)); }
+  .catalog-card .catalog-prices strong { white-space: nowrap; }
+  .catalog-card-footer { flex-wrap: wrap; }
+  .sales-chart { grid-template-columns: repeat(6, minmax(44px, 1fr)); }
+  .bottom-nav-item { font-size: clamp(8px, 2.5vw, 10px); }
+
+  .record-list { gap: 12px; }
+  .record-card { display: grid; gap: 12px; padding: 13px; min-width: 0; box-shadow: var(--card-shadow); }
+  .record-card-heading { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+  .record-card-identity { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .record-card-identity .m-card-title { font-size: .99rem; line-height: 1.25; }
+  .record-card-identity .m-card-subtitle { margin: 0 0 3px; font-size: .78rem; }
+  .record-card-icon { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 9px; }
+  .record-card-icon svg, .card-detail svg { width: 17px; height: 17px; }
+  .client-icon { color: var(--tone-rose); background: var(--tone-rose-bg); }
+  .sale-icon { color: var(--tone-blue); background: var(--tone-blue-bg); }
+  .purchase-icon { color: var(--tone-violet); background: var(--tone-violet-bg); }
+  .record-card-total { white-space: nowrap; color: var(--violet-dark); font-size: .98rem; }
+  .record-card-fields { display: grid; gap: 5px; }
+  .record-card-fields:empty { display: none; }
+  .record-card-fields > div { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+  .record-card-fields dt { color: var(--text-muted); font-size: .79rem; }
+  .record-card-fields dd { text-align: end; min-width: 0; overflow-wrap: anywhere; font-size: .84rem; }
+  .record-card-actions { flex-direction: row; align-items: center; justify-content: flex-end; margin: 0; padding-top: 9px; border-top: 1px solid var(--border-light); }
+  .record-card-actions .btn { flex: 0 0 auto; min-height: 40px; }
+  .record-card-actions .icon-action { width: 40px; padding: 0; }
+  .record-card-actions .sale-status { margin-inline-end: auto; }
+  .record-card-actions .card-detail { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-inline-end: auto; }
+  #page-ventas > .card:has(.record-list) { background: transparent; border: 0; padding: 0; }
+}
 .config-logo { display: flex; align-items: center; gap: 10px; }
 .config-logo img { width: 56px; height: 56px; object-fit: contain; }
 .config-footer { text-align: right; }

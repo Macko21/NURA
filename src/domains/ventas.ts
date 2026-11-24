@@ -55,27 +55,28 @@ export function renderVentas() {
         }).join('')
   }</tbody></table></div>`;
 
-  const cards = `<div class="mobile-card-list">${ventas.map((v) => {
+  const cards = `<div class="mobile-card-list record-list">${ventas.map((v) => {
     const cl = store.clientes.find((c) => c.id === v.clienteId);
     const gananciaVendedor = Sesion.esVendedor()
       ? (v.items.reduce((s, i) => s + (i.precioAplicado - (i.precioMayorista || 0)) * i.cantidad, 0) + (v.envio || 0))
       : null;
-    return `<div class="m-card">
-      <div class="m-card-header">
-        <div>
-          <div class="m-card-title"><span class="badge badge-blue" style="margin-right:6px;">#${v.num}</span> ${cl ? escapeHTML(cl.nombre) : escapeHTML(v.clienteNombre || 'Sin cliente')}${cl?.esMayorista ? ' <span class="badge badge-violet" style="font-size:10px;">Mayorista</span>' : ''}</div>
-          <div class="m-card-subtitle">${fmtDate(v.fecha)} · ${v.items.length} ítem(s)</div>
+    return `<article class="m-card record-card">
+      <div class="record-card-heading">
+        <span class="record-card-icon sale-icon">${navIcon('ventas')}</span>
+        <div class="record-card-identity"><span class="m-card-subtitle">Venta #${v.num} · ${fmtDate(v.fecha)}</span>
+          <h3 class="m-card-title">${escapeHTML(cl?.nombre || v.clienteNombre || 'Sin cliente')}</h3>
+          <p class="m-card-subtitle">${v.items.length} ${v.items.length === 1 ? 'ítem' : 'ítems'}${cl?.esMayorista ? ' · Mayorista' : ''}</p>
         </div>
+        <strong class="record-card-total">${fmt(v.total)}</strong>
+      </div>
+      ${gananciaVendedor !== null ? `<p class="m-card-subtitle">Ganancia: ${fmt(gananciaVendedor)}</p>` : ''}
+      <div class="m-card-footer record-card-actions">
         ${estadoSelect(v)}
+        <button type="button" class="btn icon-action is-violet" title="Ver venta" aria-label="Ver venta" onclick="verVenta('${v.id}')">${navIcon('eye')}</button>
+        <button type="button" class="btn icon-action is-teal" title="Compartir venta" aria-label="Compartir venta" onclick="wspVenta('${v.id}')">${navIcon('share')}</button>
+        ${Sesion.esAdmin() ? `<button type="button" class="btn icon-action is-danger" title="Eliminar venta" aria-label="Eliminar venta" onclick="eliminarVenta('${v.id}')">${navIcon('trash')}</button>` : ''}
       </div>
-      <div style="font-family:var(--font-display);font-size:22px;font-weight:800;" class="text-gradient">${fmt(v.total)}</div>
-      ${gananciaVendedor !== null ? `<div style="font-size:12px;color:var(--violet-dark);margin-top:4px;">Ganancia: ${fmt(gananciaVendedor)}</div>` : ''}
-      <div class="m-card-footer mt-8">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="verVenta('${v.id}')">👁 Ver</button>
-        <button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspVenta('${v.id}')">📲</button>
-        ${Sesion.esAdmin() ? `<button class="btn icon-action is-danger" title="Eliminar venta" aria-label="Eliminar venta" onclick="eliminarVenta('${v.id}')">${navIcon('trash')}</button>` : ''}
-      </div>
-    </div>`;
+    </article>`;
   }).join('')}</div>`;
 
   el.innerHTML = `<div class="card"><div class="section-header"><div class="section-title">Ventas</div></div>${ventas.length === 0 ? `<div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas</p></div>` : tbl + cards}</div>`;

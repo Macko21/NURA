@@ -1,4 +1,5 @@
 import { coincideBusqueda } from '../lib/search';
+import { navIcon } from '../lib/nav-icons';
 import { store, saveCliente, removeCliente } from '../lib/db';
 import { Sesion } from '../lib/session';
 import { escapeHTML, toast, swalConfirm, swalError, openModal, closeModal, registerRenderer, exposeGlobal } from '../lib/ui';
@@ -45,43 +46,47 @@ export function renderClientes() {
         }).join('')
   }</tbody></table></div>`;
 
-  const cards = `<div class="mobile-card-list">${lista.map((c) => {
-    const vendedorNombre = isAdmin && c.vendedorId
-      ? `<div style="font-size:10px;color:var(--text-muted);">Creado por: ${escapeHTML(store.perfiles.find((u) => u.id === c.vendedorId)?.nombre || 'Desconocido')}</div>`
-      : '';
-    return `<div class="m-card">
-      <div class="m-card-header">
-        <div>
-          <div class="m-card-title">👤 ${escapeHTML(c.nombre)}</div>
-          ${c.email ? `<div class="m-card-subtitle">${escapeHTML(c.email)}</div>` : ''}
-          ${vendedorNombre}
+  const cards = `<div class="mobile-card-list record-list">${lista.map((c) => {
+    const accion = (nombre: string, icono: string, color: string, handler: string) =>
+      `<button type="button" class="btn icon-action ${color}" data-cliente="${escapeHTML(c.id)}" data-contacto="${handler}" title="${nombre}" aria-label="${nombre}">${navIcon(icono)}</button>`;
+    const contactos = [['Teléfono', c.telefono], ['Email', c.email], ['Dirección', c.direccion]];
+    return `<article class="m-card record-card">
+      <div class="record-card-heading">
+        <span class="record-card-icon client-icon">${navIcon('clientes')}</span>
+        <div class="record-card-identity"><h3 class="m-card-title">${escapeHTML(c.nombre)}</h3>
+          ${isAdmin && c.vendedorId ? `<p class="m-card-subtitle">Creado por ${escapeHTML(store.perfiles.find((u) => u.id === c.vendedorId)?.nombre || 'Desconocido')}</p>` : ''}
         </div>
         <span class="badge badge-${c.esMayorista ? 'violet' : 'gray'}">${c.esMayorista ? 'Mayorista' : 'Actual'}</span>
       </div>
-      <div class="m-card-body">
-        ${c.telefono ? `<div class="m-card-row"><span class="m-card-row-label">Teléfono</span><span class="m-card-row-value">${escapeHTML(c.telefono)}</span></div>` : ''}
-        ${c.direccion ? `<div class="m-card-row"><span class="m-card-row-label">Dirección</span><span class="m-card-row-value">${escapeHTML(c.direccion)}</span></div>` : ''}
+      <dl class="record-card-fields">${contactos.filter(([, valor]) => valor).map(([etiqueta, valor]) =>
+        `<div><dt>${etiqueta}</dt><dd>${escapeHTML(valor)}</dd></div>`).join('')}</dl>
+      <div class="m-card-footer record-card-actions">
+        ${accion('Editar cliente', 'edit', 'is-violet', 'editar')}
+        ${c.telefono ? accion('Abrir WhatsApp', 'share', 'is-teal', 'whatsapp') : ''}
+        ${isAdmin ? accion('Eliminar cliente', 'trash', 'is-danger', 'eliminar') : ''}
       </div>
-      <div class="m-card-footer">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="formCliente('${c.id}')">✏️ Editar</button>
-        ${c.telefono ? `<button class="btn btn-wsp-sm btn-sm" style="flex:1;" onclick="wspCliente('${c.id}')">📲</button>` : ''}
-        ${isAdmin ? `<button class="btn btn-danger btn-sm btn-icon" onclick="eliminarCliente('${c.id}')">🗑</button>` : ''}
-      </div>
-    </div>`;
+    </article>`;
   }).join('')}</div>`;
 
-  el.innerHTML = `<div class="flex flex-center gap-8 mb-16">
-    <div class="search-bar" style="max-width:100%;"><span class="search-icon">🔍</span><input type="text" placeholder="Buscar cliente..." id="clienteSearch" value="${escapeHTML(clienteSearch)}" /></div>
-  </div>
-  ${lista.length === 0 && !clienteSearch ? `<div class="empty-state"><div class="empty-icon">👥</div><p>No hay clientes</p></div>` : tbl + cards}`;
-
-  const searchInput = document.getElementById('clienteSearch') as HTMLInputElement | null;
-  if (searchInput) {
-    searchInput.oninput = (e) => {
-      clienteSearch = (e.target as HTMLInputElement).value;
+  if (!el.querySelector('#clienteResultados')) {
+    el.innerHTML = `<div class="search-bar mb-16" style="max-width:100%;">
+      <input type="search" aria-label="Buscar cliente" placeholder="Buscar cliente..." id="clienteSearch" value="${escapeHTML(clienteSearch)}" />
+    </div><div id="clienteResultados"></div>`;
+    el.querySelector<HTMLInputElement>('#clienteSearch')!.oninput = (event) => {
+      clienteSearch = (event.target as HTMLInputElement).value;
       renderClientes();
     };
   }
+  el.querySelector('#clienteResultados')!.innerHTML = lista.length ? tbl + cards
+    : `<p class="empty-state">${clienteSearch ? 'No se encontraron clientes' : 'No hay clientes'}</p>`;
+  el.querySelectorAll<HTMLButtonElement>('[data-contacto]').forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.cliente!;
+      if (button.dataset.contacto === 'editar') formCliente(id);
+      else if (button.dataset.contacto === 'whatsapp') wspCliente(id);
+      else if (button.dataset.contacto === 'eliminar') void eliminarCliente(id);
+    };
+  });
 }
 
 export function formCliente(id: string | null) {

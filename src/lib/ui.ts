@@ -113,6 +113,10 @@ export function unitInput(id: string, value: string | number = '', unit = 'L', s
 // ── Notas de versión ──────────────────────────────────────────────────
 interface Nota { v: string; fecha: string; notas: string[] }
 const NOTAS_VERSION: Nota[] = [
+  { v: '3.1.4', fecha: '2026-11-24', notas: [
+    'Tarjetas de artículos, clientes, ventas y compras ajustadas para pantallas chicas.',
+    'El listado móvil de compras abre el detalle de cada registro con un botón.',
+  ]},
   { v: '3.1.3', fecha: '2026-11-24', notas: [
     'La app instalada respeta el espacio de la barra del teléfono y permite abrir el menú desde arriba y desde la barra inferior.',
   ]},

@@ -1,26 +1,32 @@
 import { store, saveCompra, removeCompra, reponerStock } from '../lib/db';
 import { Sesion } from '../lib/session';
+import { navIcon } from '../lib/nav-icons';
 import { escapeHTML, toast, swalConfirm, swalError, swalSuccess, openModal, closeModal, moneyInput, unitInput, registerRenderer, exposeGlobal } from '../lib/ui';
 import { fmt, fmtL, fmtDate } from '../lib/format';
 import { genId } from '../lib/id';
 import type { Compra, TipoProducto } from '../types';
 
+function comprasNumeradas() {
+  return [...store.compras].sort((a, b) => a.fecha - b.fecha)
+    .map((compra, i) => ({ ...compra, num: i + 1 })).sort((a, b) => b.fecha - a.fecha);
+}
+
 export function renderCompras() {
   const el = document.getElementById('page-compras');
   if (!el) return;
-  document.getElementById('topbarActions')!.innerHTML = `<button class="btn btn-primary" onclick="formCompra()">+ Compra</button>`;
-  
-  const compras = [...store.compras]
-    .sort((a, b) => a.fecha - b.fecha)
-    .map((c, i) => ({ ...c, num: i + 1 }))
-    .sort((a, b) => b.fecha - a.fecha);
+  document.getElementById('topbarActions')!.innerHTML = '<button class="btn btn-primary" onclick="formCompra()">+ Compra</button>';
+  const compras = comprasNumeradas();
+  const detalle = (c: typeof compras[number]) => `<button class="btn btn-secondary card-detail" type="button" data-compra="${escapeHTML(c.id)}">${navIcon('eye')} Ver detalle</button>`;
+
+  if (!compras.length) {
+    el.innerHTML = '<p class="empty-state">No hay compras registradas</p>';
+    return;
+  }
 
   const tbl = `<div class="table-wrap hide-mobile"><table><thead><tr>
     <th>Trans.</th><th>Fecha</th><th>Producto</th><th>Proveedor</th><th>Cantidad</th><th>Costo unit.</th><th>Total</th><th class="actions-col">Acciones</th>
   </tr></thead><tbody>${
-    compras.length === 0
-      ? `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🚚</div><p>Sin compras</p></div></td></tr>`
-      : compras.map((c) => `<tr>
+    compras.map((c) => `<tr>
           <td><span class="badge badge-green">#${c.num}</span></td>
           <td>${fmtDate(c.fecha)}</td>
           <td class="fw-700">${escapeHTML(c.productoNombre)}</td>
@@ -32,25 +38,37 @@ export function renderCompras() {
         </tr>`).join('')
   }</tbody></table></div>`;
 
-  const cards = `<div class="mobile-card-list">${compras.map((c) => `
-    <div class="m-card">
-      <div class="m-card-header">
-        <div>
-          <div class="m-card-title"><span class="badge badge-green" style="margin-right:6px;">#${c.num}</span> ${escapeHTML(c.productoNombre)}</div>
-          <div class="m-card-subtitle">${fmtDate(c.fecha)}${c.proveedor ? ' · ' + escapeHTML(c.proveedor) : ''}</div>
-        </div>
-        <span class="fw-700 text-gradient" style="font-family:var(--font-display);font-size:18px;">${fmt(c.total)}</span>
+  el.innerHTML = tbl + `<div class="mobile-card-list record-list">${compras.map((c) => `<article class="m-card record-card">
+    <div class="record-card-heading">
+      <span class="record-card-icon purchase-icon">${navIcon('compras')}</span>
+      <div class="record-card-identity"><span class="m-card-subtitle">Compra #${c.num} · ${fmtDate(c.fecha)}</span>
+        <h3 class="m-card-title">${escapeHTML(c.productoNombre)}</h3>${c.proveedor ? `<p class="m-card-subtitle">${escapeHTML(c.proveedor)}</p>` : ''}
       </div>
-      <div class="m-card-body">
-        <div class="m-card-row"><span class="m-card-row-label">Cantidad</span><span class="m-card-row-value">${c.tipo === 'accesorio' ? c.cantidad + ' un' : fmtL(c.cantidad) + ' L'}</span></div>
-        <div class="m-card-row"><span class="m-card-row-label">Costo/unit.</span><span class="m-card-row-value">${fmt(c.precioUnit)}</span></div>
-      </div>
-      <div class="m-card-footer">
-        <button class="btn btn-danger btn-sm" onclick="eliminarCompra('${c.id}')">🗑 Eliminar</button>
-      </div>
-    </div>`).join('')}</div>`;
+      <strong class="record-card-total">${fmt(c.total)}</strong>
+    </div>
+    <div class="m-card-footer record-card-actions">${detalle(c)}</div>
+  </article>`).join('')}</div>`;
+  el.querySelectorAll<HTMLButtonElement>('[data-compra]').forEach((button) => {
+    button.onclick = () => verCompra(button.dataset.compra!);
+  });
+}
 
-  el.innerHTML = compras.length === 0 ? `<div class="empty-state"><div class="empty-icon">🚚</div><p>No hay compras registradas</p></div>` : tbl + cards;
+function verCompra(id: string) {
+  const c = comprasNumeradas().find((compra) => compra.id === id);
+  if (!c) return;
+  const unidad = c.tipo === 'accesorio' ? 'un.' : 'L';
+  const cantidad = c.tipo === 'accesorio' ? c.cantidad : fmtL(c.cantidad);
+  const datos = [
+    ['Artículo', c.productoNombre], ['Proveedor', c.proveedor || '—'], ['Fecha', fmtDate(c.fecha)],
+    ['Cantidad', `${cantidad} ${unidad}`], ['Costo unitario', `${fmt(c.precioUnit)} / ${unidad}`],
+  ];
+  openModal(`Detalle de la compra #${c.num}`, `<dl class="purchase-detail">${datos.map(([etiqueta, valor]) =>
+    `<div><dt>${etiqueta}</dt><dd>${escapeHTML(valor)}</dd></div>`).join('')}
+    <div class="purchase-total"><dt>Total</dt><dd>${fmt(c.total)}</dd></div>
+    ${c.notas ? `<div class="purchase-notes"><dt>Notas</dt><dd>${escapeHTML(c.notas)}</dd></div>` : ''}
+  </dl>${Sesion.esAdmin() ? '<button type="button" class="btn btn-danger btn-sm" id="compraEliminar">Eliminar compra</button>' : ''}`, null);
+  const eliminar = document.querySelector<HTMLButtonElement>('#compraEliminar');
+  if (eliminar) eliminar.onclick = () => void eliminarCompra(c.id);
 }
 
 export function formCompra() {
@@ -121,6 +139,8 @@ export async function eliminarCompra(id: string) {
   const res = await swalConfirm('¿Eliminar compra?', 'No se puede deshacer.');
   if (!res.isConfirmed) return;
   await removeCompra(id);
+  closeModal();
+  renderCompras();
   toast('Compra eliminada');
 }
 
