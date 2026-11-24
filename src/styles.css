@@ -53,8 +53,10 @@
   --sidebar-w: 240px;
   --topbar-h: 56px;
   --bottom-nav-h: 64px;
-  --safe-top: env(safe-area-inset-top);
-  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 
   /* Radius */
   --r-xs: 6px;
@@ -114,7 +116,8 @@ input, select, textarea { font-family: inherit; }
 
 /* ── SIDEBAR (PC) ───────────────────────────────────────────────────── */
 .sidebar {
-  width: var(--sidebar-w);
+  width: calc(var(--sidebar-w) + var(--safe-left));
+  padding: var(--safe-top) 0 var(--safe-bottom) var(--safe-left);
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
@@ -194,17 +197,18 @@ input, select, textarea { font-family: inherit; }
 
 /* ── MAIN CONTENT ───────────────────────────────────────────────────── */
 .main-content {
-  margin-left: var(--sidebar-w);
+  margin-left: calc(var(--sidebar-w) + var(--safe-left));
   flex: 1; display: flex; flex-direction: column;
+  min-width: 0;
   min-height: 100vh; min-height: 100dvh;
 }
 
 .topbar {
-  height: var(--topbar-h);
+  min-height: calc(var(--topbar-h) + var(--safe-top));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center;
-  padding: 0 20px; gap: 12px;
+  padding: var(--safe-top) calc(20px + var(--safe-right)) 0 20px; gap: 12px;
   position: sticky; top: 0; z-index: 50;
   box-shadow: var(--shadow-xs);
 }
@@ -223,7 +227,7 @@ input, select, textarea { font-family: inherit; }
 
 /* ── PAGES ──────────────────────────────────────────────────────────── */
 .page {
-  display: none; padding: 20px 24px;
+  display: none; padding: 20px calc(24px + var(--safe-right)) calc(20px + var(--safe-bottom)) 24px;
   animation: pageIn 0.25s var(--ease);
 }
 .page.active { display: block; }
@@ -520,13 +524,14 @@ textarea { resize: vertical; min-height: 70px; }
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(8,12,20,0.55);
   display: none; align-items: center; justify-content: center;
-  z-index: 200; backdrop-filter: blur(6px); padding: 16px;
+  z-index: 200; backdrop-filter: blur(6px);
+  padding: max(16px, var(--safe-top)) max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
 }
 .modal-overlay.active { display: flex; }
 .modal {
   background: var(--surface); border-radius: var(--r-lg);
   box-shadow: var(--shadow-xl), 0 0 0 1px rgba(169,140,236,0.1);
-  width: 100%; max-width: 600px; max-height: 90vh;
+  width: 100%; max-width: 600px; max-height: min(90vh, 100%);
   display: flex; flex-direction: column;
   animation: modalIn 0.25s var(--ease-bounce);
 }
@@ -757,7 +762,7 @@ textarea { resize: vertical; min-height: 70px; }
 
 .deuda-container { display: block !important; }
 
-html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
+html, body { padding: 0; margin: 0; overflow-x: hidden; overflow-x: clip; background: var(--bg); }
 
 /* ══════════════════════════════════════════════════════════════════════
    BOTTOM NAV (Mobile)
@@ -767,7 +772,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
   position: fixed; bottom: 0; left: 0; right: 0;
   background: var(--surface);
   border-top: 1px solid var(--border);
-  padding: 0; padding-bottom: var(--safe-bottom);
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
   z-index: 100;
   box-shadow: 0 -2px 10px rgba(15,23,42,0.06);
 }
@@ -777,7 +782,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
 }
 .bottom-nav-item {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px; padding: 6px 0; flex: 1;
+  gap: 2px; padding: 6px 0; flex: 1; min-width: 0; min-height: 44px;
   color: var(--text-muted); font-size: 9.5px; font-weight: 600;
   cursor: pointer; transition: color var(--duration) var(--ease);
   -webkit-tap-highlight-color: transparent; user-select: none;
@@ -795,7 +800,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
 .fab {
   display: flex; /* show on all screens */
   position: fixed; bottom: calc(var(--bottom-nav-h) + 16px + var(--safe-bottom));
-  right: 20px;
+  right: calc(20px + var(--safe-right));
   width: 56px; height: 56px;
   background: linear-gradient(135deg, var(--accent-dark), var(--accent));
   color: #fff; border: none; border-radius: 50%;
@@ -822,35 +827,48 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
 
   /* Sidebar → off-canvas */
   .sidebar {
+    max-width: calc(100% - max(24px, var(--safe-right)));
     transform: translateX(-100%);
+    visibility: hidden;
     box-shadow: none;
+    overscroll-behavior: contain;
     transition: transform 0.3s var(--ease);
   }
   .sidebar.open {
     transform: none;
+    visibility: visible;
     box-shadow: 4px 0 24px rgba(0,0,0,0.4);
   }
-  #sidebarClose { display: block; }
+  #sidebarClose {
+    display: grid; place-items: center;
+    position: sticky; top: var(--safe-top); z-index: 1;
+    align-self: flex-end; flex-shrink: 0;
+    width: 44px; height: 44px; margin: 4px 4px -44px 0;
+    color: white; background: var(--sidebar-hover); border: 0; border-radius: var(--r-sm);
+  }
+  .sidebar .sidebar-logo { padding-right: 48px; }
 
   /* Main */
   .main-content { margin-left: 0; }
-  .hamburger { display: flex; }
+  .hamburger { display: flex; flex-shrink: 0; min-width: 44px; min-height: 44px; }
 
   /* Topbar */
   .topbar {
-    height: auto; min-height: var(--topbar-h);
-    padding: 8px 14px; gap: 8px; flex-wrap: wrap;
+    padding: calc(4px + var(--safe-top)) calc(8px + var(--safe-right)) 4px calc(8px + var(--safe-left));
+    gap: 5px; flex-wrap: wrap;
   }
-  .topbar-title { font-size: 15px; flex: 1 1 auto; min-width: 100px; }
+  .topbar-title { font-size: 15px; flex: 1 1 0; min-width: 0; }
   .topbar-actions {
     flex: 1 1 100%; display: flex; flex-wrap: wrap;
-    gap: 6px; justify-content: flex-start; margin-top: 4px;
+    gap: 6px; justify-content: flex-start; order: 1;
   }
+  .topbar-actions:empty { display: none; }
+  .topbar > .icon-action { flex-shrink: 0; }
   .topbar-actions .btn,
   .topbar-actions button { font-size: 11px !important; padding: 6px 10px !important; }
 
   /* Pages */
-  .page { padding: 12px 14px; padding-bottom: calc(var(--bottom-nav-h) + 24px + var(--safe-bottom)); }
+  .page { padding: 12px calc(14px + var(--safe-right)) calc(var(--bottom-nav-h) + 24px + var(--safe-bottom)) calc(14px + var(--safe-left)); }
 
   /* Grids → stack */
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
@@ -865,8 +883,8 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
   .btn-group { width: 100%; }
 
   /* Modal → bottom sheet */
-  .modal { border-radius: var(--r-lg) var(--r-lg) 0 0; margin-top: auto; max-height: 92vh; }
-  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal { border-radius: var(--r-lg) var(--r-lg) 0 0; margin-top: auto; max-height: 100%; }
+  .modal-overlay { align-items: flex-end; padding: max(8px, var(--safe-top)) var(--safe-right) var(--safe-bottom) var(--safe-left); }
 
   .search-bar { max-width: 100%; }
 
@@ -878,7 +896,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
   .bottom-nav { display: block; }
   .fab { bottom: calc(var(--bottom-nav-h) + 12px + var(--safe-bottom)); }
 
-  #logoutBtn { order: 10; font-size: 10.5px; padding: 5px 8px; }
+  #logoutBtn { font-size: 10.5px; padding: 5px 8px; }
 
   .hide-mobile { display: none !important; }
 }
@@ -892,7 +910,7 @@ html, body { padding: 0; margin: 0; overflow-x: hidden; background: var(--bg); }
 @media (min-width: 701px) {
   .hamburger { display: none !important; }
   #sidebarClose { display: none; }
-  .fab { bottom: 24px; }
+  .fab { bottom: calc(24px + var(--safe-bottom)); }
 }
 
 /* Desktop: ≥768px — deudas 2 cols */
@@ -1097,7 +1115,7 @@ table td { vertical-align: middle; }
   .catalog-toolbar input { grid-column: 1 / -1; }
   .topbar { gap: 7px; }
   .topbar-actions .btn { font-size: 11px; padding-inline: 6px; }
-  .modal { max-height: 92dvh; }
+  .modal { max-height: 100%; }
 }
 
 .nav-menu .nav-item { width: 100%; text-align: left; }

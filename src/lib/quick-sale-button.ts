@@ -11,26 +11,32 @@ export function installQuickSaleButton(button: HTMLElement, openSale: () => void
   let drag: { id: number; x: number; y: number; left: number; top: number; moved: boolean } | undefined;
   let suppressClick = false;
   const nav = document.getElementById('bottomNav');
+  const topbar = document.querySelector<HTMLElement>('.topbar');
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
   function bounds() {
-    const min = 12;
+    const mobile = Boolean(nav?.offsetHeight);
+    const safeLeft = parseFloat(nav ? getComputedStyle(nav).paddingLeft : '') || 0;
+    const safeRight = parseFloat(nav ? getComputedStyle(nav).paddingRight : '') || 0;
+    const left = safeLeft + 12;
+    const top = mobile && topbar ? topbar.getBoundingClientRect().bottom + 12 : 12;
     const bottom = nav?.offsetHeight ? nav.getBoundingClientRect().top : window.innerHeight;
     return {
-      min,
-      width: Math.max(1, window.innerWidth - button.offsetWidth - min * 2),
-      height: Math.max(1, bottom - button.offsetHeight - min * 2),
+      left,
+      top,
+      width: Math.max(0, window.innerWidth - button.offsetWidth - left - safeRight - 12),
+      height: Math.max(0, bottom - button.offsetHeight - top - 12),
     };
   }
   function paint() {
     if (!position || !button.offsetWidth) return;
-    const { min, width, height } = bounds();
-    button.style.left = `${min + width * position.x}px`;
-    button.style.top = `${min + height * position.y}px`;
+    const { left, top, width, height } = bounds();
+    button.style.left = `${left + width * position.x}px`;
+    button.style.top = `${top + height * position.y}px`;
     button.style.right = button.style.bottom = 'auto';
   }
   function place(left: number, top: number) {
-    const { min, width, height } = bounds();
-    position = { x: clamp((left - min) / width), y: clamp((top - min) / height) };
+    const area = bounds();
+    position = { x: clamp((left - area.left) / (area.width || 1)), y: clamp((top - area.top) / (area.height || 1)) };
     paint();
   }
   function remember() {
@@ -79,6 +85,8 @@ export function installQuickSaleButton(button: HTMLElement, openSale: () => void
   });
 
   window.addEventListener('resize', paint);
-  new ResizeObserver(paint).observe(button);
+  const observer = new ResizeObserver(paint);
+  observer.observe(button);
+  if (topbar) observer.observe(topbar);
   paint();
 }

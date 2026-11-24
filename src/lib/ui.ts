@@ -113,6 +113,9 @@ export function unitInput(id: string, value: string | number = '', unit = 'L', s
 // ── Notas de versión ──────────────────────────────────────────────────
 interface Nota { v: string; fecha: string; notas: string[] }
 const NOTAS_VERSION: Nota[] = [
+  { v: '3.1.3', fecha: '2026-11-24', notas: [
+    'La app instalada respeta el espacio de la barra del teléfono y permite abrir el menú desde arriba y desde la barra inferior.',
+  ]},
   { v: '3.1.1', fecha: '2026-11-18', notas: [
     'Medidas en pestañas y datos generales a la vista al editar artículos.',
     'Botón de venta rápida movible y posición guardada.',
@@ -188,7 +191,14 @@ export function navigate(page: string) {
   const actions = document.getElementById('topbarActions');
   if (actions) actions.innerHTML = '';
   renderPage(page);
-  document.getElementById('sidebar')?.classList.remove('open');
+  setMobileMenu(false);
+}
+
+export function setMobileMenu(abierto: boolean) {
+  document.getElementById('sidebar')?.classList.toggle('open', abierto);
+  for (const id of ['hamburger', 'bottomMenu']) {
+    document.getElementById(id)?.setAttribute('aria-expanded', String(abierto));
+  }
 }
 
 interface NavItem { page: string; label: string }
@@ -213,10 +223,22 @@ export function buildBottomNav() {
   const items = Sesion.esAdmin() ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_VENDEDOR;
   inner.innerHTML = items
     .map((it) => `<button type="button" class="bottom-nav-item" data-page="${it.page}"><span class="bnav-icon">${navIcon(it.page)}</span><span>${it.label}</span></button>`)
-    .join('');
-  inner.querySelectorAll('.bottom-nav-item').forEach((el) => {
+    .join('') + `<button type="button" class="bottom-nav-item" id="bottomMenu" aria-controls="sidebar" aria-expanded="false"><span class="bnav-icon">${navIcon('menu')}</span><span>Menú</span></button>`;
+  inner.querySelectorAll('.bottom-nav-item[data-page]').forEach((el) => {
     (el as HTMLElement).onclick = () => navigate((el as HTMLElement).dataset.page!);
   });
+  inner.querySelector<HTMLButtonElement>('#bottomMenu')!.onclick = (event) => {
+    event.stopPropagation();
+    setMobileMenu(!document.getElementById('sidebar')?.classList.contains('open'));
+  };
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar && !sidebar.dataset.menuObservado) {
+    sidebar.dataset.menuObservado = 'true';
+    new MutationObserver(() => {
+      const expanded = String(sidebar.classList.contains('open'));
+      for (const id of ['hamburger', 'bottomMenu']) document.getElementById(id)?.setAttribute('aria-expanded', expanded);
+    }).observe(sidebar, { attributes: true, attributeFilter: ['class'] });
+  }
 }
 
 export function buildMenu() {
