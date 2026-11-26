@@ -113,6 +113,9 @@ export function unitInput(id: string, value: string | number = '', unit = 'L', s
 // ── Notas de versión ──────────────────────────────────────────────────
 interface Nota { v: string; fecha: string; notas: string[] }
 const NOTAS_VERSION: Nota[] = [
+  { v: '3.1.5', fecha: '2026-11-26', notas: [
+    'El editor de artículos identifica los errores de Supabase al guardar precios.',
+  ]},
   { v: '3.1.4', fecha: '2026-11-24', notas: [
     'Tarjetas de artículos, clientes, ventas y compras ajustadas para pantallas chicas.',
     'El listado móvil de compras abre el detalle de cada registro con un botón.',

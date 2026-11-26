@@ -247,7 +247,19 @@ export async function saveProducto(p: Producto) {
   const { error } = await sb().rpc('guardar_producto', { p_producto: producto, p_presentaciones: filas });
   if (error) {
     console.error('guardar_producto', error.message);
-    throw new Error(error.code === 'P0001' ? error.message : 'No se pudo guardar el artículo en Supabase.');
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error('Supabase no encuentra la función para guardar artículos. Aplicá la migración 0005_guardar_producto.sql.');
+    }
+    if (error.code === '42501') {
+      throw new Error('Tu sesión no tiene permiso para actualizar artículos. Verificá que hayas ingresado como administrador.');
+    }
+    if (error.code === 'PGRST301' || error.code === 'PGRST303') {
+      throw new Error('La sesión venció. Volvé a iniciar sesión para guardar el artículo.');
+    }
+    if (!error.code) {
+      throw new Error('No se pudo conectar con Supabase. Revisá la conexión y volvé a intentar.');
+    }
+    throw new Error(error.code === 'P0001' ? error.message : `Supabase rechazó el guardado del artículo (${error.code}).`);
   }
   await loadProductos();
   notifyUpdate('productos');

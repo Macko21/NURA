@@ -71,3 +71,5 @@ $$;
 
 revoke execute on function public.guardar_producto(jsonb, jsonb) from public, anon;
 grant execute on function public.guardar_producto(jsonb, jsonb) to authenticated;
+
+notify pgrst, 'reload schema';
